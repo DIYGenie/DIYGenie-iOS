@@ -4,4 +4,31 @@
    <FileRef
       location = "self:">
    </FileRef>
+   <FileRef
+      location = "group:AppConfig.swift">
+   </FileRef>
+   <FileRef
+      location = "group:Project.swift">
+   </FileRef>
+   <FileRef
+      location = "group:PreviewModel.swift">
+   </FileRef>
+   <FileRef
+      location = "group:APIClient.swift">
+   </FileRef>
+   <FileRef
+      location = "group:Event.swift">
+   </FileRef>
+   <FileRef
+      location = "group:ProjectsService.swift">
+   </FileRef>
+   <FileRef
+      location = "group:TelemetryService.swift">
+   </FileRef>
+   <FileRef
+      location = "group:ProjectListView.swift">
+   </FileRef>
+   <FileRef
+      location = "group:PreviewModel 2.swift">
+   </FileRef>
 </Workspace>

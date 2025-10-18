@@ -1,3 +1,0 @@
----BEGIN FILE---
-
----END FILE---

@@ -10,7 +10,11 @@ struct TelemetryService {
 
     @discardableResult
     func log(event name: String, metadata: [String: String]? = nil) async throws -> BoolResponse {
-        let body = EventBody(name: name, metadata: metadata)
+        var merged = metadata ?? [:]
+        if merged["user_id"] == nil {
+            merged["user_id"] = UserSession.shared.userId
+        }
+        let body = EventBody(name: name, metadata: merged)
         return try await api.post("/api/events", body: body)
     }
 }

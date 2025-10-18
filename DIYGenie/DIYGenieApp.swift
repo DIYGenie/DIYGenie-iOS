@@ -9,9 +9,14 @@ import SwiftUI
 
 @main
 struct DIYGenieApp: App {
+    init() {
+        _ = UserSession.shared.userId
+    }
+    
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ProjectsListView()
         }
     }
 }
+
