@@ -29,6 +29,15 @@ struct ProjectsService {
     private let api = APIClient.shared
     static let shared = ProjectsService()
 
+    private func budgetSymbol(_ b: BudgetTier) -> String {
+        switch b {
+        case .one: return "$"
+        case .two: return "$$"
+        case .three: return "$$$"
+        default: return "$" // fallback for any extended tiers
+        }
+    }
+
     func list(userId: String) async throws -> [Project] {
         do {
             let resp: ProjectsListResponse = try await api.get(
@@ -59,11 +68,12 @@ struct ProjectsService {
             goal: goal,
             user_id: userId,
             client: "ios",
-            budget: budget.rawValue,
+            budget: budgetSymbol(budget),
             skill_level: skill.rawValue,
             update: update
         )
 
+        print("[ProjectsService#create v2] building request…")
         do {
             let resp: ProjectCreateResponse = try await api.post("/api/projects", body: body)
             return resp.item
