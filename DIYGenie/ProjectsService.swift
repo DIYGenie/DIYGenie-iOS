@@ -75,7 +75,22 @@ struct ProjectsService {
 
         print("[ProjectsService#create v2] building request…")
         do {
-            let resp: ProjectCreateResponse = try await api.post("/api/projects", body: body)
+            // Build URL with query using APIClient helper; also include user_id in body and headers
+            let url = try APIClient.shared.makeURL("/api/projects", query: [URLQueryItem(name: "user_id", value: UserSession.shared.userId)])
+
+            // Prepare a temporary URLRequest just for logging headers exactly as they'll be sent
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue(UserSession.shared.userId, forHTTPHeaderField: "x-user-id")
+            request.setValue(UserSession.shared.userId, forHTTPHeaderField: "X-User-Id")
+
+            print("URL:", url.absoluteString)
+            print("HEADERS:", request.allHTTPHeaderFields ?? [:])
+            print("REQUEST JSON:", String(data: try! JSONEncoder().encode(body), encoding: .utf8)!)
+            print("[ProjectsService#create v2] sending request…")
+
+            let resp: ProjectCreateResponse = try await api.post("/api/projects", query: [URLQueryItem(name: "user_id", value: UserSession.shared.userId)], body: body)
             return resp.item
         } catch {
             // Print request and raw response if available
