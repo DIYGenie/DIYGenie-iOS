@@ -9,14 +9,8 @@ final class UserSession {
     let userId: String
 
     private init() {
-        // For now, generate or return a placeholder user ID.
-        // In a real app, this might come from Keychain, sign-in, or server.
-        if let existing = UserDefaults.standard.string(forKey: "UserSession.userId") {
-            self.userId = existing
-        } else {
-            let new = UUID().uuidString
-            UserDefaults.standard.set(new, forKey: "UserSession.userId")
-            self.userId = new
-        }
+        // Use a stable, real profile UUID for iOS debug builds.
+        // This must exist in profiles.id on the server.
+        self.userId = "e4cb3591-7272-46dd-b1f6-d7cc4e2f3d24"
     }
 }

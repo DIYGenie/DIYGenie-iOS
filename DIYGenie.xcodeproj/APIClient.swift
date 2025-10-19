@@ -99,10 +99,13 @@ final class APIClient {
 }
 
 enum APIError: Error, LocalizedError {
+    case invalidRequest(String)
     case httpError(status: Int, body: String)
 
     var errorDescription: String? {
         switch self {
+        case let .invalidRequest(message):
+            return "Invalid Request: \(message)"
         case let .httpError(status, body):
             return "HTTP \(status): \(body)"
         }

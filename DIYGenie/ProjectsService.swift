@@ -1,19 +1,43 @@
 import Foundation
 
+struct ProjectsListResponse: Decodable {
+    let ok: Bool
+    let items: [Project]
+}
+
+struct ProjectCreateRequest: Encodable {
+    let name: String
+    let goal: String
+    let user_id: String
+    let client: String
+    let budget: String
+    let skill_level: String
+    let update: String
+}
+
+struct ProjectCreateResponse: Decodable {
+    let ok: Bool
+    let item: ProjectMinimal
+}
+
+struct ProjectMinimal: Decodable {
+    let id: String
+    let status: String
+}
+
 struct ProjectsService {
     private let api = APIClient.shared
+    static let shared = ProjectsService()
 
-    func fetchProjects() async throws -> [Project] {
+    func list(userId: String) async throws -> [Project] {
         do {
-            return try await api.get("/api/projects", query: [URLQueryItem(name: "user_id", value: UserSession.shared.userId)])
+            let resp: ProjectsListResponse = try await api.get(
+                "/api/projects",
+                query: [URLQueryItem(name: "user_id", value: userId)]
+            )
+            return resp.items
         } catch {
-            struct ProjectsEnvelope: Decodable { let ok: Bool?; let projects: [Project]?; let data: [Project]? }
-            do {
-                let envelope: ProjectsEnvelope = try await api.get("/api/projects", query: [URLQueryItem(name: "user_id", value: UserSession.shared.userId)])
-                return envelope.projects ?? envelope.data ?? []
-            } catch {
-                throw error
-            }
+            throw error
         }
     }
 
@@ -21,74 +45,33 @@ struct ProjectsService {
         try await api.delete("/api/projects/\(id)")
     }
 
-    @discardableResult
-    func createProject(title: String, goal: String) async throws -> Project {
-        let ts = Int(Date().timeIntervalSince1970)
-        let safe = "iOS Debug \(ts)" // unique, alphanumeric + space
+    func create(name: String,
+                goal: String,
+                budget: BudgetTier = .one,
+                skill: SkillLevel = .beginner,
+                update: String = "created from iOS",
+                userId: String) async throws -> ProjectMinimal {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 10 else { throw APIError.invalidRequest("name must be at least 10 characters") }
 
-        struct Body: Encodable { // dollars fallback
-            let name: String
-            let goal: String
-            let user_id: String
-            let client: String
-            let budget: Int
-            let currency: String
-        }
-        struct BodyCents: Encodable { // cents fallback
-            let name: String
-            let goal: String
-            let user_id: String
-            let client: String
-            let budget_cents: Int
-            let currency: String
-        }
-
-        let initialBody = Body(
-            name: safe,
-            goal: goal.isEmpty ? "smoke test" : goal,
-            user_id: UserSession.shared.userId,
+        let body = ProjectCreateRequest(
+            name: trimmed,
+            goal: goal,
+            user_id: userId,
             client: "ios",
-            budget: 0,
-            currency: "USD"
+            budget: budget.rawValue,
+            skill_level: skill.rawValue,
+            update: update
         )
 
-        // Helper to pretty-print JSON
-        func jsonString<T: Encodable>(_ value: T) -> String {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            do { return String(data: try encoder.encode(value), encoding: .utf8) ?? "<non-utf8>" } catch { return "<encode failed: \(error)>" }
-        }
-
         do {
-            return try await api.post("/api/projects", body: initialBody)
+            let resp: ProjectCreateResponse = try await api.post("/api/projects", body: body)
+            return resp.item
         } catch {
-            // Log request and response
-            print("REQUEST JSON:")
-            print(jsonString(initialBody))
-            if case let APIError.httpError(status, body) = error {
-                print("RAW RESPONSE (status \(status)):\n\(body)")
-                // If server hints at budget_cents, retry with cents version
-                if status >= 400 && body.lowercased().contains("budget_cents") {
-                    let centsBody = BodyCents(
-                        name: initialBody.name,
-                        goal: initialBody.goal,
-                        user_id: initialBody.user_id,
-                        client: initialBody.client,
-                        budget_cents: 0,
-                        currency: initialBody.currency
-                    )
-                    print("Retrying with budget_cents…")
-                    print("REQUEST JSON (retry):")
-                    print(jsonString(centsBody))
-                    do {
-                        return try await api.post("/api/projects", body: centsBody)
-                    } catch {
-                        if case let APIError.httpError(status2, body2) = error {
-                            print("RAW RESPONSE (retry) (status \(status2)):\n\(body2)")
-                        }
-                        throw error
-                    }
-                }
+            // Print request and raw response if available
+            print("REQUEST JSON:", String(data: try! JSONEncoder().encode(body), encoding: .utf8)!)
+            if case let APIError.httpError(status, responseBody) = error {
+                print("RAW RESPONSE (status \(status)):\n\(responseBody)")
             }
             throw error
         }

@@ -4,7 +4,7 @@ struct ProjectsListView: View {
     @State private var projects: [Project] = []
     @State private var isLoading: Bool = false
     @State private var errorMessage: String? = nil
-    private let service = ProjectsService()
+    private let service = ProjectsService.shared
     private let telemetry = TelemetryService()
 
     var body: some View {
@@ -47,19 +47,29 @@ struct ProjectsListView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
+                    #if DEBUG
                     Button("Add (debug)") {
-                        Task { @MainActor in
+                        Task {
                             do {
-                                _ = try await service.createProject(title: "iOS Debug", goal: "smoke test")
-                                await loadProjects()
+                                let created = try await ProjectsService.shared.create(
+                                    name: "iOS Debug \(Int(Date().timeIntervalSince1970))",
+                                    goal: "smoke test",
+                                    userId: UserSession.shared.userId
+                                )
+                                // optional telemetry if id is returned
+                                _ = try? await telemetry.log(event: "project_created", metadata: ["id": created.id])
+                                // refresh list
+                                let refreshed = try await ProjectsService.shared.list(userId: UserSession.shared.userId)
+                                await MainActor.run { projects = refreshed }
                             } catch {
-                                let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                                errorMessage = message
-                                print("[ProjectsListView] Create project failed: \(message)")
+                                await MainActor.run {
+                                    errorMessage = error.localizedDescription
+                                }
                             }
                         }
                     }
                     .accessibilityLabel("Add debug project")
+                    #endif
                 }
             }
         }
@@ -71,7 +81,7 @@ struct ProjectsListView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            let fetched: [Project] = try await service.fetchProjects()
+            let fetched: [Project] = try await service.list(userId: UserSession.shared.userId)
             projects = fetched
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -100,3 +110,4 @@ struct ProjectsListView: View {
 }
 
 #Preview { ProjectsListView() }
+
