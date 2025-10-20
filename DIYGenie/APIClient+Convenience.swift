@@ -7,10 +7,10 @@ extension APIClient {
     // Build a URL with query items
     func makeURL(_ path: String, query: [URLQueryItem]? = nil) throws -> URL {
         guard var comps = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false) else {
-            throw APIError.network("Invalid base URL")
+            throw APIError.network(underlying: "Invalid base URL")
         }
         if let query { comps.queryItems = query }
-        guard let url = comps.url else { throw APIError.network("Invalid URL for path \(path)") }
+        guard let url = comps.url else { throw APIError.network(underlying: "Invalid URL for path \(path)") }
         return url
     }
 

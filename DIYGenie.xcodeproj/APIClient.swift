@@ -1,13 +1,5 @@
 import Foundation
 
-enum APIError: Error {
-    case network(String)
-    case http(Int, String)
-    case decoding(String)
-    case invalidRequest(String)
-    case unknown
-}
-
 final class APIClient {
     let baseURL: URL
     private let session: URLSession
@@ -32,18 +24,17 @@ final class APIClient {
         }
 
         let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw APIError.unknown }
+        guard let http = response as? HTTPURLResponse else { throw APIError.unknown(message: nil) }
         guard (200..<300).contains(http.statusCode) else {
             let text = String(data: data, encoding: .utf8) ?? ""
-            throw APIError.http(http.statusCode, text)
+            throw APIError.statusCode(http.statusCode)
         }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        let decoder = JSONDecoder.iso8601Decoder
         do {
             return try decoder.decode(T.self, from: data)
         } catch {
             let text = String(data: data, encoding: .utf8) ?? ""
-            throw APIError.decoding(text)
+            throw APIError.decoding(underlying: text)
         }
     }
 

@@ -24,6 +24,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				Project.swift,
 			);
 			target = E2822E292EA34D7200B72665 /* DIYGenie */;
 		};
