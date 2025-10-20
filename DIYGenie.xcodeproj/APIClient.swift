@@ -1,6 +1,17 @@
 import Foundation
 
+extension JSONDecoder {
+    static var apiDecoder: JSONDecoder {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }
+}
+
 final class APIClient {
+    static let shared = APIClient()
+    
     let baseURL: URL
     private let session: URLSession
 
@@ -27,14 +38,14 @@ final class APIClient {
         guard let http = response as? HTTPURLResponse else { throw APIError.unknown(message: nil) }
         guard (200..<300).contains(http.statusCode) else {
             let text = String(data: data, encoding: .utf8) ?? ""
-            throw APIError.statusCode(http.statusCode)
+            throw APIError.network(underlying: "HTTP \(http.statusCode)")
         }
-        let decoder = JSONDecoder.iso8601Decoder
+        let decoder = JSONDecoder.apiDecoder
         do {
             return try decoder.decode(T.self, from: data)
         } catch {
             let text = String(data: data, encoding: .utf8) ?? ""
-            throw APIError.decoding(underlying: text)
+            throw APIError.network(underlying: "Decoding failed: \(text)")
         }
     }
 
@@ -66,8 +77,8 @@ final class APIClient {
 
     func createProject(name: String, goal: String, userId: UUID, budget: Double, skillLevel: String) async throws -> Project {
         let body = CreateProjectBody(name: name, goal: goal, user_id: userId, client: "ios", budget: budget, skill_level: skillLevel)
-        let project: Project = try await request(path: "/api/projects", method: "POST", body: body)
-        return project
+        let dto: CreateProjectDTO = try await request(path: "/api/projects", method: "POST", body: body)
+        return Project(dto)
     }
 
     func attachPhoto(projectId: UUID, url: URL) async throws -> (ok: Bool, photo_url: URL) {

@@ -16,8 +16,8 @@ struct Project: Codable, Identifiable, Hashable {
         case title
         case description
         case previews
-        case createdAt
-        case updatedAt
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
         case name
         case budget
         case budgetCents = "budget_cents"
@@ -83,3 +83,33 @@ struct Project: Codable, Identifiable, Hashable {
     }
 }
 
+// Placeholder for Preview type if not defined elsewhere in this target
+struct Preview: Codable, Hashable {
+    let id: String
+    let url: URL?
+}
+
+// DTO used by APIClient when creating a project
+struct CreateProjectDTO: Codable {
+    let id: UUID
+    let name: String
+    let goal: String
+    let user_id: UUID
+    let created_at: Date
+}
+
+extension Project {
+    init(_ dto: CreateProjectDTO) {
+        self.init(
+            id: dto.id.uuidString,
+            title: dto.name,
+            description: nil,
+            budget: nil,
+            skillLevel: nil,
+            lastUpdate: nil,
+            previews: nil,
+            createdAt: dto.created_at,
+            updatedAt: nil
+        )
+    }
+}
