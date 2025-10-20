@@ -1,21 +1,21 @@
 import Foundation
 
 enum APIError: Error {
-    case invalidURL
-    case invalidResponse
-    case decodingError
-    case networkFailure
+    case http(Int, String)
+    case decoding(String)
+    case network(String)
+    case unknown
 
     var localizedDescription: String {
         switch self {
-        case .invalidURL:
-            return "The URL provided was invalid."
-        case .invalidResponse:
-            return "The response from the server was invalid."
-        case .decodingError:
-            return "Failed to decode the data."
-        case .networkFailure:
-            return "Network request failed."
+        case let .http(status, body):
+            return "HTTP \(status): \(body)"
+        case let .decoding(message):
+            return "Decoding error: \(message)"
+        case let .network(message):
+            return "Network error: \(message)"
+        case .unknown:
+            return "Unknown error"
         }
     }
 }

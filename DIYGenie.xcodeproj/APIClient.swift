@@ -1,143 +1,99 @@
 import Foundation
 
 final class APIClient {
-    typealias UserIDProvider = () -> String?
-
-    static let shared = APIClient()
-
     private let baseURL: URL
     private let session: URLSession
-    private let decoder: JSONDecoder
-    private let encoder: JSONEncoder
-    private let userIdProvider: UserIDProvider
 
-    init(baseURL: URL = URL(string: AppConfig.baseURL)!,
-         session: URLSession = .shared,
-         userIdProvider: @escaping UserIDProvider = { nil }) {
+    init(baseURL: URL = AppConfig.baseURL, session: URLSession = .shared) {
         self.baseURL = baseURL
         self.session = session
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        self.decoder = decoder
-        let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
-        self.encoder = encoder
-        self.userIdProvider = userIdProvider
     }
 
-    func makeURL(_ endpoint: String, query: [URLQueryItem] = []) throws -> URL {
-        guard var comp = URLComponents(string: AppConfig.baseURL) else { throw APIError.invalidURL }
-        comp.path = endpoint.hasPrefix("/") ? endpoint : "/\(endpoint)"
-        if !query.isEmpty { comp.queryItems = query }
-        guard let url = comp.url else { throw APIError.invalidURL }
-        return url
-    }
-
-    func get<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> T {
-        let url = try makeURL(path, query: query)
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue(UserSession.shared.userId, forHTTPHeaderField: "x-user-id")
-        request.setValue(UserSession.shared.userId, forHTTPHeaderField: "X-User-Id")
-        let (data, response) = try await session.data(for: request)
-        try Self.validate(response: response, data: data)
-        do { return try decoder.decode(T.self, from: data) } catch {
-            let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
-            if let http = response as? HTTPURLResponse {
-                print("[APIClient] Decode error for GET \(path) status: \(http.statusCode) body: \(raw) error: \(error)")
-            } else {
-                print("[APIClient] Decode error for GET \(path) body: \(raw) error: \(error)")
-            }
-            throw error
+    // Generic request
+    private func request<T: Decodable>(path: String, method: String = "GET", body: (any Encodable)? = nil) async throws -> T {
+        var url = baseURL.appendingPathComponent(path)
+        // Normalize leading slash handling
+        if path.hasPrefix("/") {
+            url = baseURL.appendingPathComponent(String(path.dropFirst()))
         }
-    }
-
-    func post<T: Decodable, Body: Encodable>(_ path: String, body: Body) async throws -> T {
-        let url = try makeURL(path)
         var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(UserSession.shared.userId, forHTTPHeaderField: "x-user-id")
-        request.setValue(UserSession.shared.userId, forHTTPHeaderField: "X-User-Id")
-        request.httpBody = try encoder.encode(body)
-        let (data, response) = try await session.data(for: request)
-        try Self.validate(response: response, data: data)
-        do { return try decoder.decode(T.self, from: data) } catch {
-            let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
-            if let http = response as? HTTPURLResponse {
-                print("[APIClient] Decode error for POST \(path) status: \(http.statusCode) body: \(raw) error: \(error)")
-            } else {
-                print("[APIClient] Decode error for POST \(path) body: \(raw) error: \(error)")
-            }
-            throw error
+        request.httpMethod = method
+        if let body = body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(AnyEncodable(body))
         }
-    }
 
-    func post<T: Decodable, Body: Encodable>(_ path: String, query: [URLQueryItem], body: Body) async throws -> T {
-        let url = try makeURL(path, query: query)
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(UserSession.shared.userId, forHTTPHeaderField: "x-user-id")
-        request.setValue(UserSession.shared.userId, forHTTPHeaderField: "X-User-Id")
-        request.httpBody = try encoder.encode(body)
         let (data, response) = try await session.data(for: request)
-        try Self.validate(response: response, data: data)
-        do { return try decoder.decode(T.self, from: data) } catch {
-            let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
-            if let http = response as? HTTPURLResponse {
-                print("[APIClient] Decode error for POST \(path) status: \(http.statusCode) body: \(raw) error: \(error)")
-            } else {
-                print("[APIClient] Decode error for POST \(path) body: \(raw) error: \(error)")
-            }
-            throw error
-        }
-    }
-
-    func delete<T: Decodable>(_ path: String) async throws -> T {
-        let url = try makeURL(path)
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue(UserSession.shared.userId, forHTTPHeaderField: "x-user-id")
-        request.setValue(UserSession.shared.userId, forHTTPHeaderField: "X-User-Id")
-        let (data, response) = try await session.data(for: request)
-        try Self.validate(response: response, data: data)
-        do { return try decoder.decode(T.self, from: data) } catch {
-            let raw = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
-            if let http = response as? HTTPURLResponse {
-                print("[APIClient] Decode error for DELETE \(path) status: \(http.statusCode) body: \(raw) error: \(error)")
-            } else {
-                print("[APIClient] Decode error for DELETE \(path) body: \(raw) error: \(error)")
-            }
-            throw error
-        }
-    }
-
-    private static func validate(response: URLResponse, data: Data) throws {
-        guard let http = response as? HTTPURLResponse else { return }
+        guard let http = response as? HTTPURLResponse else { throw APIError.unknown }
         guard (200..<300).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? "<no body>"
-            print("[APIClient] HTTP error status: \(http.statusCode) body: \(body)")
-            throw APIError.httpError(status: http.statusCode, body: body)
+            let text = String(data: data, encoding: .utf8) ?? ""
+            throw APIError.http(http.statusCode, text)
         }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        do {
+            return try decoder.decode(T.self, from: data)
+        } catch {
+            let text = String(data: data, encoding: .utf8) ?? ""
+            throw APIError.decoding(text)
+        }
+    }
+
+    // MARK: - DTOs
+    private struct HealthDTO: Decodable {
+        let ok: Bool
+        let ts: Date
+        let version: String
+    }
+
+    private struct CreateProjectBody: Encodable {
+        let name: String
+        let goal: String
+        let user_id: UUID
+        let client: String
+        let budget: Double
+        let skill_level: String
+    }
+
+    private struct PhotoBody: Encodable { let url: URL }
+    private struct PhotoResponse: Decodable { let ok: Bool; let photo_url: URL }
+    private struct PreviewResponse: Decodable { let status: String; let preview_id: String? }
+
+    // MARK: - Public API
+    func health() async throws -> (ok: Bool, ts: Date, version: String) {
+        let dto: HealthDTO = try await request(path: "/api/ios/health")
+        return (ok: dto.ok, ts: dto.ts, version: dto.version)
+    }
+
+    func createProject(name: String, goal: String, userId: UUID, budget: Double, skillLevel: String) async throws -> Project {
+        let body = CreateProjectBody(name: name, goal: goal, user_id: userId, client: "ios", budget: budget, skill_level: skillLevel)
+        let project: Project = try await request(path: "/api/projects", method: "POST", body: body)
+        return project
+    }
+
+    func attachPhoto(projectId: UUID, url: URL) async throws -> (ok: Bool, photo_url: URL) {
+        let body = PhotoBody(url: url)
+        let resp: PhotoResponse = try await request(path: "/api/projects/\(projectId.uuidString)/photo", method: "POST", body: body)
+        return (ok: resp.ok, photo_url: resp.photo_url)
+    }
+
+    func requestPreview(projectId: UUID) async throws -> PreviewStatus {
+        struct Empty: Encodable {}
+        let status: PreviewStatus = try await request(path: "/api/projects/\(projectId.uuidString)/preview", method: "POST", body: Empty())
+        return status
+    }
+
+    func fetchPlan(projectId: UUID) async throws -> Plan {
+        let plan: Plan = try await request(path: "/api/projects/\(projectId.uuidString)/plan")
+        return plan
     }
 }
 
-enum APIError: Error, LocalizedError {
-    case invalidURL
-    case invalidRequest(String)
-    case httpError(status: Int, body: String)
-
-    var errorDescription: String? {
-        switch self {
-        case .invalidURL:
-            return "Invalid URL"
-        case let .invalidRequest(message):
-            return "Invalid Request: \(message)"
-        case let .httpError(status, body):
-            return "HTTP \(status): \(body)"
-        }
+// Helper to encode `Encodable` existential
+private struct AnyEncodable: Encodable {
+    private let _encode: (Encoder) throws -> Void
+    init(_ wrapped: Encodable) {
+        self._encode = wrapped.encode
     }
+    func encode(to encoder: Encoder) throws { try _encode(encoder) }
 }

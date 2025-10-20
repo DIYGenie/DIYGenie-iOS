@@ -1,5 +1,5 @@
 import Foundation
 
 struct AppConfig {
-    static let baseURL = "https://diy-genie-webhooks-tyekowalski.replit.app"
+    static let baseURL = URL(string: "https://api.diygenieapp.com")!
 }

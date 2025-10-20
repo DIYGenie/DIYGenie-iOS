@@ -11,6 +11,10 @@ import SwiftUI
 struct DIYGenieApp: App {
     init() {
         _ = UserSession.shared.userId
+        Task {
+            let result = try? await APIClient().health()
+            print("HEALTH:", result as Any)
+        }
     }
     
     var body: some Scene {

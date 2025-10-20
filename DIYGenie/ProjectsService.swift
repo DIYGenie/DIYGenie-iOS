@@ -26,7 +26,7 @@ struct ProjectMinimal: Decodable {
 }
 
 struct ProjectsService {
-    private let api = APIClient.shared
+    private let api = APIClient()
     static let shared = ProjectsService()
 
     private func budgetSymbol(_ b: BudgetTier) -> String {
@@ -76,7 +76,7 @@ struct ProjectsService {
         print("[ProjectsService#create v2] building request…")
         do {
             // Build URL with query using APIClient helper; also include user_id in body and headers
-            let url = try APIClient.shared.makeURL("/api/projects", query: [URLQueryItem(name: "user_id", value: UserSession.shared.userId)])
+            let url = try api.makeURL("/api/projects", query: [URLQueryItem(name: "user_id", value: UserSession.shared.userId)])
 
             // Prepare a temporary URLRequest just for logging headers exactly as they'll be sent
             var request = URLRequest(url: url)
