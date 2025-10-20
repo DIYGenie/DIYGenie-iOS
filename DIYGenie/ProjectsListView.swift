@@ -1,74 +1,113 @@
 import SwiftUI
 
 struct ProjectsListView: View {
+    // MARK: - State
     @State private var projects: [Project] = []
     @State private var isLoading = false
     @State private var error: String?
+    @State private var didLoadOnce = false
 
     var body: some View {
         NavigationStack {
-            Group {
-                if isLoading {
-                    ProgressView("Loading…")
-                } else if let error {
-                    VStack(spacing: 8) {
-                        Text("Failed to load").font(.headline)
-                        Text(error).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                        Button("Retry", action: load)
-                    }.padding()
-                } else if projects.isEmpty {
-                    VStack(spacing: 8) {
-                        Text("No projects yet").font(.headline)
-                        Text("Create your first DIY plan from the + button.")
-                            .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    }.padding()
-                } else {
-                    List(projects, id: \.id) { p in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(p.name)
-                                .font(.headline)
-                            if let goal = p.goal, !goal.isEmpty {
-                                Text(goal)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            if let s = p.status, !s.isEmpty {
-                                Text(s)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+            content
+                .navigationTitle("Projects")
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            // TODO: present NewProjectView() later
+                        } label: {
+                            Image(systemName: "plus")
                         }
                     }
-                    .listStyle(.insetGrouped)
                 }
-            }
-            .navigationTitle("Projects")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: { /* present NewProjectView later */ }) {
-                        Image(systemName: "plus")
-                    }
+                .task {
+                    await loadOnce()
                 }
-            }
-            .task(priority: .background) {
-                await loadAsyncOnce()
-            }
         }
     }
 
-    // MARK: - Loaders
-    private func load() { Task { await loadAsyncOnce() } }
+    // MARK: - Content
+    @ViewBuilder
+    private var content: some View {
+        if isLoading {
+            ProgressView("Loading…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let error {
+            VStack(spacing: 8) {
+                Text("Failed to load").font(.headline)
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("Retry") {
+                    Task { await load() }
+                }
+            }
+            .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if projects.isEmpty {
+            VStack(spacing: 8) {
+                Text("No projects yet").font(.headline)
+                Text("Create your first DIY plan from the + button.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            List(projects, id: \.id) { project in
+                NavigationLink {
+                    ProjectDetailView(project: project)
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(project.name)
+                            .font(.headline)
+                        if let goal = project.goal, !goal.isEmpty {
+                            Text(goal)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let status = project.status, !status.isEmpty {
+                            Text(status)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
+            }
+            .listStyle(.insetGrouped)
+        }
+    }
 
-    @MainActor
-    private func loadAsyncOnce() async {
-        guard !isLoading else { return }
-        isLoading = true; defer { isLoading = false }
-        do {
-            let uid = UserSession.shared.userId
-            projects = try await ProjectsService.shared.list(userId: uid)
+    // MARK: - Load Helpers
+    private func loadOnce() async {
+        guard !didLoadOnce else { return }
+        didLoadOnce = true
+        await load()
+    }
+
+    private func load() async {
+        await MainActor.run {
+            isLoading = true
             error = nil
+        }
+
+        do {
+            let userId = UserSession.shared.userId
+            let items = try await ProjectsService().list(userId: userId)
+            await MainActor.run {
+                self.projects = items
+                self.isLoading = false
+            }
         } catch {
-            self.error = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            await MainActor.run {
+                self.error = error.localizedDescription
+                self.isLoading = false
+            }
         }
     }
 }
+
+// ✅ Ready to Build
