@@ -2,112 +2,73 @@ import SwiftUI
 
 struct ProjectsListView: View {
     @State private var projects: [Project] = []
-    @State private var isLoading: Bool = false
-    @State private var errorMessage: String? = nil
-    private let service = ProjectsService.shared
-    private let telemetry = TelemetryService()
+    @State private var isLoading = false
+    @State private var error: String?
 
     var body: some View {
         NavigationStack {
             Group {
-                if isLoading && projects.isEmpty {
+                if isLoading {
                     ProgressView("Loading…")
+                } else if let error {
+                    VStack(spacing: 8) {
+                        Text("Failed to load").font(.headline)
+                        Text(error).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        Button("Retry", action: load)
+                    }.padding()
                 } else if projects.isEmpty {
                     VStack(spacing: 8) {
-                        Label {
-                            Text("No Projects")
-                        } icon: {
-                            Image(systemName: "tray")
-                        }
-                        Text("Pull to refresh")
-                            .foregroundStyle(.secondary)
-                            .font(.subheadline)
-                    }
+                        Text("No projects yet").font(.headline)
+                        Text("Create your first DIY plan from the + button.")
+                            .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    }.padding()
                 } else {
-                    List {
-                        ForEach(projects) { project in
-                            HStack {
-                                Text(project.title.isEmpty ? project.id : project.title)
-                                    .lineLimit(1)
-                                Spacer()
+                    List(projects, id: \.id) { p in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(p.name)
+                                .font(.headline)
+                            if let goal = p.goal, !goal.isEmpty {
+                                Text(goal)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
                             }
-                            .accessibilityLabel(project.title.isEmpty ? project.id : project.title)
+                            if let s = p.status, !s.isEmpty {
+                                Text(s)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
-                        .onDelete(perform: handleDelete)
                     }
-                    .refreshable { await loadProjects() }
+                    .listStyle(.insetGrouped)
                 }
             }
             .navigationTitle("Projects")
-            .task { await loadProjects() }
-            .alert("Error", isPresented: Binding(get: { errorMessage != nil }, set: { presented in if !presented { errorMessage = nil } })) {
-                Button("OK", role: .cancel) { errorMessage = nil }
-            } message: {
-                Text(errorMessage ?? "Unknown error")
-            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    #if DEBUG
-                    Button("Add (debug)") {
-                        Task {
-                            do {
-                                let created = try await ProjectsService.shared.create(
-                                    name: "iOS Debug \(Int(Date().timeIntervalSince1970))",
-                                    goal: "smoke test",
-                                    userId: UserSession.shared.userId
-                                )
-                                // optional telemetry if id is returned
-                                _ = try? await telemetry.log(event: "project_created", metadata: ["id": created.id])
-                                // refresh list
-                                let refreshed = try await ProjectsService.shared.list(userId: UserSession.shared.userId)
-                                await MainActor.run { projects = refreshed }
-                            } catch {
-                                await MainActor.run {
-                                    errorMessage = error.localizedDescription
-                                }
-                            }
-                        }
+                    Button(action: { /* present NewProjectView later */ }) {
+                        Image(systemName: "plus")
                     }
-                    .accessibilityLabel("Add debug project")
-                    #endif
                 }
+            }
+            .task(priority: .background) {
+                await loadAsyncOnce()
             }
         }
     }
+
+    // MARK: - Loaders
+    private func load() { Task { await loadAsyncOnce() } }
 
     @MainActor
-    private func loadProjects() async {
+    private func loadAsyncOnce() async {
         guard !isLoading else { return }
-        isLoading = true
-        defer { isLoading = false }
+        isLoading = true; defer { isLoading = false }
         do {
-            let fetched: [Project] = try await service.list(userId: UserSession.shared.userId)
-            projects = fetched
+            let uid = UserSession.shared.userId
+            projects = try await ProjectsService.shared.list(userId: uid)
+            error = nil
         } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        }
-    }
-
-    private func handleDelete(at offsets: IndexSet) {
-        Task { @MainActor in
-            for index in offsets.sorted(by: >) {
-                guard projects.indices.contains(index) else { continue }
-                let project = projects[index]
-                do {
-                    let resp = try await service.deleteProject(id: project.id)
-                    if resp.success {
-                        projects.remove(at: index)
-                        _ = try? await telemetry.log(event: "project_deleted", metadata: ["id": project.id])
-                    } else {
-                        errorMessage = "Failed to delete project."
-                    }
-                } catch {
-                    errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                }
-            }
+            self.error = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 }
-
-#Preview { ProjectsListView() }
-

@@ -1,29 +1,4 @@
 import Foundation
-
-// Central API error type used by APIClient and services
-enum APIError: Error, LocalizedError {
-    case unknown(message: String?)
-    case statusCode(Int)
-    case decoding(underlying: String)
-    case httpError(status: Int, responseBody: String)
-    case invalidRequest(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .unknown(let message):
-            return message ?? "An unknown error occurred."
-        case .statusCode(let code):
-            return "Request failed with status code \(code)."
-        case .decoding(let underlying):
-            return "Failed to decode server response: \(underlying)"
-        case .httpError(let status, let body):
-            return "HTTP \(status): \(body)"
-        case .invalidRequest(let reason):
-            return reason
-        }
-    }
-}
-
 // Common JSONDecoder with ISO8601 date support
 extension JSONDecoder {
     static var iso8601Decoder: JSONDecoder {

@@ -1,106 +1,78 @@
 import Foundation
 
-struct ProjectsListResponse: Decodable {
-    let ok: Bool
-    let items: [Project]
-}
-
-struct ProjectCreateRequest: Encodable {
-    let name: String
-    let goal: String
-    let user_id: String
-    let client: String
-    let budget: String
-    let skill_level: String
-    let update: String
-}
-
-struct ProjectCreateResponse: Decodable {
-    let ok: Bool
-    let item: ProjectMinimal
-}
-
-struct ProjectMinimal: Decodable {
-    let id: String
-    let status: String
-}
-
+/// High-level app API for Projects.
+/// Uses APIClient.shared and DTOs.swift shapes.
 struct ProjectsService {
-    private let api = APIClient()
     static let shared = ProjectsService()
+    private let api = APIClient.shared
 
-    private func budgetSymbol(_ b: BudgetTier) -> String {
-        switch b {
-        case .one: return "$"
-        case .two: return "$$"
-        case .three: return "$$$"
-        default: return "$" // fallback for any extended tiers
+    // MARK: - Create Project
+    func create(
+        name: String,
+        goal: String,
+        budget: Double,
+        skill: String,
+        userId: String
+    ) async throws -> Project {
+        guard let uid = UUID(uuidString: userId) else {
+            throw APIError.invalidRequest("Bad userId: \(userId)")
         }
-    }
 
-    func list(userId: String) async throws -> [Project] {
-        do {
-            let resp: ProjectsListResponse = try await api.get(
-                "/api/projects",
-                query: [URLQueryItem(name: "user_id", value: userId)]
-            )
-            return resp.items
-        } catch {
-            throw error
-        }
-    }
-
-    func deleteProject(id: String) async throws -> BoolResponse {
-        try await api.delete("/api/projects/\(id)")
-    }
-
-    func create(name: String,
-                goal: String,
-                budget: BudgetTier = .one,
-                skill: SkillLevel = .beginner,
-                update: String = "created from iOS",
-                userId: String) async throws -> ProjectMinimal {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count >= 10 else { throw APIError.invalidRequest("name must be at least 10 characters") }
-
-        let body = ProjectCreateRequest(
-            name: trimmed,
+        let body = CreateProjectBody(
+            name: name,
             goal: goal,
-            user_id: userId,
+            user_id: uid,
             client: "ios",
-            budget: budgetSymbol(budget),
-            skill_level: skill.rawValue,
-            update: update
+            budget: budget,
+            skill_level: skill
         )
 
-        print("[ProjectsService#create v2] building request…")
-        do {
-            // Build URL with query using APIClient helper; also include user_id in body and headers
-            let url = try api.makeURL("/api/projects", query: [URLQueryItem(name: "user_id", value: UserSession.shared.userId)])
+        let dto: CreateProjectDTO = try await api.post(
+            "/api/projects",
+            query: [URLQueryItem(name: "user_id", value: userId)],
+            body: body
+        )
 
-            // Prepare a temporary URLRequest just for logging headers exactly as they'll be sent
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue(UserSession.shared.userId, forHTTPHeaderField: "x-user-id")
-            request.setValue(UserSession.shared.userId, forHTTPHeaderField: "X-User-Id")
+        // Map DTO → lightweight Project model used by the UI
+        return Project(
+            id: dto.id.uuidString,
+            name: dto.name,
+            goal: dto.goal,
+            status: "created"
+        )
+    }
 
-            print("URL:", url.absoluteString)
-            print("HEADERS:", request.allHTTPHeaderFields ?? [:])
-            print("REQUEST JSON:", String(data: try! JSONEncoder().encode(body), encoding: .utf8)!)
-            print("[ProjectsService#create v2] sending request…")
+    // MARK: - List Projects
+    func list(userId: String) async throws -> [Project] {
+        struct ListResponse: Decodable { let ok: Bool; let items: [Project] }
+        let resp: ListResponse = try await api.get(
+            "/api/projects",
+            query: [URLQueryItem(name: "user_id", value: userId)]
+        )
+        return resp.items
+    }
 
-            let resp: ProjectCreateResponse = try await api.post("/api/projects", query: [URLQueryItem(name: "user_id", value: UserSession.shared.userId)], body: body)
-            return resp.item
-        } catch {
-            // Print request and raw response if available
-            print("REQUEST JSON:", String(data: try! JSONEncoder().encode(body), encoding: .utf8)!)
-            if case let APIError.httpError(status, responseBody) = error {
-                print("RAW RESPONSE (status \(status)):\n\(responseBody)")
-            }
-            throw error
-        }
+    // MARK: - Attach Photo
+    func attachPhoto(projectId: UUID, url: URL) async throws -> Bool {
+        struct PhotoBody: Encodable { let url: URL }
+        let resp: BoolResponse = try await api.post(
+            "/api/projects/\(projectId.uuidString)/photo",
+            body: PhotoBody(url: url)
+        )
+        return resp.ok
+    }
+
+    // MARK: - Request Preview
+    func requestPreview(projectId: UUID) async throws -> PreviewStatus {
+        struct Empty: Encodable {}
+        return try await api.post(
+            "/api/projects/\(projectId.uuidString)/preview",
+            body: Empty()
+        )
+    }
+
+    // MARK: - Fetch Plan
+    func fetchPlan(projectId: UUID) async throws -> Plan {
+        try await api.get("/api/projects/\(projectId.uuidString)/plan")
     }
 }
-
-struct BoolResponse: Codable { let success: Bool }

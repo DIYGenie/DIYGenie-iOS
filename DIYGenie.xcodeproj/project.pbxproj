@@ -10,12 +10,14 @@
 		E22F7A1A2EA402CB00EDF27F /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E22F7A182EA4014C00EDF27F /* APIClient.swift */; };
 		E22F7A1C2EA4036C00EDF27F /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = E22F7A1B2EA4036C00EDF27F /* AppConfig.swift */; };
 		E22F7A1E2EA4039200EDF27F /* PreviewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E22F7A1D2EA4039200EDF27F /* PreviewModel.swift */; };
+		E25C0D512EA5CE270050B17F /* NewProjectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E22F7A392EA5BDE500EDF27F /* NewProjectView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		E22F7A182EA4014C00EDF27F /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = APIClient.swift; path = DIYGenie.xcodeproj/APIClient.swift; sourceTree = "<group>"; };
 		E22F7A1B2EA4036C00EDF27F /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppConfig.swift; path = DIYGenie.xcodeproj/AppConfig.swift; sourceTree = "<group>"; };
 		E22F7A1D2EA4039200EDF27F /* PreviewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PreviewModel.swift; path = DIYGenie.xcodeproj/PreviewModel.swift; sourceTree = "<group>"; };
+		E22F7A392EA5BDE500EDF27F /* NewProjectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewProjectView.swift; sourceTree = "<group>"; };
 		E2822E2A2EA34D7200B72665 /* DIYGenie.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DIYGenie.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -24,7 +26,6 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
-				Project.swift,
 			);
 			target = E2822E292EA34D7200B72665 /* DIYGenie */;
 		};
@@ -60,6 +61,7 @@
 				E22F7A182EA4014C00EDF27F /* APIClient.swift */,
 				E2822E2C2EA34D7200B72665 /* DIYGenie */,
 				E2822E2B2EA34D7200B72665 /* Products */,
+				E22F7A392EA5BDE500EDF27F /* NewProjectView.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -145,6 +147,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E25C0D512EA5CE270050B17F /* NewProjectView.swift in Sources */,
 				E22F7A1E2EA4039200EDF27F /* PreviewModel.swift in Sources */,
 				E22F7A1C2EA4036C00EDF27F /* AppConfig.swift in Sources */,
 				E22F7A1A2EA402CB00EDF27F /* APIClient.swift in Sources */,

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct NewProjectView: View {
-    @Environment(\ .dismiss) private var dismiss
+    @Environment(\.dismiss) private var dismiss
     @State private var name: String = ""
     @State private var goal: String = ""
     @State private var budget: Double = 1.0
@@ -66,9 +66,19 @@ struct NewProjectView: View {
         isWorking = true
         defer { isWorking = false }
         do {
-            let p = try await APIClient.shared.createProject(name: name, goal: goal, userId: userId, budget: budget, skillLevel: skillLevel)
-            _ = try await APIClient.shared.attachPhoto(projectId: p.idAsUUID(), url: URL(string: "https://example.com/photo.jpg")!)
-            let status = try await APIClient.shared.requestPreview(projectId: p.idAsUUID())
+            let p = try await ProjectsService.shared.create(
+                name: name,
+                goal: goal,
+                budget: budget,
+                skill: skillLevel,
+                userId: userId.uuidString
+            )
+            _ = try await ProjectsService.shared.attachPhoto(
+                projectId: p.idAsUUID(),
+                url: URL(string: "https://example.com/photo.jpg")!
+            )
+            let status = try await ProjectsService.shared.requestPreview(projectId: p.idAsUUID())
+
             print("Preview status: \(status.status)")
             onCreated(p)
             dismiss()
