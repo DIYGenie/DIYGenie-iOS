@@ -1,7 +1,15 @@
 import Foundation
 
+enum APIError: Error {
+    case network(String)
+    case http(Int, String)
+    case decoding(String)
+    case invalidRequest(String)
+    case unknown
+}
+
 final class APIClient {
-    private let baseURL: URL
+    let baseURL: URL
     private let session: URLSession
 
     init(baseURL: URL = AppConfig.baseURL, session: URLSession = .shared) {
@@ -10,7 +18,7 @@ final class APIClient {
     }
 
     // Generic request
-    private func request<T: Decodable>(path: String, method: String = "GET", body: (any Encodable)? = nil) async throws -> T {
+    func request<T: Decodable>(path: String, method: String = "GET", body: (any Encodable)? = nil) async throws -> T {
         var url = baseURL.appendingPathComponent(path)
         // Normalize leading slash handling
         if path.hasPrefix("/") {
