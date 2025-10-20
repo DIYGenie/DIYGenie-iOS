@@ -1,0 +1,25 @@
+{
+  "project": "DIY Genie",
+  "baseURL": "https://api.diygenieapp.com",
+  "auth": {
+    "header": null,
+    "query": "user_id",
+    "preferredMethod": "query"
+  },
+  "endpoints": [
+    "GET /health",
+    "GET /api/projects",
+    "POST /api/projects",
+    "POST /api/projects/{id}/photo",
+    "POST /api/projects/{id}/preview",
+    "GET /api/projects/{id}/plan"
+  ],
+  "requiredFields": {
+    "createProject": {
+      "user_id": { "type": "string", "format": "uuid", "required": true },
+      "name": { "type": "string", "minLength": 10, "required": true },
+      "goal": { "type": "string", "required": false },
+      "client.budget": { "type": "string", "enum": ["$", "$$", "$$$"], "required": false, "default": "$$" }
+    }
+  }
+}
