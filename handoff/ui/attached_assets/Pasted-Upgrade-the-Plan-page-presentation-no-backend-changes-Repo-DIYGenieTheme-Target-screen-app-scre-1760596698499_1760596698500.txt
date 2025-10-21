@@ -1,0 +1,74 @@
+Upgrade the Plan page presentation (no backend changes)
+
+Repo: DIYGenieTheme
+Target screen: app/screens/DetailedInstructions.tsx
+Autonomy: Medium
+App Testing: ON
+
+Goal
+
+Elevate the Project Plan screen from a basic list to a polished build guide using the existing GET /api/projects/:id/plan fields. Do not rename files or routes.
+
+Do
+
+Summary header
+
+Keep your purple hero. Add 3 compact “pills”: time (estTimeHours), cost (estCostUsd), and step count (derived from steps.length).
+
+Overview
+
+If empty, render “No overview available.” (already done), else show text.
+
+Safety + Permits callouts
+
+Render as colored cards (you already have this—ensure they’re always above Materials if present).
+
+Materials
+
+Show each item as qty unit · name with right-aligned price.
+
+Compute and show Materials Subtotal at the end (sum of subtotalUsd when present).
+
+Tools
+
+Two sublists: Required, Optional (don’t show “Optional” header if empty).
+
+Cut List
+
+Table-style rows: left = board, middle = dims, right = qty.
+
+If layoutSvgUrl exists, render an inline thumbnail with a “View layout” action (open in browser or modal).
+
+Steps
+
+Numbered sections with title, description, optional diagram.
+
+Add a tiny progress bar at the top (e.g., current/total when user scrolls; for now, static: 0%).
+
+Keep steps read-only (checkboxes come later).
+
+Totals footer
+
+If you can compute materials subtotal, show Estimated Cost = estCostUsd if provided; else show the computed subtotal with a “~” tilde to indicate estimate.
+
+Don’t
+
+Don’t change routes, params, or API calls.
+
+Don’t introduce checkboxes or PDF export yet—next steps.
+
+Testing (App Testing = ON)
+
+Use one project with full plan data, and one with partial data.
+
+Verify: header pills, safety/permit cards, materials subtotal, cut list alignment, steps formatting.
+
+No regressions navigating from Projects → Project Details → Open Detailed Build Plan.
+
+Deliverables
+
+Updated DetailedInstructions.tsx with the above presentation improvements.
+
+Minor style tweaks only; no new dependencies.
+
+PR description: before/after screenshots of (1) header, (2) materials with subtotal, (3) steps section, (4) cut list.

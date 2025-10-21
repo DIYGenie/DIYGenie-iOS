@@ -1,0 +1,127 @@
+Goal: Ensure a tab named Projects exists and contains a stack with ProjectsList and ProjectDetails screens. Update NewProject.tsx to navigate to Projects → ProjectDetails with the new param types.
+
+Tasks
+
+Create app/navigation/ProjectsNavigator.tsx
+
+import React from 'react';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import ProjectsScreen from '../screens/Projects';          // list screen (already exists)
+import ProjectDetails from '../screens/ProjectDetails';     // details screen (already exists)
+
+export type ProjectsStackParamList = {
+  ProjectsList: undefined;
+  ProjectDetails: { id: string };
+};
+
+const Stack = createNativeStackNavigator<ProjectsStackParamList>();
+
+export default function ProjectsNavigator() {
+  return (
+    <Stack.Navigator>
+      <Stack.Screen
+        name="ProjectsList"
+        component={ProjectsScreen}
+        options={{ title: 'Projects' }}
+      />
+      <Stack.Screen
+        name="ProjectDetails"
+        component={ProjectDetails}
+        options={{ title: 'Project' }}
+      />
+    </Stack.Navigator>
+  );
+}
+
+
+Wire the Projects tab in your tab navigator (usually app/navigation/RootTabs.tsx or wherever the bottom tabs are defined).
+If the file does not exist, create app/navigation/RootTabs.tsx and use it from your root:
+
+import React from 'react';
+import { createBottomTabNavigator, BottomTabNavigationOptions } from '@react-navigation/bottom-tabs';
+import Home from '../screens/Home';
+import NewProject from '../screens/NewProject';
+import Profile from '../screens/Profile';
+import ProjectsNavigator, { ProjectsStackParamList } from './ProjectsNavigator';
+import { NavigatorScreenParams } from '@react-navigation/native';
+
+export type RootTabParamList = {
+  Home: undefined;
+  NewProject: undefined;
+  Projects: NavigatorScreenParams<ProjectsStackParamList>;
+  Profile: undefined;
+};
+
+const Tab = createBottomTabNavigator<RootTabParamList>();
+
+export default function RootTabs() {
+  const screenOpts: BottomTabNavigationOptions = { headerShown: false };
+  return (
+    <Tab.Navigator screenOptions={screenOpts}>
+      <Tab.Screen name="Home" component={Home} />
+      <Tab.Screen name="NewProject" component={NewProject} />
+      <Tab.Screen name="Projects" component={ProjectsNavigator} />
+      <Tab.Screen name="Profile" component={Profile} />
+    </Tab.Navigator>
+  );
+}
+
+
+If your app entry (App.tsx or index.tsx) currently mounts a different navigator, replace it so it renders <NavigationContainer><RootTabs /></NavigationContainer> (keep your existing theme/providers).
+
+Update navigation typing and call in app/screens/NewProject.tsx
+
+Add types and use a composite navigation prop:
+
+import { useNavigation, CompositeNavigationProp } from '@react-navigation/native';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { RootTabParamList } from '../navigation/RootTabs';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { ProjectsStackParamList } from '../navigation/ProjectsNavigator';
+
+// Compose: bottom tabs + the nested Projects stack
+type NavProp = CompositeNavigationProp<
+  BottomTabNavigationProp<RootTabParamList>,
+  NativeStackNavigationProp<ProjectsStackParamList>
+>;
+
+const navigation = useNavigation<NavProp>();
+
+function navigateToProject(id: string) {
+  // Navigate into the Projects tab -> ProjectDetails
+  navigation.navigate('Projects', {
+    screen: 'ProjectDetails',
+    params: { id },
+  } as never);
+}
+
+
+Ensure all previous ad-hoc fallbacks (e.g., navigation.navigate('Projects' as any)) are removed.
+
+Guarantee the detail screen exists.
+If app/screens/ProjectDetails.tsx is missing, create a minimal screen that reads route.params.id and shows basic info so navigation has a valid target.
+
+// app/screens/ProjectDetails.tsx
+import React from 'react';
+import { View, Text } from 'react-native';
+import { RouteProp, useRoute } from '@react-navigation/native';
+import { ProjectsStackParamList } from '../navigation/ProjectsNavigator';
+
+type R = RouteProp<ProjectsStackParamList, 'ProjectDetails'>;
+
+export default function ProjectDetails() {
+  const route = useRoute<R>();
+  return (
+    <View style={{ flex: 1, padding: 16 }}>
+      <Text style={{ fontSize: 18, fontWeight: '600' }}>Project Details</Text>
+      <Text>ID: {route.params.id}</Text>
+    </View>
+  );
+}
+
+
+Test (device via Expo Go):
+
+Create/scan → tap Build.
+
+Expect it to navigate to Projects tab and open ProjectDetails for the new project_id. No red screen, no “not handled by any navigator” warning.

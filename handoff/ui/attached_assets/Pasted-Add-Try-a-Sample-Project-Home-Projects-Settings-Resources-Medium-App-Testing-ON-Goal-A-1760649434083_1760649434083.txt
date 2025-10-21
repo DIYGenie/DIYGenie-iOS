@@ -1,0 +1,163 @@
+Add “Try a Sample Project” (Home + Projects)
+
+Settings:
+
+Resources: Medium
+
+App Testing: ON
+
+Goal: Add a “Try a Sample Project” CTA that calls the live /api/demo-project endpoint, creates (or reuses) the user’s demo project, then navigates to ProjectDetails.
+
+Make these changes exactly:
+
+lib/api.ts — add a client function
+
+Locate app/lib/api.ts.
+
+Below existing exports, add:
+
+// --- Demo Project ---
+export async function createOrFetchDemoProject(): Promise<{ ok: boolean; id?: string; error?: string }> {
+  try {
+    // Try to get user id from Supabase (if available)
+    let userId: string | undefined = undefined;
+    try {
+      // Optional import path: if you have a supabase client helper, prefer it.
+      // Attempt dynamic require to avoid bundling errors if not present.
+      // @ts-ignore
+      const { supabase } = require('../lib/supabase') ?? {};
+      if (supabase?.auth?.getUser) {
+        const { data } = await supabase.auth.getUser();
+        userId = data?.user?.id;
+      }
+    } catch {}
+
+    const res = await api('/api/demo-project', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(userId ? { user_id: userId } : {}),
+    });
+
+    if (!res.ok) {
+      return { ok: false, error: (res as any)?.error || 'Failed to create demo project' };
+    }
+    const id = (res as any)?.item?.id || (res as any)?.id;
+    return id ? { ok: true, id } : { ok: false, error: 'No project id returned' };
+  } catch (e: any) {
+    console.error('[demo-project] exception', e);
+    return { ok: false, error: e?.message || 'Unexpected error' };
+  }
+}
+
+
+Note: This uses your existing api() helper and will include the correct base URL automatically.
+
+HomeScreen — add the CTA under the templates header
+
+Open app/screens/HomeScreen.js (file is .js in this repo).
+
+Find the section rendering the Start with a template list.
+
+Immediately above the first template card, insert a small purple button:
+
+// imports at top if not present
+import { createOrFetchDemoProject } from '../lib/api';
+import { ActivityIndicator, TouchableOpacity } from 'react-native';
+import React from 'react';
+
+// inside component
+const [launchingDemo, setLaunchingDemo] = React.useState(false);
+
+async function handleTrySample() {
+  if (launchingDemo) return;
+  try {
+    setLaunchingDemo(true);
+    const res = await createOrFetchDemoProject();
+    if (res.ok && res.id) {
+      // Navigate to details
+      (navigation as any)?.navigate?.('ProjectDetails', { id: res.id });
+    } else {
+      Alert.alert('Demo Unavailable', res.error || 'Please try again in a moment.');
+    }
+  } finally {
+    setLaunchingDemo(false);
+  }
+}
+
+// in the JSX, right under the “Start with a template” title
+<View style={{ marginHorizontal: 16, marginBottom: 8 }}>
+  <TouchableOpacity
+    onPress={handleTrySample}
+    style={{
+      backgroundColor: '#6E2EF5',
+      borderRadius: 12,
+      paddingVertical: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}
+    accessibilityRole="button"
+  >
+    {launchingDemo ? (
+      <ActivityIndicator color="white" />
+    ) : (
+      <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
+        Try a Sample Project
+      </Text>
+    )}
+  </TouchableOpacity>
+  <Text style={{ marginTop: 6, color: '#7A7F87', fontSize: 12 }}>
+    Loads a ready-to-view plan that doesn’t count against your monthly limits.
+  </Text>
+</View>
+
+
+ProjectsScreen — add the same CTA to the empty-state
+
+Open app/screens/ProjectsScreen.js.
+
+Locate the empty-state view (where it says no projects).
+
+Add the same button block there (reuse handleTrySample and launchingDemo the same way—import the API helper and wire navigation to ProjectDetails).
+
+ProjectsNavigator sanity
+
+You already have:
+
+<Stack.Screen name="ProjectDetails" component={ProjectDetails} />
+
+
+Confirm the name matches exactly 'ProjectDetails' (it does in your snippet). No change needed.
+
+Toast/logging
+
+If a global Toast utility exists (app/T.ts or app/features/Toast.js), on error also call it:
+
+// after Alert.alert(...)
+console.log('[demo-project] error', res.error);
+
+
+Testing checklist (run with App Testing: ON):
+
+Home → tap Try a Sample Project → should navigate to Project Details for a project titled something like “Modern Floating Shelves”.
+
+Return to Home and tap again → should reuse the same demo (fast navigation, no duplicates).
+
+Quotas should not decrement (it’s marked is_demo=true on the backend).
+
+The demo should open Detailed Instructions fine via your “Open Detailed Build Plan” button.
+
+Deliverables to print in the Replit summary:
+
+“Try a Sample Project” visible on Home + Projects empty-state
+
+API call success path + error handling
+
+Navigation to ProjectDetails with { id }
+
+No changes to subscription gates
+
+Do not modify:
+
+Any pricing text or plan logic
+
+Existing preview logic or save icons

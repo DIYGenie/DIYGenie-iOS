@@ -1,0 +1,83 @@
+wire Profile to existing billing endpoints; no new files, no deps, no renames.
+
+Task
+Update app/screens/Profile.tsx so payments work end-to-end using these routes:
+
+Entitlements: GET ${EXPO_PUBLIC_BASE_URL}/me/entitlements?user_id=<uuid>
+(fallback: GET ${BASE}/me/entitlements/<uuid> if the short path 404s)
+
+Checkout: POST ${BASE}/api/billing/checkout with JSON { tier: 'casual' | 'pro', user_id } → { url }
+
+Portal: POST ${BASE}/api/billing/portal with JSON { user_id } (or { customer_id }) → { url } or 501
+
+Dev fallback: POST ${BASE}/api/billing/upgrade with JSON { tier, user_id } → { ok:true } (only if checkout/portal return 404/501)
+
+Implementation (single file: app/screens/Profile.tsx)
+
+Constants
+
+const BASE = process.env.EXPO_PUBLIC_BASE_URL!;
+const ENDPOINTS = {
+  entitlementsShort: `${BASE}/me/entitlements`,
+  entitlementsWithId: (id:string) => `${BASE}/me/entitlements/${id}`,
+  checkout: `${BASE}/api/billing/checkout`,
+  portal:   `${BASE}/api/billing/portal`,
+  devUpgrade: `${BASE}/api/billing/upgrade`,
+};
+
+
+Use your existing user id source; if none, add a dev fallback:
+const CURRENT_USER_ID = existingUserId ?? '00000000-0000-0000-0000-000000000001';
+
+Helpers (inline; no new modules/deps)
+
+api(url, opts) with 12s timeout; throw on non-OK or non-JSON.
+
+openExternal(url) — on web: window.open(url,'_blank','noopener,noreferrer'); on native: Linking.canOpenURL → Linking.openURL.
+
+getEntitlements() → try entitlementsShort?user_id=CURRENT_USER_ID, on 404 then entitlementsWithId(CURRENT_USER_ID); set { tier, remaining, previewAllowed }; friendly Alert on failure.
+
+openPortal() → POST portal { user_id: CURRENT_USER_ID } → openExternal(url); if 501, Alert.alert('Billing','Portal not set up for this user yet.').
+
+openCheckout(tier) → POST checkout { tier, user_id: CURRENT_USER_ID } → openExternal(url); on 404/501, call devUpgrade with { tier, user_id: CURRENT_USER_ID }, show “Upgraded in dev mode—syncing…”, then getEntitlements().
+
+UI bindings
+
+Keep your existing plan card.
+
+“Manage” button → openPortal()
+
+“Upgrade Plan” toggles inline picker (web-safe).
+
+“Casual — 5 projects/mo + previews” → openCheckout('casual')
+
+“Pro — 25 projects/mo + previews” → openCheckout('pro')
+
+“Sync Plan” text button → getEntitlements()
+
+During any call, disable buttons and show tiny inline “Syncing…” text (no full-screen spinner).
+
+Foreground refresh
+Subscribe to AppState and on 'active' call getEntitlements() (debounced); cleanup on unmount.
+
+Keep constraints
+
+No secrets in client.
+
+No dependency upgrades.
+
+No new files.
+
+Bottom tab bar remains visible; no infinite spinners.
+
+Acceptance criteria
+
+Tapping Upgrade Plan → Casual/Pro opens a Stripe Checkout tab. If server not ready, dev fallback upgrades immediately and the plan card updates after refresh.
+
+Tapping Manage opens the Stripe Portal (or shows a clear 501 message).
+
+Sync Plan and returning to app both refresh entitlements.
+
+Works on web and native; no regressions in layout/spacing.
+
+Make these edits only in app/screens/Profile.tsx. Do not create new files or add libraries.

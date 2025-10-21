@@ -1,0 +1,159 @@
+Project Details → “Get detailed instructions”
+
+Change the CTA copy and keep the nav the same (to your plan screen).
+
+File: app/screens/ProjectDetails.tsx
+Find your “Plan” card and replace that block with this:
+
+// ...inside the JSX where the Plan card lives
+<View style={{ backgroundColor: '#F6F5FF', borderRadius: 16, padding: 16, marginTop: 16 }}>
+  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+    <Text style={{ fontSize: 18, fontWeight: '700' }}>Plan</Text>
+    <Pressable
+      onPress={() => navigation.navigate('BuildPlan', { id: projectId })}
+      style={{ backgroundColor: '#6D28D9', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12 }}
+    >
+      <Text style={{ color: 'white', fontWeight: '700' }}>Get detailed instructions</Text>
+    </Pressable>
+  </View>
+
+  <Text style={{ marginTop: 8, color: '#4B5563' }}>
+    {project?.status === 'ready'
+      ? 'Plan is ready. Tap to see materials, tools, cuts, steps, time & cost.'
+      : 'Your plan is building. This screen will update automatically; you can also tap the button anytime.'}
+  </Text>
+</View>
+
+
+(If your route is named something else, keep the same route you already use for the plan screen.)
+
+2) Plan screen = the full, no-fluff guide + “Save to Photos”
+
+Show everything users need on one scrollable page. Add a Save to Photos action that exports the page as images (works in Expo today).
+
+File: app/screens/BuildPlanScreen.tsx (or whatever your plan screen file is)
+
+Add these imports at the top:
+
+import React, { useRef } from 'react';
+import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { captureRef } from 'react-native-view-shot';
+import * as MediaLibrary from 'expo-media-library';
+
+
+Wrap your content with refs and add a save button:
+
+export default function BuildPlanScreen({ route, navigation }) {
+  const pageRef = useRef<View>(null);
+
+  async function savePlanToPhotos() {
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission required', 'Please allow photo access to save your plan.');
+        return;
+      }
+
+      // Capture the entire page as an image
+      const uri = await captureRef(pageRef, { format: 'png', quality: 1 });
+      await MediaLibrary.saveToLibraryAsync(uri);
+      Alert.alert('Saved', 'Your plan has been saved to Photos.');
+    } catch (e) {
+      console.log('[save plan failed]', e);
+      Alert.alert('Save failed', 'Please try again.');
+    }
+  }
+
+  return (
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        ref={pageRef}
+        contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 48 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Summary */}
+        <View style={{ backgroundColor: '#F9FAFB', borderRadius: 16, padding: 16 }}>
+          <Text style={{ fontSize: 20, fontWeight: '800', marginBottom: 8 }}>Overview</Text>
+          <Text style={{ color: '#4B5563' }}>High-level summary of the build (auto-generated).</Text>
+        </View>
+
+        {/* Materials */}
+        <View style={{ backgroundColor: '#F9FAFB', borderRadius: 16, padding: 16 }}>
+          <Text style={{ fontSize: 18, fontWeight: '800', marginBottom: 8 }}>Materials</Text>
+          {/* map your materials list here */}
+        </View>
+
+        {/* Tools */}
+        <View style={{ backgroundColor: '#F9FAFB', borderRadius: 16, padding: 16 }}>
+          <Text style={{ fontSize: 18, fontWeight: '800', marginBottom: 8 }}>Tools</Text>
+          {/* tools list */}
+        </View>
+
+        {/* Cut List */}
+        <View style={{ backgroundColor: '#F9FAFB', borderRadius: 16, padding: 16 }}>
+          <Text style={{ fontSize: 18, fontWeight: '800', marginBottom: 8 }}>Cut List</Text>
+          {/* cuts with sizes; if the photo was upload-only, show generalized sizes */}
+        </View>
+
+        {/* Steps */}
+        <View style={{ backgroundColor: '#F9FAFB', borderRadius: 16, padding: 16 }}>
+          <Text style={{ fontSize: 18, fontWeight: '800', marginBottom: 8 }}>Step-by-Step</Text>
+          {/* numbered steps */}
+        </View>
+
+        {/* Time & Cost */}
+        <View style={{ backgroundColor: '#F9FAFB', borderRadius: 16, padding: 16 }}>
+          <Text style={{ fontSize: 18, fontWeight: '800', marginBottom: 8 }}>Time & Cost</Text>
+          {/* realistic time and estimated price sections */}
+        </View>
+      </ScrollView>
+
+      <View style={{ position: 'absolute', left: 16, right: 16, bottom: 16, gap: 10 }}>
+        <Pressable
+          onPress={savePlanToPhotos}
+          style={{ backgroundColor: '#6D28D9', padding: 14, borderRadius: 14, alignItems: 'center' }}
+        >
+          <Text style={{ color: 'white', fontWeight: '700' }}>Save to Photos</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => navigation.goBack()}
+          style={{ backgroundColor: '#111827', padding: 14, borderRadius: 14, alignItems: 'center' }}
+        >
+          <Text style={{ color: 'white', fontWeight: '700' }}>Back to Project</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+
+If the plan gets very long, this “captureRef of the ScrollView” will still work in Expo; if a single image ever becomes too tall, we can switch to per-section captures later. Good for V1.
+
+3) Copy tweak: “Saved photo” for uploads
+
+When the user uploads (not AR-scans), make the card say Saved photo.
+
+File: app/screens/NewProjectMedia.js
+
+Change the label:
+
+const label = savedScan?.source === 'upload' ? 'Saved photo' : 'Saved scan';
+
+// ...in JSX
+<Text style={{ marginTop: 8, fontWeight: '600' }}>{label}</Text>
+
+4) Smooth scroll feel on the New Project screen
+
+Two tiny props make it feel right:
+
+File: app/screens/NewProject.tsx (where your form’s ScrollView is)
+
+<ScrollView
+  keyboardShouldPersistTaps="handled"
+  contentContainerStyle={{ paddingBottom: 40 }}
+>
+  {/* form ... */}
+</ScrollView>
+
+
+(You already fixed keyboard behavior earlier; this just keeps scrolling responsive everywhere.)

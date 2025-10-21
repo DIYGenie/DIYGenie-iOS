@@ -1,0 +1,260 @@
+*** FILE: app/lib/api.ts
+@@
++// --- Plan fetching: GET /api/projects/:id/plan returns markdown; 409 if not ready
++export async function fetchProjectPlanMarkdown(
++  projectId: string,
++  opts?: { signal?: AbortSignal }
++): Promise<string | null> {
++  const baseUrl = (typeof base !== 'undefined' ? base : (typeof API_BASE !== 'undefined' ? API_BASE : '')) as string;
++  const url = `${baseUrl}/api/projects/${projectId}/plan`;
++  const res = await fetch(url, { method: 'GET', signal: opts?.signal } as any);
++  if (res.status === 409) {
++    // plan not ready yet
++    return null;
++  }
++  if (!res.ok) {
++    const text = await res.text().catch(() => '');
++    console.log('[plan fetch error]', res.status, text);
++    throw new Error(`PLAN_FETCH_FAILED:${res.status}`);
++  }
++  const md = await res.text();
++  return md || '';
++}
+diff
+Copy code
+*** FILE: app/lib/plan.ts (NEW)
++// Lightweight parser to turn markdown sections into a Plan object for tabs.
++export type Plan = {
++  overview?: string;
++  materials?: { name: string; qty?: string; unit?: string }[];
++  tools?: string[];
++  cuts?: { part: string; size: string; qty?: number }[];
++  steps?: { title?: string; body?: string }[];
++  time_estimate_hours?: number;
++  cost_estimate_usd?: number;
++};
++
++function getSection(md: string, title: string): string {
++  // match ## Title (case-insensitive) until next ## heading
++  const re = new RegExp(`^#{1,3}\\s*${title}\\s*$([\\s\\S]*?)(?=^#{1,3}\\s*\\w|\\Z)`, 'gim');
++  const m = re.exec(md);
++  return m ? m[1].trim() : '';
++}
++
++function bulletsToArray(block: string): string[] {
++  return block
++    .split('\n')
++    .map((l) => l.trim().replace(/^[-*]\s+/, ''))
++    .filter((l) => !!l);
++}
++
++export function parsePlanMarkdown(md: string): Plan {
++  const plan: Plan = {};
++
++  // Overview = first paragraph or explicit section
++  const overviewBlock = getSection(md, 'Overview') || md.split('\n\n')[0] || '';
++  plan.overview = overviewBlock.replace(/^#+\s.*$/gm, '').trim();
++
++  // Materials
++  const matsBlock = getSection(md, 'Materials');
++  if (matsBlock) {
++    const list = bulletsToArray(matsBlock).map((line) => {
++      // naive parse: "Plywood — 2 sheets" / "2x4 studs - 6"
++      const m = line.match(/^(.+?)[—-]\s*(.+)$/) || line.match(/^(.+?)\s{2,}(.+)$/);
++      if (m) return { name: m[1].trim(), qty: m[2].trim() };
++      return { name: line.trim() };
++    });
++    plan.materials = list;
++  }
++
++  // Tools
++  const toolsBlock = getSection(md, 'Tools');
++  if (toolsBlock) {
++    plan.tools = bulletsToArray(toolsBlock);
++  }
++
++  // Cuts
++  const cutsBlock = getSection(md, 'Cut List') || getSection(md, 'Cuts');
++  if (cutsBlock) {
++    plan.cuts = bulletsToArray(cutsBlock).map((line) => {
++      // "Side panel: 24\" x 18\" ×2"
++      const qtyMatch = line.match(/×\s*(\d+)/) || line.match(/\(x\s*(\d+)\)/i);
++      const qty = qtyMatch ? Number(qtyMatch[1]) : undefined;
++      const partMatch = line.split(':');
++      if (partMatch.length > 1) {
++        return { part: partMatch[0].trim(), size: partMatch.slice(1).join(':').replace(/×\s*\d+|\(x\s*\d+\)/gi, '').trim(), qty };
++      }
++      return { part: 'Cut', size: line.replace(/×\s*\d+|\(x\s*\d+\)/gi, '').trim(), qty };
++    });
++  }
++
++  // Steps
++  const stepsBlock = getSection(md, 'Steps') || getSection(md, 'Instructions');
++  if (stepsBlock) {
++    const lines = stepsBlock.split('\n').filter(Boolean);
++    const steps: { title?: string; body?: string }[] = [];
++    let cur: { title?: string; body?: string } | null = null;
++    for (const ln of lines) {
++      const n = ln.match(/^(\d+)\.\s*(.+)$/);
++      if (n) {
++        if (cur) steps.push(cur);
++        cur = { title: n[2].trim() };
++      } else if (/^[-*]\s+/.test(ln)) {
++        // treat bullet as a step title if none
++        if (cur) { steps.push(cur); cur = null; }
++        steps.push({ title: ln.replace(/^[-*]\s+/, '').trim() });
++      } else if (cur) {
++        cur.body = ((cur.body || '') + '\n' + ln).trim();
++      }
++    }
++    if (cur) steps.push(cur);
++    plan.steps = steps.length ? steps : undefined;
++  }
++
++  // Time & Cost
++  const tcBlock = getSection(md, 'Time & Cost') || getSection(md, 'Estimates');
++  if (tcBlock) {
++    const time = tcBlock.match(/(\d+(\.\d+)?)\s*(hours|hrs|h)/i);
++    const cost = tcBlock.match(/\$?\s*(\d+(\.\d+)?)/);
++    if (time) plan.time_estimate_hours = Number(time[1]);
++    if (cost) plan.cost_estimate_usd = Number(cost[1]);
++  }
++
++  return plan;
++}
+diff
+Copy code
+*** FILE: app/components/PlanTabs.tsx
+@@
+-import React, { useMemo, useState } from 'react';
++import React, { useMemo, useState } from 'react';
+ import { View, Text, Pressable } from 'react-native';
+-import { Plan } from '../lib/plan'; // ensure type import exists if TS
++import { Plan } from '../lib/plan';
+diff
+Copy code
+*** FILE: app/screens/ProjectDetails.tsx
+@@
+-import { fetchProjectById, fetchLatestScanForProject } from '../lib/api';
++import { fetchProjectById, fetchLatestScanForProject, fetchProjectPlanMarkdown } from '../lib/api';
++import { parsePlanMarkdown, Plan } from '../lib/plan';
+@@
+-  const [scan, setScan] = useState<{ scanId: string; imageUrl: string } | null>(null);
++  const [scan, setScan] = useState<{ scanId: string; imageUrl: string } | null>(null);
++  const [planMd, setPlanMd] = useState<string | null>(null);
++  const [planObj, setPlanObj] = useState<Plan | null>(null);
+@@
+   const load = useCallback(async () => {
+     if (!projectId) return;
+@@
+-      const [p, s] = await Promise.all([
++      const [p, s] = await Promise.all([
+         fetchProjectById(projectId, { signal: controller.signal, timeoutMs: 8000 }),
+         fetchLatestScanForProject(projectId),
+       ]);
+       if (!controller.signal.aborted) {
+         setProject(p);
+         setScan(s);
++        // If plan is ready but not yet loaded in UI, fetch markdown → parse → set tabs
++        const status = String(p?.plan_status || p?.status || '').toLowerCase();
++        const ready = /ready/.test(status) && !/requested|building|queued|pending/.test(status);
++        if (ready && !planMd) {
++          try {
++            const md = await fetchProjectPlanMarkdown(projectId, { signal: controller.signal });
++            if (md && !controller.signal.aborted) {
++              setPlanMd(md);
++              setPlanObj(parsePlanMarkdown(md));
++            }
++          } catch (e) {
++            // If API still 409 intermittently, ignore; auto-poll will retry.
++            console.log('[plan fetch]', String(e));
++          }
++        }
+       }
+@@
+   }, [projectId]);
+@@
+   return (
+-    <View style={{ flex: 1, padding: 16 }}>
++    <View style={{ flex: 1, padding: 16 }}>
+       <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
+         {project?.name || project?.title || 'Project'}
+       </Text>
+       <Text style={{ fontSize: 14, color: '#6B7280', marginBottom: 16 }}>
+         Status: {project?.status || 'In progress'}
+       </Text>
+@@
+-      ) : (
++      ) : (
+         <View
+           style={{
+             width: '100%',
+             height: 220,
+             borderRadius: 16,
+             backgroundColor: '#F2F2F2',
+             alignItems: 'center',
+             justifyContent: 'center',
+           }}
+         >
+           <Text style={{ color: '#6B7280' }}>No scan image yet</Text>
+         </View>
+       )}
++
++      {/* PLAN AREA */}
++      {planObj ? (
++        <>
++          <View style={{ marginTop: 16, backgroundColor: '#F6F5FF', borderRadius: 16, padding: 16 }}>
++            <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Plan</Text>
++            <Text style={{ color: '#4B5563' }}>
++              Plan is ready. Browse tabs below or open the full, linear guide.
++            </Text>
++          </View>
++          {/* Tabs summary */}
++          <View style={{ marginBottom: 8 }} />
++          {/* If you already imported PlanTabs, this will render */}
++          {/** @ts-ignore */}
++          <(require('../components/PlanTabs').default) plan={planObj} />
++          <View style={{ height: 12 }} />
++          <Pressable
++            onPress={() => navigation.navigate('DetailedInstructions' as never, { id: projectId } as never)}
++            style={{ backgroundColor: '#6D28D9', padding: 14, borderRadius: 14, alignItems: 'center' }}
++          >
++            <Text style={{ color: 'white', fontWeight: '700' }}>Get detailed instructions</Text>
++          </Pressable>
++        </>
++      ) : (
++        <View style={{ marginTop: 16, backgroundColor: '#F6F5FF', borderRadius: 16, padding: 16 }}>
++          <Text style={{ fontWeight: '700', marginBottom: 6 }}>Plan</Text>
++          <Text style={{ color: '#4B5563' }}>
++            Your plan is building. This screen will update automatically; you can also tap Refresh.
++          </Text>
++        </View>
++      )}
+     </View>
+   );
+ }
+diff
+Copy code
+*** FILE: app/screens/DetailedInstructions.tsx
+@@
+-import { fetchProjectById } from '../lib/api';
++import { fetchProjectById, fetchProjectPlanMarkdown } from '../lib/api';
++import { parsePlanMarkdown } from '../lib/plan';
+@@
+-  const plan = project?.plan ?? {};
++  const plan = project?.plan ?? {};
++
++  // Ensure plan is available: if project.plan is absent, fetch markdown and parse.
++  React.useEffect(() => {
++    (async () => {
++      if (project?.plan) return;
++      try {
++        const md = await fetchProjectPlanMarkdown(params.id);
++        if (md) {
++          setProject((prev: any) => ({ ...(prev || {}), plan: parsePlanMarkdown(md) }));
++        }
++      } catch (e) {
++        // ignore if not ready yet; user likely came here right after build
++      }
++    })();
++  }, [project?.plan, params.id]);

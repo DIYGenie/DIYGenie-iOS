@@ -1,0 +1,125 @@
+Files to touch: app/screens/ProfileScreen.js only. No new files/deps/renames.
+
+Task: Add a temporary “Billing Debug” panel at the bottom of Profile that directly calls our billing endpoints and prints results, using your test user id e4cb3591-7272-46dd-b1f6-d7cc4e2f3d24. Keep existing UI unchanged.
+
+Implement (inside ProfileScreen.js):
+
+Constants (top of file):
+
+const BASE = process.env.EXPO_PUBLIC_BASE_URL || 'http://localhost:5000';
+const ENDPOINTS = {
+  entitlementsShort: `${BASE}/me/entitlements`,                 // + ?user_id=<uuid>
+  entitlementsWithId: (id) => `${BASE}/me/entitlements/${id}`,  // fallback
+  checkout: `${BASE}/api/billing/checkout`,
+  portal:   `${BASE}/api/billing/portal`,
+  devUpgrade: `${BASE}/api/billing/upgrade`,
+};
+const CURRENT_USER_ID = 'e4cb3591-7272-46dd-b1f6-d7cc4e2f3d24';
+
+
+Helpers (inline, no new modules):
+
+const api = async (url, opts = {}) => {
+  const ctl = new AbortController();
+  const t = setTimeout(()=>ctl.abort(), 12000);
+  const res = await fetch(url, { headers:{'Content-Type':'application/json'}, signal: ctl.signal, ...opts });
+  clearTimeout(t);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) throw new Error('Non-JSON response');
+  return res.json();
+};
+
+const openExternal = async (url) => {
+  try {
+    if (Platform.OS === 'web') { window.open(url, '_blank', 'noopener,noreferrer'); return; }
+    const can = await Linking.canOpenURL(url);
+    if (!can) throw new Error('Cannot open URL');
+    await Linking.openURL(url);
+  } catch (e) { Alert.alert('Billing', 'Could not open link.'); }
+};
+
+
+Debug state & actions (inside component):
+
+const [dbg, setDbg] = React.useState({ base: BASE, user: CURRENT_USER_ID, last: null, error: null });
+const logDbg = (obj) => { console.log('[BillingDebug]', obj); setDbg((d)=>({ ...d, last: obj, error: null })); };
+const logErr = (e) => { console.warn('[BillingDebug]', e); setDbg((d)=>({ ...d, error: String(e?.message||e) })); };
+
+const pingEntitlements = async () => {
+  try {
+    const data = await api(`${ENDPOINTS.entitlementsShort}?user_id=${encodeURIComponent(CURRENT_USER_ID)}`);
+    logDbg({ op:'entitlements', data });
+  } catch (e) {
+    if (String(e.message).startsWith('404')) {
+      try {
+        const data = await api(ENDPOINTS.entitlementsWithId(CURRENT_USER_ID));
+        logDbg({ op:'entitlements_fallback', data });
+        return;
+      } catch (ee) { logErr(ee); }
+    } else { logErr(e); }
+  }
+};
+
+const testCheckout = async (tier) => {
+  try {
+    const { url } = await api(ENDPOINTS.checkout, { method:'POST', body: JSON.stringify({ tier, user_id: CURRENT_USER_ID }) });
+    logDbg({ op:'checkout', tier, url });
+    await openExternal(url);
+  } catch (e) {
+    logErr(e);
+  }
+};
+
+const testPortal = async () => {
+  try {
+    const { url } = await api(ENDPOINTS.portal, { method:'POST', body: JSON.stringify({ user_id: CURRENT_USER_ID }) });
+    logDbg({ op:'portal', url });
+    await openExternal(url);
+  } catch (e) { logErr(e); }
+};
+
+const devUpgrade = async (tier) => {
+  try {
+    const res = await api(ENDPOINTS.devUpgrade, { method:'POST', body: JSON.stringify({ tier, user_id: CURRENT_USER_ID }) });
+    logDbg({ op:'devUpgrade', tier, res });
+  } catch (e) { logErr(e); }
+};
+
+
+UI (append at the bottom of the existing ScrollView content):
+
+Add a simple card/section titled “Billing Debug (temp)” with small text showing BASE and USER_ID.
+
+Add 5 small buttons (can reuse your ButtonPrimary/secondary variants):
+
+Ping Entitlements → onPress={pingEntitlements} testID="dbg-ping-entitlements"
+
+Checkout Casual → onPress={()=>testCheckout('casual')} testID="dbg-checkout-casual"
+
+Checkout Pro → onPress={()=>testCheckout('pro')} testID="dbg-checkout-pro"
+
+Open Portal → onPress={testPortal} testID="dbg-portal"
+
+Dev Upgrade → Casual → onPress={()=>devUpgrade('casual')} testID="dbg-upgrade-casual"
+
+Under the buttons, render a tiny mono block with the last JSON:
+
+<Text selectable style={{ fontFamily: Platform.OS==='ios'?'Menlo':'monospace', fontSize:12, opacity:0.8, marginTop:8 }}>
+  {dbg.error ? `Error: ${dbg.error}` : JSON.stringify(dbg.last, null, 2) || '—'}
+</Text>
+
+
+Acceptance criteria:
+
+Buttons render under Profile as “Billing Debug (temp)” (non-intrusive).
+
+Ping Entitlements updates the JSON block with the returned object or the fallback result.
+
+Checkout Casual/Pro opens a Stripe Checkout tab (or shows an error string in the JSON block).
+
+Open Portal opens Stripe Portal if available; otherwise error shows (e.g., 501).
+
+Dev Upgrade → Casual returns { ok: true } in JSON and can be verified by running Ping Entitlements again.
+
+Console logs appear with prefix [BillingDebug].

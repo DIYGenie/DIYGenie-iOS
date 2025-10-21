@@ -1,0 +1,76 @@
+Header cleanup + section rename
+
+Project: DIYGenieTheme
+Autonomy: Low
+App testing: ON
+
+Target file: app/screens/DetailedInstructions.tsx
+
+Compute a clean title (no timestamp):
+Add near the top of the component (after you have planData/plan available):
+
+// Derive a clean, human title (strip any trailing datetime)
+const rawTitle =
+  planData?.summary?.title ||
+  plan?.title ||
+  project?.name ||
+  'Project Plan';
+
+const cleanTitle = rawTitle.replace(/\s*\d{4}-\d{2}-\d{2}.*$/, '');
+
+
+Use the clean title and lighter header styles:
+Replace your current title/subtitle block with:
+
+<View style={{ backgroundColor: '#F7F7FB', borderRadius: 12, padding: 14, marginHorizontal: 16, marginTop: 8 }}>
+  <Text style={{ fontSize: 20, fontWeight: '600', color: '#1A1A1A' }}>
+    {cleanTitle}
+  </Text>
+  <Text style={{ fontSize: 13, color: '#666', marginTop: 4 }}>
+    Step-by-step builder’s guide
+  </Text>
+  {/* Optional quick stats row, keep subtle */}
+  <View style={{ flexDirection: 'row', gap: 12, marginTop: 6 }}>
+    {typeof (planData?.summary?.estTimeHours ?? plan?.time_estimate_hours) !== 'undefined' && (
+      <Text style={{ fontSize: 12, color: '#6B7280' }}>
+        {(planData?.summary?.estTimeHours ?? plan?.time_estimate_hours) || 0} hrs
+      </Text>
+    )}
+    {typeof planData?.summary?.estCostUsd !== 'undefined' && (
+      <Text style={{ fontSize: 12, color: '#6B7280' }}>
+        ${planData?.summary?.estCostUsd || 0}
+      </Text>
+    )}
+    {totalSteps > 0 && (
+      <Text style={{ fontSize: 12, color: '#6B7280' }}>
+        {totalSteps} steps
+      </Text>
+    )}
+  </View>
+</View>
+
+
+Rename “Overview” to “Before You Begin” and keep cards compact:
+Find the section header that currently reads “Overview” and replace just the label and spacing:
+
+{/* Before You Begin */}
+<Section title="Before You Begin">
+  {/* Safety (compact) */}
+  <View style={{ backgroundColor:'#FFF6F6', borderLeftWidth:3, borderLeftColor:'#FF5C5C', padding:10, borderRadius:8, marginBottom:8 }}>
+    <Text style={{ color:'#CC0000', fontWeight:'700', fontSize:13 }}>Safety First</Text>
+    <Text style={{ color:'#444', fontSize:12, marginTop:4 }}>
+      Wear eye and hearing protection. Use anchors appropriate for your wall type. Confirm no electrical/plumbing behind drill points.
+    </Text>
+  </View>
+
+  {/* Permits (compact) */}
+  <View style={{ backgroundColor:'#FFFBEA', borderLeftWidth:3, borderLeftColor:'#FBC02D', padding:10, borderRadius:8 }}>
+    <Text style={{ color:'#A67C00', fontWeight:'700', fontSize:13 }}>Permits Required</Text>
+    <Text style={{ color:'#444', fontSize:12, marginTop:4 }}>
+      Check local building codes for structural modifications.
+    </Text>
+  </View>
+</Section>
+
+
+If your section wrapper isn’t <Section title="...">, just change the header text where you render the section title.

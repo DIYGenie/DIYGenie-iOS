@@ -1,0 +1,53 @@
+import React from "react";
+import { View, Text, Pressable, ScrollView, ViewStyle, TextStyle } from "react-native";
+import { colors, radii, space, shadow, ui } from "./theme";
+
+export function Screen(props: React.PropsWithChildren<{ style?: ViewStyle }>) {
+  return <View style={[{ flex: 1, backgroundColor: colors.bg }, props.style]}>{props.children}</View>;
+}
+
+export function ScreenScroll(props: React.PropsWithChildren<{ style?: ViewStyle }>) {
+  return (
+    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={[{ padding: space.lg }, props.style]}>
+      {props.children}
+    </ScrollView>
+  );
+}
+
+export function Card(props: React.PropsWithChildren<{ onPress?: () => void; style?: ViewStyle }>) {
+  const base = (
+    <View style={[{ backgroundColor: colors.card, borderRadius: radii.md, padding: space.md, borderWidth: 1, borderColor: colors.border }, shadow.card, props.style]}>
+      {props.children}
+    </View>
+  );
+  if (!props.onPress) return base;
+  return (
+    <Pressable onPress={props.onPress} style={({ pressed }) => [{ opacity: pressed ? 0.92 : 1 }]}>
+      {base}
+    </Pressable>
+  );
+}
+
+export function Badge({ text, tone = "muted" as "muted" | "success", style }: { text: string; tone?: "muted" | "success"; style?: ViewStyle }) {
+  const bg = tone === "success" ? colors.successBg : colors.mutedBg;
+  const fg = tone === "success" ? colors.successText : colors.mutedText;
+  return (
+    <View style={[{ alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 6, borderRadius: radii.pill, backgroundColor: bg }, style]}>
+      <Text style={{ color: fg, fontWeight: "700", fontSize: 12 }}>{text}</Text>
+    </View>
+  );
+}
+
+export function ButtonPrimary({ title, onPress, style, textStyle }: { title: string; onPress?: () => void; style?: ViewStyle; textStyle?: TextStyle }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [{ backgroundColor: colors.primary, paddingVertical: 16, borderRadius: radii.md, alignItems: "center", opacity: pressed ? 0.92 : 1 }, style]}>
+      <Text style={[{ color: colors.primaryText, fontWeight: "700", fontSize: 16 }, textStyle]}>{title}</Text>
+    </Pressable>
+  );
+}
+
+export function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <Text style={[ui.h2, { marginBottom: space.sm }]}>{children}</Text>;
+}
+
+export { colors, ui, space, radii };

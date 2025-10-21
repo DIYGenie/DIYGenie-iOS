@@ -1,0 +1,176 @@
+Goal: Add a reliable Scan screen using expo-camera that:
+
+Requests permission safely
+
+Shows a live camera preview (native only)
+
+Lets the user capture, review, and Use Photo
+
+Emits the image back to New Project (we already have emitScanPhoto)
+
+Falls back on web with a friendly message (no white screen)
+
+Registers the route (so navigation isn’t to an unmounted/blank screen)
+
+1) Install & configure camera
+
+Add dependency: expo-camera
+
+iOS Info.plist key (via app.json): NSCameraUsageDescription = “DIY Genie uses the camera to scan your room.”
+
+Android permissions: ensure CAMERA is present (expo handles).
+
+2) Create the Scan screen
+
+Add screens/ScanScreen.tsx:
+
+import React, { useEffect, useRef, useState } from 'react';
+import { Platform, View, Text, Pressable, ActivityIndicator, Image } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { Ionicons } from '@expo/vector-icons';
+import { emitScanPhoto } from '../lib/scanEvents';
+
+export default function ScanScreen() {
+  const navigation = useNavigation();
+  const [permission, requestPermission] = useCameraPermissions();
+  const cameraRef = useRef<CameraView>(null);
+  const [loading, setLoading] = useState(true);
+  const [capturing, setCapturing] = useState(false);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const ensure = async () => {
+      if (Platform.OS === 'web') return;        // web fallback below
+      if (!permission?.granted) await requestPermission();
+      if (mounted) setLoading(false);
+    };
+    ensure();
+    return () => { mounted = false; };
+  }, [permission?.granted]);
+
+  // Web fallback: no camera, encourage upload
+  if (Platform.OS === 'web') {
+    return (
+      <View className="flex-1 items-center justify-center p-6 bg-white">
+        <Ionicons name="image-outline" size={48} color="#6E3AF2" />
+        <Text className="text-lg font-semibold mt-4">Camera not available on web preview</Text>
+        <Text className="text-neutral-500 mt-2 text-center">
+          Use “Upload Photo” on the New Project screen.
+        </Text>
+        <Pressable onPress={() => navigation.goBack()} className="mt-24 rounded-xl bg-violet-600 px-6 py-3">
+          <Text className="text-white font-semibold">Go back</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (loading) {
+    return (
+      <View className="flex-1 items-center justify-center bg-black">
+        <ActivityIndicator size="large" color="#fff" />
+      </View>
+    );
+  }
+
+  if (!permission?.granted) {
+    return (
+      <View className="flex-1 items-center justify-center p-6 bg-white">
+        <Text className="text-lg font-semibold">Camera permission is required</Text>
+        <Pressable onPress={requestPermission} className="mt-4 rounded-xl bg-violet-600 px-6 py-3">
+          <Text className="text-white font-semibold">Grant permission</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  const takePhoto = async () => {
+    if (!cameraRef.current || capturing) return;
+    try {
+      setCapturing(true);
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.9, skipProcessing: true });
+      setPhotoUri(photo?.uri ?? null);
+    } catch (e) {
+      console.warn('capture failed', e);
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  const usePhoto = () => {
+    if (photoUri) {
+      emitScanPhoto(photoUri);
+      navigation.goBack();
+    }
+  };
+
+  const reset = () => setPhotoUri(null);
+
+  return (
+    <View className="flex-1 bg-black">
+      {/* Close */}
+      <Pressable onPress={() => navigation.goBack()} className="absolute z-10 top-12 left-4 bg-black/50 rounded-full p-2">
+        <Ionicons name="close" color="#fff" size={24} />
+      </Pressable>
+
+      {/* Preview vs camera */}
+      {photoUri ? (
+        <>
+          <Image source={{ uri: photoUri }} style={{ width: '100%', height: '80%' }} resizeMode="cover" />
+          <View className="flex-row justify-around items-center px-6 py-5 bg-black">
+            <Pressable onPress={reset} className="rounded-full border border-white px-6 py-3">
+              <Text className="text-white font-semibold">Retake</Text>
+            </Pressable>
+            <Pressable onPress={usePhoto} className="rounded-full bg-violet-600 px-8 py-3">
+              <Text className="text-white font-semibold">Use Photo</Text>
+            </Pressable>
+          </View>
+        </>
+      ) : (
+        <>
+          <CameraView
+            ref={cameraRef}
+            style={{ flex: 1 }}
+            facing="back"
+            enableTorch={false}
+            onCameraReady={() => {}}
+          />
+          <View className="items-center justify-center py-6 bg-black">
+            <Pressable onPress={takePhoto} disabled={capturing} className="w-16 h-16 rounded-full bg-white" />
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
+3) Register the route
+
+In your main navigator (e.g., AppNavigator.tsx):
+
+import ScanScreen from '../screens/ScanScreen';
+
+<Stack.Screen
+  name="Scan"
+  component={ScanScreen}
+  options={{ headerShown: false, presentation: 'modal' }}
+/>
+
+4) Ensure the New Project button navigates correctly
+
+New Project “Scan room” button should do:
+
+navigation.navigate('Scan');
+
+5) Verify
+
+On device/simulator (iOS/Android), tapping Scan room:
+
+Permission prompt appears once.
+
+Live camera preview shows (no white screen).
+
+Capture → review → Use Photo returns to New Project with the image filled.
+
+On web preview, you see the fallback message and a Go back button (no crash).

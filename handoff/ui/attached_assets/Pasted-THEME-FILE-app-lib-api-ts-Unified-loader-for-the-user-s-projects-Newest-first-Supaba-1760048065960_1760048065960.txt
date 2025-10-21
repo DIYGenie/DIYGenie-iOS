@@ -1,0 +1,83 @@
+THEME
+*** FILE: app/lib/api.ts
+@@
+-// Unified loader for the user's projects (Newest first) — Supabase direct
+-export async function fetchMyProjects(): Promise<any[]> {
+-  const { data: sess } = await supabase.auth.getSession();
+-  const userId = sess?.session?.user?.id;
+-  if (!userId) throw new Error('AUTH_REQUIRED');
+-
+-  // Select only columns we know exist. (No `title`.)
+-  const { data, error } = await supabase
+-    .from('projects')
+-    .select('id, name, status, created_at, updated_at, budget, skill_level')
+-    .eq('user_id', userId);
+-
+-  if (error) {
+-    console.log('[projects fetch supabase error]', error.message || error);
+-    return [];
+-  }
+-
+-  const list = Array.isArray(data) ? data : [];
+-  // Sort newest first on client (handles schemas without strict timestamps)
+-  const toTime = (x: any) => {
+-    const ts = Date.parse(x?.updated_at || x?.created_at || '');
+-    return Number.isNaN(ts) ? 0 : ts;
+-  };
+-  const sorted = [...list].sort((a, b) => toTime(b) - toTime(a));
+-  console.log('[projects fetch supabase] userId=%s → %d items', userId, sorted.length);
+-  return sorted;
+-}
++// Unified loader for the user's projects — Webhooks (tries both userId & user_id), newest first
++export async function fetchMyProjects(): Promise<any[]> {
++  const { data: sess } = await supabase.auth.getSession();
++  const userId = sess?.session?.user?.id;
++  if (!userId) throw new Error('AUTH_REQUIRED');
++
++  const base =
++    (global as any).__API_BASE_URL__ ??
++    process.env.EXPO_PUBLIC_API_BASE ??
++    process.env.API_BASE ??
++    'https://diy-genie-webhooks-tyekowalski.replit.app';
++
++  const urls = [
++    `${base}/api/projects?userId=${encodeURIComponent(userId)}`,   // variant A
++    `${base}/api/projects?user_id=${encodeURIComponent(userId)}`,  // variant B
++  ];
++
++  async function hit(u: string): Promise<any[]> {
++    try {
++      const res = await fetch(u, { method: 'GET' });
++      if (!res.ok) return [];
++      const body = await res.json().catch(() => null);
++      const list = Array.isArray(body) ? body : body?.items ?? [];
++      return Array.isArray(list) ? list : [];
++    } catch {
++      return [];
++    }
++  }
++
++  const results = await Promise.all(urls.map(hit));
++  const mergedById = new Map<string, any>();
++  for (const arr of results) {
++    for (const it of arr) {
++      if (it?.id && !mergedById.has(it.id)) mergedById.set(it.id, it);
++    }
++  }
++
++  const items = Array.from(mergedById.values());
++  const toTime = (x: any) => {
++    const ts = Date.parse(x?.updated_at || x?.created_at || '');
++    return Number.isNaN(ts) ? 0 : ts;
++  };
++  items.sort((a, b) => toTime(b) - toTime(a));
++
++  console.log(
++    '[projects fetch webhooks] userId=%s → %d items (A=%d, B=%d)',
++    userId,
++    items.length,
++    results[0]?.length ?? 0,
++    results[1]?.length ?? 0
++  );
++  return items;
++}

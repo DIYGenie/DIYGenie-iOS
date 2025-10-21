@@ -1,0 +1,71 @@
+**project:** Theme
+**Automy:** low
+**app testing:** on
+
+**Agent 3 — TestFlight polish (one-time “What to Test”, Diagnostics support link, build metadata row)**
+
+* Scope: Expo/TS only. No deps. No server edits. Small diffs.
+
+### 1) One-time “What to Test” sheet (auto on first launch)
+
+* Files: `app/screens/WhatToTest.tsx` (new), `App.tsx` (or root navigator), `app/lib/storage.ts` (new helper).
+* Add storage helper:
+
+  * `getFlag(key)`, `setFlag(key, value)` using AsyncStorage with try/catch.
+* Create `WhatToTest.tsx`:
+
+  * Fullscreen modal sheet: title “What to test in DIY Genie”, bullets:
+
+    1. Create Project → Upload photo
+    2. “Build with visual mockup” (Decor8) → wait for preview
+    3. Open Project Details → Overview/Materials/Tools/Cuts/Steps
+    4. Try Share Plan + Copy lists
+  * CTA buttons: **Got it** (sets `wt_seen=true`), **Open Diagnostics** (navigate).
+* In `App.tsx` (or root container):
+
+  * On mount: `if (!getFlag('wt_seen')) set local state to show modal`.
+  * Render `WhatToTest` as `presentation="modal"` when state true.
+* Register route (hidden, not in tabs): `name="WhatToTest"`.
+
+### 2) Diagnostics upgrade: “Crash Repro / Support” mail link
+
+* File: `app/screens/Diagnostics.tsx`.
+* Add button at bottom: **Contact Support**.
+* Build prefilled `mailto:support@diygenieapp.com?subject=DIY%20Genie%20TestFlight%20Feedback%20v<version>&body=<encoded>`
+
+  * Body includes JSON block with: `{ version, appEnv, device: Platform.OS + ' ' + Platform.Version, apiBase, modes (from last health JSON), lastError?: globalThis.__lastError || null }`
+* On press: `Linking.openURL(mailtoUrl)`. Log `[diag] support`.
+
+### 3) Build metadata row: buildNumber, API ping (ms), modes
+
+* Files: `app/screens/Diagnostics.tsx`, `app/lib/health.ts`.
+* In `softHealthCheck()`:
+
+  * Measure latency: `const t0=Date.now(); await fetch(...); const ms=Date.now()-t0;` return `{ json, ms }`.
+* Diagnostics:
+
+  * Show row: `Build: <Constants.expoConfig.version> (iOS buildNumber / Android versionCode inferred) · Ping: <ms>ms · Mode: decor8/<live|stub>, openai/<live|stub>`
+  * If cached hit visible in status, annotate `(cached)`.
+* Keep “Run health” button; when tapped, refresh and update the row.
+
+### 4) Wire up + guards
+
+* Add `import AsyncStorage from '@react-native-async-storage/async-storage'` where needed (already available).
+* Never block app start if AsyncStorage fails—fail silently.
+* Keep all prior Diagnostics content intact.
+
+### 5) Acceptance
+
+* First launch after install: “What to Test” sheet auto-appears; “Got it” closes forever (until reinstall/clear).
+* Profile → 7-tap reveal → Diagnostics:
+
+  * Shows **Build / Ping / Modes** row.
+  * “Run health” updates ping and modes live.
+  * “Contact Support” opens mail client with prefilled metadata.
+* No TS errors, no new deps, no nav regressions.
+
+**Stop after implementing.** Return:
+
+* Confirm the sheet shows once and persists dismissal.
+* Screenshot/text of the Diagnostics metadata row (Build / Ping / Modes).
+* That the Support link opens a prefilled email.

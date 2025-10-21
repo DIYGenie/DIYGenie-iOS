@@ -1,0 +1,95 @@
+Task: Fix “Plan is building…” loop by auto-generating the plan when preview_url exists and plan_json is null, then persisting plan_json to Supabase. One file, minimal diff.
+
+Replit Agent 3 Prompt (ONE task)
+
+Scope: THEME (Expo RN)
+Repo: DIYGenieTheme
+Target file: app/screens/ProjectDetails.tsx
+Autonomy: Low • App Testing: OFF
+Do NOT add deps or touch other files.
+
+Edits (safe minimal diffs):
+
+Imports – ensure these exist (add if missing):
+
++import { Alert } from 'react-native';
++import { supabase } from '../lib/supabase';
+
+
+Base URL + local state – place near other hooks/top of component:
+
++const RAW_BASE = process.env.EXPO_PUBLIC_BASE_URL || 'http://localhost:5000';
++const API_BASE_URL = RAW_BASE.startsWith('http') ? RAW_BASE : `https://${RAW_BASE}`;
++const [planLoading, setPlanLoading] = useState(false);
+
+
+(If RAW_BASE/API_BASE_URL already exist in this file, reuse them and only add planLoading.)
+
+Add generator – inside the component body:
+
++  const generatePlanIfNeeded = async (p: any) => {
++    if (!p) return;
++    if (planLoading) return;
++    if (!p.preview_url) return;           // need preview first
++    if (p.plan_json) return;              // already has plan
++
++    const photo_url = p.input_image_url;
++    const measurements = p.dimensions_json || null;
++    const prompt = p.goal || p.name || 'DIY plan';
++    if (!photo_url || !prompt) return;
++
++    try {
++      setPlanLoading(true);
++      console.log('[plan] generating', { id: p.id });
++      const res = await fetch(`${API_BASE_URL}/plan`, {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({ photo_url, prompt, measurements })
++      });
++      const data = await res.json();
++      if (!res.ok || !data?.ok || !data?.plan) {
++        throw new Error(data?.error || `HTTP ${res.status}`);
++      }
++      const { error: upErr } = await supabase
++        .from('projects')
++        .update({
++          plan_json: data.plan,
++          status: 'planned',
++          updated_at: new Date().toISOString()
++        })
++        .eq('id', p.id);
++      if (upErr) throw upErr;
++      // reflect locally
++      setProject((prev: any) => ({ ...(prev || p), plan_json: data.plan, status: 'planned' }));
++      console.log('[plan] saved', { id: p.id });
++    } catch (e: any) {
++      console.error('[plan] generate fail', e);
++      Alert.alert('Plan failed', String(e?.message || e));
++    } finally {
++      setPlanLoading(false);
++    }
++  };
+
+
+Trigger after project load – add a small effect:
+
++  useEffect(() => {
++    if (project) generatePlanIfNeeded(project);
++  }, [project]);
+
+
+Stop infinite “building” UI – tweak your boolean used for the spinner (replace where applicable):
+
+- const isBuildingPlan = !project?.plan_json && project?.status === 'preview_requested';
++ const isBuildingPlan = planLoading || (!project?.plan_json && !!project?.preview_url);
+
+
+(Match your local variable name; the key is to include planLoading and gate on preview_url instead of status.)
+
+Success criteria:
+
+Opening a project with preview_url and without plan_json auto-calls /plan.
+
+plan_json is written to Supabase and UI stops showing the endless “building” state.
+
+Errors show one Alert and console error.

@@ -1,0 +1,79 @@
+New route that reads the saved project (goal, budget, skill, input_image_url) and returns tailored tips. No external AI—fast heuristics that feel smart now, and you can swap in AI later.
+
+Do (in server.js):
+
+Add below your existing suggestions route:
+
+// Smart suggestions based on project fields + photo presence
+app.post('/api/projects/:id/suggestions-smart', async (req, res) => {
+  try {
+    const id = req.params.id?.trim();
+    if (!id) return res.status(400).json({ ok:false, error:'missing_project_id' });
+
+    const { data: proj, error } = await supabase
+      .from('projects')
+      .select('id, name, goal, budget, skill, input_image_url')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) return res.status(500).json({ ok:false, error: error.message });
+    if (!proj) return res.status(404).json({ ok:false, error:'project_not_found' });
+
+    const text = (proj.goal || proj.name || '').toLowerCase();
+    const budget = (proj.budget || '').toUpperCase();   // $, $$, $$$
+    const skill  = (proj.skill || '').toLowerCase();    // beginner|intermediate|advanced
+    const hasPhoto = !!proj.input_image_url;
+
+    const tips = new Set();
+
+    // Generic prompt-sharpeners
+    if (text.length < 30) tips.add('Add 1–2 details about dimensions or materials to improve results');
+    tips.add('State room type and main color so designs match your space');
+
+    // Heuristics by feature words
+    if (/\bshelf|shelv/.test(text)) {
+      tips.add('Specify shelf width × depth and desired spacing between shelves');
+      tips.add('Mention bracket style (hidden vs visible) for cleaner look');
+      if (skill !== 'advanced') tips.add('Prefer pre-finished lumber to reduce sanding/staining time');
+    }
+    if (/\bbench\b/.test(text)) {
+      tips.add('Include max length and seat height so it fits your wall');
+      tips.add('Call out storage type (open cubbies vs drawers) if needed');
+    }
+    if (/\baccent wall|paint\b/.test(text)) {
+      tips.add('Include sheen level (eggshell vs satin) and prep condition (glossy, textured)');
+    }
+
+    // Budget
+    if (budget === '$') tips.add('Ask for budget alternatives (pine over oak, veneer over solid)');
+    if (budget === '$$$') tips.add('Call out premium finishes (rift-cut, hardware brand, soft-close)');
+
+    // Skill
+    if (skill === 'beginner') tips.add('Ask for tool-light approach and pre-cut options');
+    if (skill === 'advanced') tips.add('Allow joinery options (domino, pocket holes, dados)');
+
+    // Photo present?
+    if (hasPhoto) {
+      tips.add('Describe constraints seen in photo (obstructions, outlets, trim)');
+      tips.add('Include target width relative to visible wall span (e.g., 70% of wall)');
+      tips.add('Match wood tone to lightest existing wood in photo for cohesion');
+    } else {
+      tips.add('Upload a clear room photo for layout-aware suggestions');
+    }
+
+    return res.json({ ok:true, suggestions: Array.from(tips) });
+  } catch (e) {
+    return res.status(500).json({ ok:false, error: e.message || 'server_error' });
+  }
+});
+
+
+(Optional) Alias your old route to the new one so the client can call either:
+
+app.post('/api/projects/:id/suggestions', async (req, res) => {
+  req.url = `/api/projects/${req.params.id}/suggestions-smart`;
+  return app._router.handle(req, res, () => {});
+});
+
+
+Acceptance: POST /api/projects/:id/suggestions-smart returns { ok:true, suggestions:[...] }, varying when photo exists and based on goal/budget/skill.

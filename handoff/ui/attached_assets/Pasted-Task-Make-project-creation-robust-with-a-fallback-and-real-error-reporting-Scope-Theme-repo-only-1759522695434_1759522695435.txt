@@ -1,0 +1,123 @@
+Task: Make project creation robust with a fallback and real error reporting.
+
+Scope: Theme repo only. Modify app/screens/NewProject.tsx (single file, no new files).
+
+Do not touch navigation or other screens. Do not change env handling. Use existing EXPO_PUBLIC_BASE_URL.
+
+Implement exactly:
+
+Add/ensure these imports at top:
+
+import { Alert } from 'react-native';
+
+
+Inside the component, ensure we have:
+
+const BASE = process.env.EXPO_PUBLIC_BASE_URL || 'https://api.diygenieapp.com';
+const USER_ID = (globalThis as any).__DEV_USER_ID__ || 'e4cb3591-7272-46dd-b1f6-d7cc4e2f3d24'; // my test id
+const [creating, setCreating] = useState(false);
+
+
+Add a tiny fetch helper above handlers:
+
+async function postJSON(url: string, body: any) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  let data: any = null;
+  try { data = await res.json(); } catch {}
+  return { ok: res.ok, status: res.status, data };
+}
+
+
+Replace the current “Start / Create Project” handler with this resilient flow (name it createProject and wire it to your existing button):
+
+async function createProject() {
+  if (creating) return;
+  if (!desc || desc.trim().length < 10) {
+    Alert.alert('Tell us a bit more', 'Please enter at least 10 characters for the project description.');
+    return;
+  }
+  if (!budget || !skill) {
+    Alert.alert('Missing info', 'Please choose a budget and skill level.');
+    return;
+  }
+
+  setCreating(true);
+  try {
+    // First try with the real user id
+    let res = await postJSON(`${BASE}/api/projects`, {
+      user_id: USER_ID,
+      name: desc.trim(),
+      budget,
+      skill_level: skill,
+    });
+
+    // Fallback: if backend rejects (RLS/permissions/etc), retry with 'auto'
+    if (!res.ok) {
+      // capture original error message if any
+      const firstErr = res?.data?.error || res?.data?.message || `HTTP ${res.status}`;
+      const fallback = await postJSON(`${BASE}/api/projects`, {
+        user_id: 'auto',
+        name: desc.trim(),
+        budget,
+        skill_level: skill,
+      });
+      if (!fallback.ok) {
+        const secondErr = fallback?.data?.error || fallback?.data?.message || `HTTP ${fallback.status}`;
+        throw new Error(`Create failed.\nFirst: ${firstErr}\nThen (auto): ${secondErr}`);
+      }
+      res = fallback;
+    }
+
+    const projectId =
+      res?.data?.item?.id || res?.data?.id || res?.data?.project?.id || res?.data?.item_id;
+    if (!projectId) {
+      throw new Error('Create succeeded but no project ID was returned.');
+    }
+
+    // Navigate / proceed exactly as before in your screen (keep existing code)
+    // If you store draftId or fetch suggestions, keep that logic here:
+    setDraftId?.(projectId);
+    // If your flow goes straight to details:
+    // navigation.navigate('ProjectDetails', { id: projectId });
+
+    // Optional toast:
+    // showToast('Project created');
+  } catch (e: any) {
+    const msg = String(e?.message || e);
+    // Show real backend error so we stop guessing
+    Alert.alert('Couldn’t create project', msg);
+  } finally {
+    setCreating(false);
+  }
+}
+
+
+Wire the handler:
+
+Hook your existing “Start / Create / Continue” button to onPress={createProject}.
+
+Disable the button while creating is true.
+
+Improve the old generic toast:
+
+If you have any showToast('permissions') or similar for this flow, remove it. The Alert above now shows the real API message.
+
+Acceptance Criteria
+
+Tapping the create button:
+
+Sends POST /api/projects with { user_id: <my id>, name, budget, skill_level }.
+
+If that fails (401/403/404/500), immediately retries with { user_id: 'auto' }.
+
+On success, you either navigate or store the draft id (same as now).
+
+On failure (both attempts), an Alert shows the exact server message (not a vague “permissions”).
+
+No new files, no dep changes, no layout changes.
+
+Photo picker/suggestions code remains intact.

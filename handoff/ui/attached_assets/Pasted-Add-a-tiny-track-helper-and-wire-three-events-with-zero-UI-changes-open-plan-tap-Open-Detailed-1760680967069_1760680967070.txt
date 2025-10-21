@@ -1,0 +1,101 @@
+Add a tiny track() helper and wire three events with zero UI changes:
+
+open_plan (tap “Open Detailed Build Plan”)
+
+delete_project (after successful delete)
+
+create_template (tap a template’s Create chip)
+
+Do exactly this
+
+Create helper app/lib/track.ts
+
+const BASE =
+  process.env.EXPO_PUBLIC_BASE_URL ||
+  "https://diy-genie-webhooks-tyekowalski.replit.app";
+
+type TrackArgs = {
+  userId: string;
+  event: "open_plan" | "delete_project" | "create_template" | string;
+  projectId?: string | null;
+  props?: Record<string, any>;
+};
+
+export async function track({ userId, event, projectId, props }: TrackArgs) {
+  if (!userId || !event) return;
+  try {
+    await fetch(`${BASE}/api/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: userId,
+        event_type: event,
+        project_id: projectId ?? null,
+        props: props ?? {},
+      }),
+    });
+  } catch {
+    // swallow — telemetry must never break UX
+  }
+}
+
+
+Project Details → “Open Detailed Build Plan”
+
+File: app/screens/ProjectDetails.tsx
+
+Find the handler that navigates to the plan (e.g., the onPress for “Open Detailed Build Plan” which does navigate('DetailedInstructions', { id: projectId })).
+
+Import helper:
+
+import { track } from '../lib/track';
+
+
+After a successful press, before/after navigate (either is fine), add:
+
+track({ userId: user.id, event: 'open_plan', projectId });
+
+
+Delete Project — after success
+
+Same file (or wherever the delete action lives).
+
+After the delete API returns success (and before you refresh UI), add:
+
+track({ userId: user.id, event: 'delete_project', projectId });
+
+
+Home templates → Create chip
+
+File: app/screens/HomeScreen.tsx
+
+Import helper:
+
+import { track } from '../lib/track';
+
+
+In the template Create onPress (where it navigates to NewProject), add:
+
+track({ userId: user.id, event: 'create_template', props: { template: tpl.id } });
+
+
+Do not modify UI or flows. No new screens, no copy changes.
+
+Acceptance
+
+Tap “Open Detailed Build Plan” → no UI change; in Supabase:
+
+select event_type, project_id, props
+from public.events
+where user_id = 'YOUR_UUID'
+order by created_at desc
+limit 5;
+
+
+Shows a recent open_plan.
+
+Delete a project → see delete_project.
+
+Tap a template Create → see create_template { template: "shelf" | ... }.
+
+App remains stable; no red screens.

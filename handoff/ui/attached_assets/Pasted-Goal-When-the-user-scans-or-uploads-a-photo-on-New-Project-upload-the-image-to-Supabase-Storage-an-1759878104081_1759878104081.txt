@@ -1,0 +1,119 @@
+Goal: When the user scans or uploads a photo on New Project, upload the image to Supabase Storage and insert a row into public.room_scans with useful defaults.
+
+Steps:
+
+Install client:
+
+npm i @supabase/supabase-js
+
+Add src/lib/supabase.ts:
+
+import { createClient } from '@supabase/supabase-js';
+export const supabase = createClient(
+  process.env.EXPO_PUBLIC_SUPABASE_URL!,
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+
+Ensure those two env vars are set in Replit (Secrets) and in Expo.
+
+Assume a Storage bucket named room-scans (use your existing bucket if different; just change the name in code).
+
+In NewProject screen:
+
+Keep current “Scan room” and “Upload Photo”.
+
+When an image URI is returned (roomPhotoUri), call saveRoomScan({ uri, source, projectId }).
+
+Show a tiny uploading spinner on the card; toast on success/failure.
+
+Create src/features/scans/saveRoomScan.ts:
+
+import * as FileSystem from 'expo-file-system';
+import { supabase } from '../../lib/supabase';
+import 'react-native-get-random-values';
+import { v4 as uuidv4 } from 'uuid';
+import { Platform } from 'react-native';
+
+type SaveArgs = {
+  uri: string;                // local file uri from camera or picker
+  source: 'scan' | 'upload';
+  projectId?: string | null;  // optional for now
+  userId?: string | null;     // if you already have it in auth context
+};
+
+export async function saveRoomScan({ uri, source, projectId = null, userId = null }: SaveArgs) {
+  // read file as base64 -> blob
+  const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+  const fileBytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+  const file = new Blob([fileBytes], { type: 'image/jpeg' });
+
+  const id = uuidv4();
+  const path = `projects/${projectId ?? 'unassigned'}/${id}.jpg`;
+
+  // 1) Upload to Storage
+  const { error: upErr } = await supabase.storage.from('room-scans').upload(path, file, {
+    cacheControl: '3600',
+    upsert: false,
+    contentType: 'image/jpeg',
+  });
+  if (upErr) throw upErr;
+
+  // 2) Get a public URL (or use signed urls if you prefer)
+  const { data: pub } = supabase.storage.from('room-scans').getPublicUrl(path);
+  const image_url = pub?.publicUrl ?? null;
+
+  // 3) Insert DB row
+  const meta = {
+    source,
+    device: Platform.OS,
+    uri,                      // local (for debug)
+    uploaded_path: path,
+  };
+  const payload = {
+    id,
+    user_id: userId ?? null,
+    project_id: projectId,
+    image_url,
+    raw_scan_url: null,       // keep for future LiDAR/mesh outputs
+    dimensions: null,         // fill later when we compute
+    scale_px_per_in: null,    // fill later after calibration
+    meta,
+  };
+  const { error: dbErr } = await supabase.from('room_scans').insert(payload);
+  if (dbErr) throw dbErr;
+
+  return { id, image_url, path };
+}
+
+
+In NewProject component, wire it:
+
+import { saveRoomScan } from '@/features/scans/saveRoomScan';
+// … inside handler after you get the image uri:
+setUploading(true);
+try {
+  const res = await saveRoomScan({
+    uri: roomPhotoUri,
+    source: cameFromScan ? 'scan' : 'upload',
+    projectId: currentProjectId ?? null,
+    userId: authUser?.id ?? null,
+  });
+  toast.success('Scan saved');
+} catch (e) {
+  console.error(e);
+  toast.error('Upload failed');
+} finally {
+  setUploading(false);
+}
+
+
+Keep all current UI/logic intact. Do not break navigation. Keep the card thumbnail behavior.
+
+RLS (if not already set)
+
+Enable RLS on public.room_scans.
+
+Policy: authenticated users can insert and select where user_id = auth.uid().
+
+If you sometimes insert server-side (webhooks) without user_id, add a service-role policy for that path.

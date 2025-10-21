@@ -1,0 +1,91 @@
+Polish the UI for Project Details summary view & Accordion cards.
+
+Files
+
+app/screens/ProjectDetails.tsx
+
+app/components/ui/AccordionCard.tsx (from prior step)
+
+Style changes
+
+Typography & spacing
+
+Page uses ScrollView with contentContainerStyle={{ padding: 16, paddingBottom: 64 }}.
+
+Section title in cards: 18–20, weight 700, lineHeight ~24.
+
+Subtitle: 14, color #6B7280.
+
+Body lists: 15–16, item spacing 6–8.
+
+Global card spacing: 12 between cards.
+
+Card visuals
+
+Card bg: #F3F0FF (very light lilac).
+
+Border radius: 16.
+
+Border color: #E9E1FF.
+
+Shadow (iOS): { shadowColor:'#000', shadowOpacity:0.07, shadowRadius:10, shadowOffset:{ width:0, height:4 } }.
+
+Elevation (Android): 2.
+
+Accordion affordance
+
+Right chevron (lucide ChevronDown) 20px, color #6B7280.
+
+Rotate to 180° when open; duration 150ms (Animated or Reanimated, whichever is already used—prefer Animated).
+
+Increase tap target: hitSlop={ { top:10, bottom:10, left:10, right:10 } }.
+
+Open/close animation
+
+Animate height + opacity of content:
+
+Closed: height 0, opacity 0
+
+Open: height auto (measure with onLayout), opacity 1
+
+Duration 150ms; ease-out.
+
+Lists formatting
+
+Bullets: simple • with 6px gap; wrap lines.
+
+Cuts: format Name — WxH ×Qty if values exist; otherwise just render the line.
+
+Steps: ordered (1., 2., …); bold step title, regular one-line description (truncate to ~100 chars).
+
+CTA button
+
+Bottom sticky within ScrollView (safe, not overlapping tab bar). Full width purple { backgroundColor:'#7C3AED' }, height 52, radius 16, center text bold 600 white 16.
+
+Label: "Get detailed instructions".
+
+Disabled/hidden when !planObj.
+
+Haptics & a11y
+
+On accordion toggle, trigger light haptic if expo-haptics is already in project; otherwise skip import.
+
+Each card has accessibilityRole="button" and accessibilityState={{ expanded: isOpen }}.
+
+Empty states
+
+Keep: “No materials listed.” / “No cut list.” / “No tools listed.” / “No steps yet.”
+
+Time & Cost: show “Estimated time: — hrs”, “Estimated cost: —”.
+
+No network polling
+
+Ensure ProjectDetails does not poll endpoints anymore. It should only render available planObj and show the “Plan is building…” card if missing.
+
+Acceptance
+
+Visual: soft lilac cards, consistent padding, smooth chevron rotation, clean lists.
+
+UX: tapping a card header expands/collapses with haptic (if available).
+
+CTA visible only when plan exists.

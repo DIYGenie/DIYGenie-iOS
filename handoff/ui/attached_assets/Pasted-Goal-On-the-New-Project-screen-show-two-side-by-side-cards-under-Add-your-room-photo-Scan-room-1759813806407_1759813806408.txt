@@ -1,0 +1,126 @@
+Goal: On the New Project screen, show two side-by-side cards under “Add your room photo”:
+
+Scan room (primary, filled) → opens the existing Scan flow.
+
+Upload Photo (secondary, outline) → current gallery picker.
+
+When the user taps Use Photo on the Scan review screen, the selected photo should appear on the New Project screen in place of the placeholder. Keep existing upload behavior intact.
+
+1) Event bridge for returning the scanned photo
+
+Create lib/scanEvents.ts:
+
+// lib/scanEvents.ts
+import { DeviceEventEmitter, EmitterSubscription } from 'react-native';
+
+export const SCAN_PHOTO_EVENT = 'scan-photo-selected';
+
+export function emitScanPhoto(uri: string) {
+  DeviceEventEmitter.emit(SCAN_PHOTO_EVENT, { uri });
+}
+
+export function subscribeScanPhoto(cb: (uri: string) => void): EmitterSubscription {
+  return DeviceEventEmitter.addListener(SCAN_PHOTO_EVENT, ({ uri }) => cb(uri));
+}
+
+2) Wire “Use Photo” on ScanReview to emit + navigate back
+
+In screens/ScanReviewScreen.tsx, update the Use Photo handler:
+
+import { emitScanPhoto } from '../lib/scanEvents';
+
+// inside component
+const onUse = () => {
+  emitScanPhoto(photoUri); // photoUri = route.param uri or local state
+  navigation.navigate('NewProject'); // or navigation.popToTop() then navigate to NewProject if needed
+};
+
+3) New Project UI: add Scan card next to Upload
+
+In screens/NewProjectScreen.tsx (or wherever the “Add your room photo” lives):
+
+Keep the existing Upload Photo logic.
+
+Add local state roomPhotoUri (if not already present) and show an image preview when it’s set.
+
+Subscribe to subscribeScanPhoto in useEffect to set roomPhotoUri.
+
+UI requirements
+
+Two cards in a responsive 2-column grid on phones; stack to two rows on narrow widths.
+
+Left = Scan room (primary, filled, camera/scan icon).
+
+Right = Upload Photo (secondary, outline).
+
+When roomPhotoUri exists, show the preview in a single rounded card with a small “Change photo” link that opens an ActionSheet with: Scan room and Upload from gallery.
+
+Code changes (sketch):
+
+import { useEffect, useState } from 'react';
+import { View, Pressable, Image } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { subscribeScanPhoto } from '../lib/scanEvents';
+// assume you already have pickFromGallery() implemented
+
+export default function NewProjectScreen() {
+  const [roomPhotoUri, setRoomPhotoUri] = useState<string | null>(null);
+
+  useEffect(() => {
+    const sub = subscribeScanPhoto((uri) => setRoomPhotoUri(uri));
+    return () => sub.remove();
+  }, []);
+
+  const openScan = () => navigation.navigate('Scan');
+  const openUpload = async () => {
+    const uri = await pickFromGallery(); // reuse your existing picker
+    if (uri) setRoomPhotoUri(uri);
+  };
+
+  return (
+    <View>
+      {/* ... form fields ... */}
+
+      <SectionTitle text="Add your room photo" />
+
+      {roomPhotoUri ? (
+        <Pressable onPress={openUpload} className="rounded-2xl overflow-hidden border border-neutral-200">
+          <Image source={{ uri: roomPhotoUri }} style={{ width: '100%', aspectRatio: 16/9 }} />
+          <View className="p-3 items-end">
+            <Text className="text-violet-600">Change photo</Text>
+          </View>
+        </Pressable>
+      ) : (
+        <View className="flex-row gap-12 justify-between">
+          {/* Scan room (primary) */}
+          <Pressable onPress={openScan} className="flex-1 items-center justify-center rounded-2xl bg-violet-600 py-6 shadow-lg">
+            <Ionicons name="scan-outline" size={24} color="white" />
+            <Text className="text-white font-semibold mt-2">Scan room</Text>
+          </Pressable>
+
+          {/* Upload Photo (secondary) */}
+          <Pressable onPress={openUpload} className="flex-1 items-center justify-center rounded-2xl border border-neutral-300 bg-white py-6">
+            <Ionicons name="image-outline" size={24} color="#6E3AF2" />
+            <Text className="text-neutral-900 font-semibold mt-2">Upload Photo</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* ... rest of screen ... */}
+    </View>
+  );
+}
+
+4) Navigation
+
+No new routes. Ensure Home → Scan works, and New Project’s Scan room also pushes the same Scan route.
+
+5) Acceptance
+
+New Project shows Scan room (primary) and Upload Photo (secondary) side-by-side.
+
+Tapping Scan room opens the camera; Use Photo on review returns to New Project and fills the preview.
+
+Tapping Upload Photo continues to work as before and fills the preview.
+
+If a photo exists, it displays with a Change photo affordance.

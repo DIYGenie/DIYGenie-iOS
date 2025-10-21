@@ -1,0 +1,83 @@
+Awesome—preview flow is wired. Next: **AR scale & dimensions surfaced in UI** (we already forward them in webhooks).
+
+**project:** Theme
+**autonomy:** low
+**app testing:** on
+
+**Single Agent-3 Prompt — Show AR scale/dimensions on ProjectDetails (no new buttons):**
+
+* **Scope:** Expo/TS app only. Read existing fields from `projects`: `scale_px_per_in`, `dimensions_json`, `scan_json`. Do not modify server.
+* **Goal:** If AR data exists, show a compact measurement badge under the hero and a “Measurements” card with key values. Fall back gracefully when absent.
+
+**Edits**
+
+1. **ProjectDetails.tsx**
+
+   * Ensure the Supabase select includes:
+     `scale_px_per_in, dimensions_json, scan_json`
+   * After fetching `project`, derive safe values:
+
+     ```ts
+     const pxPerIn = typeof project?.scale_px_per_in === 'number' ? project.scale_px_per_in : null;
+     const dims = project?.dimensions_json || {};
+     const widthIn  = typeof dims?.width_in === 'number'  ? dims.width_in  : null;
+     const heightIn = typeof dims?.height_in === 'number' ? dims.height_in : null;
+     const depthIn  = typeof dims?.depth_in === 'number'  ? dims.depth_in  : null;
+     const diagIn   = typeof dims?.diagonal_in === 'number' ? dims.diagonal_in : null;
+     console.log('[details] ar', { pxPerIn, widthIn, heightIn, depthIn, diagIn });
+     ```
+   * **Under the hero**, render a thin badge row *only if* `pxPerIn || widthIn || heightIn || depthIn || diagIn`:
+
+     ```tsx
+     { (pxPerIn || widthIn || heightIn || depthIn || diagIn) && (
+       <View style={{ flexDirection:'row', gap:12, paddingVertical:8 }}>
+         {pxPerIn != null && <Text style={{ fontSize:12, opacity:0.8 }}>Scale: {pxPerIn.toFixed(2)} px/in</Text>}
+         {widthIn  != null && <Text style={{ fontSize:12, opacity:0.8 }}>W: {widthIn.toFixed(1)}"</Text>}
+         {heightIn != null && <Text style={{ fontSize:12, opacity:0.8 }}>H: {heightIn.toFixed(1)}"</Text>}
+         {depthIn  != null && <Text style={{ fontSize:12, opacity:0.8 }}>D: {depthIn.toFixed(1)}"</Text>}
+         {diagIn   != null && <Text style={{ fontSize:12, opacity:0.8 }}>Diag: {diagIn.toFixed(1)}"</Text>}
+       </View>
+     )}
+     ```
+   * **Add a “Measurements” card** below Meta:
+
+     ```tsx
+     <View style={{ backgroundColor:'white', borderRadius:16, padding:16, marginBottom:12 }}>
+       <Text style={{ fontSize:16, fontWeight:'700', marginBottom:6 }}>Measurements</Text>
+       {pxPerIn == null && widthIn == null && heightIn == null && depthIn == null && diagIn == null ? (
+         <Text style={{ opacity:0.6 }}>No measurements yet</Text>
+       ) : (
+         <>
+           {pxPerIn != null && <Text>Scale: {pxPerIn.toFixed(3)} px/in</Text>}
+           {widthIn  != null && <Text>Width: {widthIn.toFixed(2)}"</Text>}
+           {heightIn != null && <Text>Height: {heightIn.toFixed(2)}"</Text>}
+           {depthIn  != null && <Text>Depth: {depthIn.toFixed(2)}"</Text>}
+           {diagIn   != null && <Text>Diagonal: {diagIn.toFixed(2)}"</Text>}
+         </>
+       )}
+     </View>
+     ```
+   * **Guard rendering**: never early-return `null`; keep existing non-blank states.
+
+2. **NewProject.tsx (light touch)**
+
+   * When you already collect/store AR data during create, ensure you **persist** `scale_px_per_in` and `dimensions_json` on the same `projects` row (if not already). If these are present in the current draft, include them in the existing `update`/`insert` calls.
+   * Log once after save:
+
+     ```ts
+     console.log('[create] ar saved', { pxPerIn: draft.scale_px_per_in, dims: !!draft.dimensions_json });
+     ```
+
+3. **No new actions/buttons** anywhere. No preview triggers here.
+
+**Acceptance**
+
+* Console shows `[details] ar { … }` with numbers when AR exists.
+* ProjectDetails displays a small badge row under the hero and a “Measurements” card with values.
+* When AR is absent, the card shows “No measurements yet” (no blank page, no crash).
+
+**Stop after these edits and report:**
+
+* Files touched.
+* The `[details] ar` log object for a project with AR.
+* Whether the badge and Measurements card appear.

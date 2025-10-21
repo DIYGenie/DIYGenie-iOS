@@ -1,0 +1,55 @@
+THEME
+*** FILE: app/screens/NewProject.tsx
+@@
+-import React, { useMemo, useState, useRef } from 'react';
+-import { View, Text, ScrollView, TextInput, Pressable, Image, ActivityIndicator, Keyboard } from 'react-native';
++import React, { useMemo, useState, useRef } from 'react';
++import { View, Text, ScrollView, TextInput, Pressable, Image, ActivityIndicator, Keyboard, InteractionManager } from 'react-native';
+ import { useNavigation } from '@react-navigation/native';
+@@
+   const navigation = useNavigation<any>();
+@@
++  // Ensure Projects stack has ProjectsList, then push details on top
++  const goToProjectDetailsSeeded = (projectId: string) => {
++    const parent = navigation.getParent?.('root-tabs') ?? navigation.getParent?.();
++    if (parent) {
++      // Step 1: land on Projects tab → ProjectsList
++      parent.navigate('Projects', { screen: 'ProjectsList' });
++      // Step 2: after nav settles, push ProjectDetails
++      InteractionManager.runAfterInteractions(() => {
++        parent.navigate('Projects', { screen: 'ProjectDetails', params: { id: projectId } });
++      });
++      return;
++    }
++    // Fallback: try local navigate (will still work but may not seed)
++    navigation.navigate('ProjectDetails', { id: projectId });
++  };
+@@
+-  const handleBuildWithoutPreview = async () => {
+-    // ... existing create/build logic ...
+-    // navigate straight to details today:
+-    navigation.navigate('ProjectDetails' as never, { id: projectId } as never);
+-  };
++  const handleBuildWithoutPreview = async () => {
++    // ... your existing create/build logic up to projectId resolution ...
++    // After receiving projectId and OK from server:
++    goToProjectDetailsSeeded(projectId);
++  };
+@@
+-  const onUploadSuccess = (projectId: string) => {
+-    // currently may be navigating directly to details
+-    navigation.navigate('ProjectDetails' as never, { id: projectId } as never);
+-  };
++  const onUploadSuccess = (projectId: string) => {
++    // Keep behavior consistent: always seed Projects stack before showing details
++    goToProjectDetailsSeeded(projectId);
++  };
+
+
+Notes:
+
+We import InteractionManager and add a tiny helper goToProjectDetailsSeeded.
+
+We replace any direct navigation.navigate('ProjectDetails', …) calls in this file with the seeded two-step navigation.
+
+This ensures the Back button on Project Details always returns to Projects list, not Home.

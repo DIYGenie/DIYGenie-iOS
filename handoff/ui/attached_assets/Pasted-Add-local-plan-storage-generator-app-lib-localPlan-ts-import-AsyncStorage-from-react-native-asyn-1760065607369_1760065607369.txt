@@ -1,0 +1,141 @@
+Add local plan storage + generator
+app/lib/localPlan.ts
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const KEY = (id: string) => `plan-md:${id}`;
+
+export async function saveLocalPlanMarkdown(projectId: string, md: string) {
+  await AsyncStorage.setItem(KEY(projectId), md);
+}
+
+export async function getLocalPlanMarkdown(projectId: string): Promise<string | null> {
+  return AsyncStorage.getItem(KEY(projectId));
+}
+
+// ultra-simple starter generator you can tweak
+export function generateLocalPlanMarkdown(opts: {
+  title?: string;
+  description?: string;
+  budget?: string;
+  skill_level?: string;
+} = {}) {
+  const t = opts.title || 'Project';
+  const b = opts.budget || '$$';
+  const s = opts.skill_level || 'Intermediate';
+  const d = opts.description || 'A custom DIY project.';
+
+  return `# ${t}
+
+**Overview**  
+${d}
+
+## Materials
+- Plywood — 2 sheets
+- 2x4 studs — 6
+- Wood screws — 1 lb
+- Wood glue — 1 bottle
+
+## Tools
+- Circular saw
+- Drill/driver
+- Tape measure
+- Square
+- Safety glasses
+
+## Cut List
+- Side panel: 24" × 18" ×2
+- Shelf: 24" × 10" ×3
+- Top/bottom: 24" × 12" ×2
+
+## Steps
+1. Measure and mark all cuts.
+2. Rip panels to width.
+3. Assemble the carcass with glue and screws.
+4. Add shelves and square the box.
+5. Sand and finish.
+
+## Time & Cost
+- Time: 6–8 hours
+- Cost: ~${b} (skill: ${s})
+`;
+}
+
+2) Make plan fetch prefer local, then server
+
+Find your fetchProjectPlanMarkdown (where we call /api/projects/:id/plan). Replace it with this wrapper:
+
+// app/lib/api.ts (or wherever it lives)
+import { getLocalPlanMarkdown } from './localPlan';
+
+// existing import you already have:
+// import { base } from './whatever';
+
+export async function fetchProjectPlanMarkdown(projectId: string): Promise<string> {
+  // 1) prefer local cached plan
+  const local = await getLocalPlanMarkdown(projectId);
+  if (local) return local;
+
+  // 2) try server (if configured)
+  const url = `${base}/api/projects/${projectId}/plan`;
+  const res = await fetch(url);
+  if (res.ok) return await res.text();
+
+  // 409 means “not ready”; let caller decide what to do
+  const status = res.status;
+  const err: any = new Error(`plan fetch failed: ${status}`);
+  err.status = status;
+  throw err;
+}
+
+
+Now your UI will immediately show any locally saved plan; if not present it behaves exactly like before (throws 409 until ready).
+
+3) After 10 polls, auto-fallback to a local plan
+
+Update the PlanWaiting screen’s polling (the one we just added) so it gracefully falls back and moves on:
+
+// inside PlanWaiting polling effect, after the final try
+import { saveLocalPlanMarkdown, generateLocalPlanMarkdown } from '../lib/localPlan';
+import { fetchProjectById } from '../lib/api'; // you already have this
+
+// ... after try 10 if still 409:
+const p = await fetchProjectById(id).catch(() => ({} as any));
+const md = generateLocalPlanMarkdown({
+  title: p?.name || p?.title,
+  description: p?.description,
+  budget: p?.budget,
+  skill_level: p?.skill_level,
+});
+await saveLocalPlanMarkdown(id, md);
+
+// seed Projects stack → push ProjectDetails
+const parent = navigation.getParent?.();
+parent?.navigate('Projects', { screen: 'ProjectsList' });
+InteractionManager.runAfterInteractions(() => {
+  parent?.navigate('Projects', { screen: 'ProjectDetails', params: { id } });
+});
+
+
+Result: if the server keeps returning 409, the app generates a usable plan, stores it locally, and navigates to the tabbed details view immediately. When your real backend is live later, the same fetch will return 200 and override the local plan.
+
+4) When creating a project, skip waiting (optional UX win)
+
+Right after “Build plan without preview” succeeds and you have projectId, you can pre-seed a local plan so users never see waiting at all:
+
+import { saveLocalPlanMarkdown, generateLocalPlanMarkdown } from '../lib/localPlan';
+
+// after you know projectId and you have draft fields:
+const md = generateLocalPlanMarkdown({
+  title: draft.title,
+  description: draft.description,
+  budget: draft.budget,
+  skill_level: draft.skill_level,
+});
+await saveLocalPlanMarkdown(projectId, md);
+
+// go straight to details
+const parent = navigation.getParent?.();
+parent?.navigate('Projects', { screen: 'ProjectsList' });
+InteractionManager.runAfterInteractions(() => {
+  parent?.navigate('Projects', { screen: 'ProjectDetails', params: { id: projectId } });
+});

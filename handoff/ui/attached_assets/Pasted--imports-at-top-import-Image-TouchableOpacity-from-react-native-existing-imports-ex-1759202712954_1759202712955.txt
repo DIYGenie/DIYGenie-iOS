@@ -1,0 +1,101 @@
+// imports at top
+import { Image, TouchableOpacity } from "react-native";
+// ...existing imports
+
+export default function NewProjectForm() {
+  // existing state...
+  const [inputImageUrl, setInputImageUrl] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+
+  // you already fetch entitlements; assume shape: { tier: string, remaining?: number }
+  const canPreview = !!entitlements && entitlements.tier !== "Free" && (entitlements.remaining ?? 0) > 0;
+
+  async function onUploadPhoto() {
+    try {
+      setIsUploading(true);
+      const url = await uploadImageAsync();         // you already have this util
+      setInputImageUrl(url);
+      // If you also PATCH the project with input_image_url, keep that as-is
+      Toast.show("Photo uploaded successfully!");
+    } catch (e) {
+      Alert.alert("Upload failed", String(e?.message ?? e));
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  async function onGeneratePreview() {
+    try {
+      setGenerating(true);
+      await api.requestPreview(projectId);          // POST /api/projects/:id/preview
+      // start polling
+      await api.pollProjectStatus(projectId, { interval: 2000, timeout: 60000 });
+      Toast.show("Preview ready!");
+      navigation.navigate("ProjectDetails", { id: projectId });
+    } catch (e) {
+      Alert.alert("Preview failed", "Please try again in a moment.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  function onBuildWithoutPreview() {
+    navigation.navigate("ProjectDetails", { id: projectId, skipPreview: true });
+  }
+
+  return (
+    <View style={styles.container}>
+      {/* ...the top fields stay the same */}
+
+      <View style={{ marginTop: 16 }}>
+        <Text style={styles.subtleDivider}>Add your room photo</Text>
+      </View>
+
+      {!inputImageUrl ? (
+        // ORIGINAL two tiles (Scan / Upload)
+        <View style={styles.tileRow}>
+          <Tile icon="camera" label="Scan Room" disabled={!formValid || isUploading} onPress={onScan} />
+          <Tile icon="image"  label="Upload Photo" disabled={!formValid || isUploading} onPress={onUploadPhoto} />
+        </View>
+      ) : (
+        // NEW: uploaded photo + actions
+        <View style={styles.photoSection}>
+          <Image source={{ uri: inputImageUrl }} style={styles.roomPhoto} resizeMode="cover" />
+          <TouchableOpacity onPress={onUploadPhoto} disabled={isUploading} style={styles.changeLink}>
+            <Text style={styles.changeLinkText}>{isUploading ? "Changing..." : "Change photo"}</Text>
+          </TouchableOpacity>
+
+          <View style={styles.ctaCol}>
+            <Button
+              title={generating ? "Generating…" : "Generate AI Preview"}
+              onPress={onGeneratePreview}
+              disabled={!canPreview || generating}
+            />
+            {!canPreview && (
+              <Text style={styles.planNote}>
+                Preview isn’t included in your current plan.{" "}
+                <Text style={styles.upgradeLink} onPress={() => navigation.navigate("Profile")}>Upgrade</Text>
+              </Text>
+            )}
+            <Button variant="outline" title="Build Plan Without Preview" onPress={onBuildWithoutPreview} />
+          </View>
+        </View>
+      )}
+
+      {/* keep your bottom nav as-is */}
+    </View>
+  );
+}
+
+// styles (add to existing StyleSheet)
+const styles = StyleSheet.create({
+  subtleDivider: { textAlign: "center", color: "#8a8f98", marginBottom: 8 },
+  tileRow: { flexDirection: "row", gap: 12, justifyContent: "center" },
+  photoSection: { alignItems: "center", gap: 8, marginBottom: 12 },
+  roomPhoto: { width: "92%", aspectRatio: 4/3, borderRadius: 14, backgroundColor: "#f2f3f5" },
+  changeLink: { paddingVertical: 6 },
+  changeLinkText: { color: "#2563eb", fontWeight: "600" },
+  ctaCol: { width: "92%", gap: 12, marginTop: 4 },
+  planNote: { fontSize: 12, color: "#6b7280", marginTop: -4 },
+  upgradeLink: { color: "#2563eb", fontWeight: "700" },
+});

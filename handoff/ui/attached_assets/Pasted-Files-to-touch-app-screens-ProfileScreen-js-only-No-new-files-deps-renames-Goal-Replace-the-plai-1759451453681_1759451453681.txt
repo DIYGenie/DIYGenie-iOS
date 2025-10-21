@@ -1,0 +1,108 @@
+Files to touch: app/screens/ProfileScreen.js only. No new files/deps/renames.
+
+Goal
+Replace the plain “Upgrade Plan” picker with two attractive plan cards that sell benefits and prices. Keep all existing wiring (openCheckout('casual'|'pro'), openPortal, getEntitlements) unchanged. Subtle highlight on Pro. Brand-consistent (purple→blue vibe, Manrope headers, Inter body), accessible, and mobile-first.
+
+Implement
+
+Locate & replace the inline upgrade block (currently shown when showUpgradePicker is true). Remove the two simple buttons and render two PlanCard blocks inside a container Card. Keep the top “Cancel” button as-is (closes the picker).
+
+Add an inline PlanCard component in this file (below imports, above component or inside file-scope). Props:
+
+title, priceText, subtitle, features (string[]), ctaText, onPress, popular?: boolean, testID.
+
+Visuals:
+
+Use a rounded Card with soft shadow, uniform white surface.
+
+Header row: title (Manrope, semibold), small “Most popular” Badge if popular.
+
+Big price row: priceText (e.g., $14.99/mo) with subtle /mo secondary style.
+
+Bulleted features list with ✓ (use plain Text + emoji check to avoid deps) and consistent spacing (8–10px).
+
+CTA uses ButtonPrimary full-width; onPress calls provided handler; set accessibilityRole="button" and testID.
+
+Subtle Pro accent: thin 2px border with brand-purple (#6F4BFF) and a faint background tint (rgba(111,75,255,0.06)); Casual gets neutral border (#E8E9EE). No new gradient deps.
+
+Min tap size 44px; high contrast; respect existing spacing tokens.
+
+Render both plans inside the picker container, stacked with 12–16px gap (on wide web, allow two-column via flexDirection: row; flexWrap: wrap; but keep mobile single-column):
+
+Pro (highlighted softly):
+
+title: 'Pro'
+
+priceText: '$14.99/mo'
+
+subtitle: 'Best for frequent builders'
+
+features:
+
+25 projects/month
+
+Unlimited previews (Decor8)
+
+AR Scan access (stub)
+
+Save & export plans
+
+Priority improvements access
+
+ctaText: 'Start Pro — $14.99/mo'
+
+popular: true
+
+onPress: () => openCheckout('pro')
+
+testID: 'plan-pro-cta'
+
+Casual:
+
+title: 'Casual'
+
+priceText: '$5.99/mo'
+
+subtitle: 'Great for occasional projects'
+
+features:
+
+5 projects/month
+
+Unlimited previews (Decor8)
+
+AR Scan access (stub)
+
+Save & export plans
+
+ctaText: 'Start Casual — $5.99/mo'
+
+onPress: () => openCheckout('casual')
+
+testID: 'plan-casual-cta'
+
+Small footnote under cards (centered, 12px):
+
+“Cancel anytime via Manage (Stripe Portal).”
+
+Tapping “Manage” still calls openPortal().
+
+Accessibility & QA hooks
+
+Add accessible and accessibilityRole="button" to CTAs.
+
+Expose testIDs: plan-pro-cta, plan-casual-cta, and container testID="upgrade-cards".
+
+Ensure buttons disable on busy.
+
+Acceptance criteria
+
+Opening Upgrade Plan shows two polished cards with prices, features, and a subtle “Most popular” badge on Pro.
+
+Start Pro — $14.99/mo triggers openCheckout('pro'); Start Casual — $5.99/mo triggers openCheckout('casual').
+
+Buttons reflect loading (busy disabled).
+
+Visuals are on-brand, readable, and responsive on web/mobile.
+
+No new dependencies or files; Profile functionality (Manage, Sync Plan, entitlements refresh) unchanged.

@@ -1,0 +1,83 @@
+Goal: Before we request camera access for “Scan,” show a friendly pre-permission bottom sheet explaining why we need it. If the user continues, request permission; if denied, offer “Open Settings.”
+
+Do this:
+
+Install
+
+npx expo install expo-camera
+
+Create hooks/useCameraPermission.ts
+
+Expose:
+
+checkStatus(): Promise<'granted' | 'denied' | 'undetermined'>
+
+request(): Promise<'granted' | 'denied'>
+
+Implement with Camera.getCameraPermissionsAsync() and Camera.requestCameraPermissionsAsync().
+
+Create components/modals/PrePermissionSheet.tsx
+
+Simple bottom sheet (use React Native Modal + animated slide-up).
+
+Props: visible, title, subtitle, iconName (Ionicons), primaryLabel, secondaryLabel, onPrimary, onSecondary.
+
+Style to match our cards (rounded-xl, shadow, brand purple primary button).
+
+Default copy:
+
+Title: Use your camera to scan the room
+
+Subtitle: We’ll measure and place your project preview. We never store video without your OK.
+
+Primary: Continue
+
+Secondary: Not now
+
+Wire the Scan tile on Home
+
+In the Home screen (the 2×2 “How it works” tiles), update the Scan tile onPress:
+
+const status = await checkStatus();
+
+If status === 'granted' → navigate to (or stub) ScanScreen.
+
+Else open PrePermissionSheet.
+
+When user taps Continue in the sheet:
+
+Call request().
+
+If granted → close sheet → navigate to ScanScreen.
+
+If denied → replace primary/secondary with:
+
+Primary: Open Settings (use Linking.openSettings() on iOS)
+
+Secondary: Close
+
+Keep state so the sheet shows the right buttons after a denial.
+
+Add a placeholder Scan screen if missing
+
+screens/ScanScreen.tsx with a centered message:
+
+“Scan coming soon. We just set up permissions.”
+
+Primary button Back to Home.
+
+Icon nits
+
+Ensure Home “Build” tile uses a hammer icon (Ionicons hammer-outline) to match our last change.
+
+Home “Scan” tile uses scan-outline.
+
+Acceptance
+
+Tapping Scan shows the sheet if the app doesn’t yet have permission.
+
+Continue triggers the OS prompt; granted → proceeds to ScanScreen.
+
+If denied, sheet swaps to Open Settings / Close and Open Settings deep-links correctly on iOS.
+
+If permission was granted previously, tapping Scan goes straight to ScanScreen (no sheet).

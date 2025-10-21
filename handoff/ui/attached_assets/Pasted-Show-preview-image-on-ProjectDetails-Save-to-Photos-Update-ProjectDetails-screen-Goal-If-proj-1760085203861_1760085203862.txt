@@ -1,0 +1,45 @@
+Show preview image on ProjectDetails + “Save to Photos”
+Update ProjectDetails screen:
+
+Goal: If project.preview_url exists, use it in the hero card and add a “Save preview” button.
+
+Changes:
+1) In ProjectDetails.tsx:
+   - Expect project.preview_url (string | null).
+   - If present, render <Image source={{ uri: project.preview_url }} /> in the top hero.
+   - Under the image, add a small “Save to Photos” button:
+       onPress -> download the image to cache and save to media library (ask permission if needed). Show toast/alert on success or failure.
+   - If preview_url is absent, keep existing photo/placeholder.
+
+2) Utility:
+   - Add saveImageToPhotos(uri: string) in app/lib/media.ts
+     • Downloads with fetch -> FileSystem.writeAsStringAsync(base64 or use FileSystem.downloadAsync).
+     • Uses MediaLibrary to create asset & album “DIY Genie”.
+     • Handle iOS/Android permissions (askIfNeeded).
+
+3) UI polish:
+   - Show a tiny “Preview” badge on the image (top-right) when preview_url exists.
+
+No other pages should change.
+
+2) Hide/disable preview CTA after used + handle 409 nicely
+Polish preview request UX:
+
+1) In NewProject.tsx (and anywhere else you can trigger preview):
+   - If project has preview_url OR we’ve already received 409 { error: 'preview_already_used' } for this projectId,
+     • disable the “Generate AI Preview” / “Build with AI Preview” button,
+     • change its label to “Preview ready”.
+
+2) When POST /projects/:id/preview returns 409 with error=preview_already_used:
+   - Do NOT show the red console error.
+   - Show a lightweight toast/alert: “Preview already generated—opening your project.”
+   - Immediately navigate to ProjectDetails(projectId).
+   - Ensure form remains disabled/cleared per current logic.
+
+3) Logging:
+   - Replace console.error with console.log('[preview] already generated') on 409.
+
+Keep all other behavior the same.
+
+
+If anything still feels off after this (e.g., form not cleared or buttons clickable during build), ping me with the latest console lines and I’ll give you a micro-patch.

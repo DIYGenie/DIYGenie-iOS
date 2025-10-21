@@ -1,0 +1,77 @@
+Goal: Remove the dev warning by making all “Back” actions safe. When there’s no screen to return to, fall back to the Projects tab (via parent navigator id "root-tabs"). Scope this step to ProjectDetails only.
+
+Constraints:
+
+Do not change route names beyond what’s shown.
+
+Keep current visuals/theme; minimal UI changes.
+
+TypeScript-safe.
+
+THEME
+
+// NEW FILE: app/lib/useSafeBack.ts
+import { useCallback } from 'react';
+import { useNavigation } from '@react-navigation/native';
+
+/**
+ * Returns a back handler that:
+ * 1) goBack() if possible
+ * 2) otherwise navigates to the Projects tab via parent id "root-tabs"
+ */
+export function useSafeBack() {
+  const navigation = useNavigation();
+
+  return useCallback(() => {
+    // @ts-ignore canGoBack exists on v6
+    if (navigation.canGoBack && navigation.canGoBack()) {
+      // @ts-ignore goBack exists on v6
+      navigation.goBack();
+      return;
+    }
+    // Try sending the user to the Projects tab
+    // Assumes your tab navigator has id="root-tabs" and a tab named "Projects"
+    // @ts-ignore getParent is available on v6
+    const parent = navigation.getParent?.('root-tabs');
+    if (parent) {
+      // @ts-ignore navigate signature is permissive at runtime
+      parent.navigate('Projects');
+      return;
+    }
+    // Last resort: no-op
+  }, [navigation]);
+}
+
+
+THEME
+
+// EDIT FILE: app/screens/ProjectDetails.tsx
+// Add a safe back button that uses useSafeBack()
+
+import React, { useLayoutEffect } from 'react';
+import { Pressable, Text } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { useSafeBack } from '../lib/useSafeBack';
+
+// ⬇️ ensure this file exports the default ProjectDetails component as before
+export default function ProjectDetails(props) {
+  const navigation = useNavigation();
+  const safeBack = useSafeBack();
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <Pressable
+          onPress={safeBack}
+          style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}
+          hitSlop={8}
+        >
+          <Text style={{ fontWeight: '600' }}>Back</Text>
+        </Pressable>
+      ),
+    });
+  }, [navigation, safeBack]);
+
+  // ... rest of your component is unchanged
+  // return ( ...existing UI... )
+}

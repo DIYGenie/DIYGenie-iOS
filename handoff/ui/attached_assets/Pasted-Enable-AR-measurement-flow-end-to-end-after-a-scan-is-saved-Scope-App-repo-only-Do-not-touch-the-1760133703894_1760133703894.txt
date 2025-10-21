@@ -1,0 +1,113 @@
+Enable AR measurement flow end-to-end after a scan is saved.
+
+Scope
+
+App repo only. Do not touch the webhooks project or Supabase schema.
+
+iOS target (Expo Go/dev build). Keep AR camera stub; use ROI box we already have.
+
+Keep current UI/flows unchanged except for a small badge on the “Saved scan (AR)” card.
+
+What to implement
+
+Feature flag
+
+Add FEATURE_MEASURE = true in a central config (e.g., app/lib/config.ts).
+
+Gate all measurement calls behind this flag.
+
+Client API helpers (app/lib/api.ts)
+
+Add:
+
+startMeasurement(projectId: string, scanId: string, roi?: {x:number;y:number;w:number;h:number})
+
+POST /api/projects/:projectId/scans/:scanId/measure with JSON { roi } (omit if undefined).
+
+getMeasurementStatus(projectId: string, scanId: string)
+
+GET /api/projects/:projectId/scans/:scanId/measure/status
+
+Reuse existing api() helper for base URL, auth headers, and error logging.
+
+Return typed shapes:
+
+type MeasureStart = { ok: boolean; status?: 'pending'|'done' };
+type MeasureStatus = { ok: boolean; status: 'pending'|'done'; result?: { px_per_in:number; width_in:number; height_in:number } };
+
+
+Kick off after save (app/lib/scanEvents.ts)
+
+After saveArScan() succeeds, if FEATURE_MEASURE:
+
+Call startMeasurement(projectId, scanId, roi?).
+
+Fire-and-forget a polling loop (see 4) OR return a promise to caller; choose the cleaner approach given our existing patterns.
+
+Add console logs:
+
+[measure] start { projectId, scanId }
+
+[measure] poll …
+
+[measure] done { width_in, height_in }
+
+[measure] failed …
+
+Polling helper (app/lib/scanEvents.ts or app/lib/api.ts)
+
+pollMeasurementReady(projectId, scanId, { intervalMs=2000, timeoutMs=60000 })
+
+Loop getMeasurementStatus() until status==='done' or timeout.
+
+Resolve { width_in, height_in, px_per_in } on success; reject on timeout.
+
+Treat HTTP 409 { error: "not_ready" } as pending; any other non-OK → abort and log.
+
+Surface in UI (app/screens/NewProject.tsx)
+
+Our saved scan card already renders. Extend its state to include optional measure:
+
+type LastScan = { scanId: string; source: 'ar'|'upload'; imageUrl?: string; roi?: {...};
+  measure?: { width_in:number; height_in:number; px_per_in:number };
+  measuring?: boolean;
+};
+
+
+When starting measurement, set measuring=true; when done, set measure={...} and measuring=false.
+
+In the “Saved scan (AR)” card:
+
+If measuring, show a subtle inline spinner + “Measuring…”.
+
+If measure exists, show a small pill badge under the title:
+
+Measurements • {width_in}" × {height_in}"
+
+Keep layout compact; do not change other buttons.
+
+Resilience
+
+If startMeasurement fails, swallow error (Toast/Alert not required), log, and keep card without badge.
+
+If polling times out (60s), stop, log [measure] timeout, and keep UI usable.
+
+Type safety & lint
+
+Add/adjust types as needed. No build or ESLint errors.
+
+QA checklist
+
+Logs should resemble:
+
+[scan] saved { scanId: '...' }
+
+[measure] start { projectId:'…', scanId:'…' }
+
+[measure] poll …
+
+[measure] done { width_in:48, height_in:30, px_per_in:15 }
+
+After saving a scan, card shows “Measuring…” then the badge with inches.
+
+If FEATURE_MEASURE=false, nothing about measurement appears.

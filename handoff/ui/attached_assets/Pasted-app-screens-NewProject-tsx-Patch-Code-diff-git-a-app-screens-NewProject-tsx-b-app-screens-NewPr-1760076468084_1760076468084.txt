@@ -1,0 +1,107 @@
+app/screens/NewProject.tsx
+
+Patch / Code
+diff --git a/app/screens/NewProject.tsx b/app/screens/NewProject.tsx
+@@
+-import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
++import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
+@@
+-import { loadNewProjectDraft, saveNewProjectDraft, clearNewProjectDraft, NewProjectDraft } from '../lib/draft';
++import { loadNewProjectDraft, saveNewProjectDraft, clearNewProjectDraft, NewProjectDraft } from '../lib/draft';
+@@
+ // local state (your existing state vars may differ)
+-const [title, setTitle] = useState('');
+-const [description, setDescription] = useState('');
+-const [budget, setBudget] = useState('');
+-const [skillLevel, setSkillLevel] = useState('');
++const [title, setTitle] = useState('');
++const [description, setDescription] = useState('');
++const [budget, setBudget] = useState('');
++const [skillLevel, setSkillLevel] = useState('');
+ const [draftId, setDraftId] = useState<string|null>(null);
+@@
+ // one-time hydration on mount
+ useEffect(() => {
+   let alive = true;
+   (async () => {
+     if (hydratedRef.current) return; // Only once
+     const stored = await loadNewProjectDraft();
+     if (!alive) return;
+     if (stored && Object.keys(stored).length > 0) {
++      console.log('[draft] mount→hydrate', stored);
+       if (stored.name) setTitle(stored.name);
+       if (stored.description) setDescription(stored.description);
+       if (stored.budget) setBudget(String(stored.budget));
+       if (stored.skill_level) setSkillLevel(stored.skill_level);
+       if (stored.projectId) setDraftId(stored.projectId);
+     }
+     hydratedRef.current = true;
+   })();
+   return () => { alive = false; };
+ }, []);
+@@
+ // debounced save whenever fields change
+ useEffect(() => {
+   if (!hydratedRef.current) return; // Don't save before hydration
+   if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+   saveTimerRef.current = setTimeout(() => {
+     saveNewProjectDraft({
+       projectId: draftId,
+       name: title,
+       description,
+-      budget,
++      budget: budget,
+       skill_level: skillLevel,
+     });
++    console.log('[draft] autosave', { name: title, hasDesc: !!description, budget, skill_level: skillLevel, projectId: draftId });
+   }, 250);
+   return () => {
+     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+   };
+ }, [title, description, budget, skillLevel, draftId]);
+@@
+ // When Scan returns with a savedScan param, merge it into UI state AND force re-hydrate from storage
+ useFocusEffect(
+   useCallback(() => {
+     const paramScan = route.params?.savedScan;
+     if (paramScan) {
+       setLastScan(paramScan);
+       lastScanRef.current = paramScan;
+       setLastScanEphemeral(paramScan);
++      // Force a single-shot re-hydrate of draft fields from AsyncStorage in case the screen remounted blank
++      (async () => {
++        try {
++          const stored = await loadNewProjectDraft();
++          console.log('[draft] focus→rehydrate after scan', stored);
++          if (stored) {
++            if (stored.name) setTitle(stored.name);
++            if (stored.description) setDescription(stored.description);
++            if (stored.budget != null) setBudget(String(stored.budget));
++            if (stored.skill_level) setSkillLevel(stored.skill_level);
++            if (stored.projectId) setDraftId(stored.projectId);
++          }
++        } catch (e) {
++          console.log('[draft] rehydrate error', e);
++        }
++      })();
+       // IMPORTANT: clear param so revisits don't re-run
+       navigation.setParams({ savedScan: undefined });
+     }
+     return () => {};
+   }, [route.params?.savedScan, navigation])
+ );
+@@
+ // Clear form handler should also clear storage
+ function resetForm() {
+   setDraftId(null);
+   setTitle('');
+   setDescription('');
+   setBudget('');
+   setSkillLevel('');
+   setPhotoUri(null);
+   setLastScan(null);
+-  clearDraft();
++  clearDraft();
+   clearNewProjectDraft(); // wipe persisted draft too
++  console.log('[draft] cleared');
+ }

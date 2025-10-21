@@ -1,0 +1,81 @@
+Goal: Fix “Objects are not valid as a React child” coming from SectionCard because icon is being passed an object instead of a JSX element. Update usages in ProjectDetails.tsx and add a small guard in SectionCard.tsx.
+
+Edits:
+
+app/screens/ProjectDetails.tsx
+
+Ensure these imports exist (add if missing):
+
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { brand } from '../../theme/colors';
+
+
+Replace every SectionCard call that passes icon={...} with a JSX element. Specifically:
+
+Overview
+
+<SectionCard
+  icon={<Ionicons name="information-circle-outline" size={16} color={brand.purple} />}
+  title="Overview"
+  summary="Project summary"
+>
+
+
+Materials
+
+<SectionCard
+  icon={<Ionicons name="cube-outline" size={16} color={brand.purple} />}
+  title="Materials"
+  summary="All required materials"
+>
+
+
+Tools
+
+<SectionCard
+  icon={<Ionicons name="construct-outline" size={16} color={brand.purple} />}
+  title="Tools"
+  summary="Required and optional tools"
+>
+
+
+Dimensions
+
+<SectionCard
+  icon={<MaterialCommunityIcons name="ruler" size={16} color={brand.purple} />}
+  title="Dimensions"
+  summary="Room and surface measurements"
+>
+
+
+If there’s a Cut List card in this file, use:
+
+<SectionCard
+  icon={<MaterialCommunityIcons name="content-cut" size={16} color={brand.purple} />}
+  title="Cut List"
+  summary="Boards and dimensions"
+>
+
+
+app/components/SectionCard.tsx
+
+In the props, make sure icon?: React.ReactNode; summary?: string;
+
+Right before rendering the icon, add a guard:
+
+const safeIcon = React.isValidElement(icon) ? icon : null;
+
+
+Render safeIcon instead of icon, and guard summary so it only renders when it’s a string:
+
+{safeIcon ? <View style={styles.icon}>{safeIcon}</View> : null}
+{typeof summary === 'string' ? (
+  <Text style={styles.summary}>{summary}</Text>
+) : null}
+
+
+Validation:
+
+Build the app. Navigate to Project Details and ensure no red screen appears. Confirm all section headers render with icons and the page scrolls normally.
+
+Do not change any other styling or layout. Keep all other logic intact.

@@ -1,0 +1,111 @@
+Goal: On ProjectDetails, show a clean 6-card summary grid (Overview, Steps, Materials, Tools, Cuts, Time & Cost). Tapping any card opens DetailedInstructions. Remove the old per-card sheets, build mode bar, and checkboxes from ProjectDetails.
+
+Files to touch
+
+app/components/PlanSummaryCards.tsx (new)
+
+app/screens/ProjectDetails.tsx (edit: import + render, remove old sheet UI)
+
+Implement
+
+Create app/components/PlanSummaryCards.tsx
+
+import React from 'react';
+import { View, Text, Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import type { Plan } from '../lib/plan';
+
+type Props = { plan: Plan; onOpenDetails?: () => void };
+
+const Card = ({
+  title, subtitle, icon, onPress,
+}: {
+  title: string; subtitle?: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void;
+}) => (
+  <Pressable
+    onPress={onPress}
+    style={{ flex: 1, backgroundColor: '#F5F3FF', borderRadius: 16, padding: 14, margin: 6 }}
+  >
+    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+      <Ionicons name={icon} size={18} color="#6D28D9" />
+      <Text style={{ marginLeft: 8, fontWeight: '700', color: '#111827' }}>{title}</Text>
+    </View>
+    {!!subtitle && <Text style={{ color: '#6B7280', fontSize: 13 }}>{subtitle}</Text>}
+  </Pressable>
+);
+
+export default function PlanSummaryCards({ plan, onOpenDetails }: Props) {
+  const open = onOpenDetails ?? (() => {});
+  const steps = plan.steps?.length ?? 0;
+  const materials = plan.materials?.length ?? 0;
+  const tools = plan.tools?.length ?? 0;
+  const cuts = plan.cuts?.length ?? 0;
+  const timeStr = plan.time?.total_hours ? `${plan.time.total_hours} hrs` : undefined;
+  const costStr = plan.cost?.estimated ? `$${plan.cost.estimated}` : undefined;
+
+  return (
+    <View style={{ marginTop: 16 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 }}>
+        <Card title="Overview"  subtitle={plan.overview?.slice(0, 80) || 'What you’ll build'} icon="information-circle-outline" onPress={open} />
+        <Card title="Steps"     subtitle={`${steps} step${steps===1?'':'s'}`} icon="list-outline" onPress={open} />
+        <Card title="Materials" subtitle={`${materials} item${materials===1?'':'s'}`} icon="cube-outline" onPress={open} />
+        <Card title="Tools"     subtitle={`${tools} tool${tools===1?'':'s'}`} icon="hammer-outline" onPress={open} />
+        <Card title="Cuts"      subtitle={`${cuts} cut${cuts===1?'':'s'}`} icon="cut-outline" onPress={open} />
+        <Card title="Time & Cost" subtitle={[timeStr, costStr].filter(Boolean).join(' · ') || 'Estimates'} icon="time-outline" onPress={open} />
+      </View>
+    </View>
+  );
+}
+
+
+Edit app/screens/ProjectDetails.tsx
+
+Remove any imports/usages of per-card sheet components, build-mode bar, and checkboxes on this screen.
+
+Ensure we have (or keep) planObj from parsed markdown.
+
+Render the summary grid and wire click → DetailedInstructions.
+
+// ADD near top:
+import PlanSummaryCards from '../components/PlanSummaryCards';
+import { Plan, parsePlanMarkdown, fetchProjectPlanMarkdown } from '../lib/plan'; // keep if already present
+
+// ENSURE state includes:
+const [planObj, setPlanObj] = useState<Plan | null>(null);
+
+// In your load() success path, when project.status === 'ready', fetch & parse plan markdown:
+if (p?.status === 'ready') {
+  try {
+    const md = await fetchProjectPlanMarkdown(projectId);
+    const parsed = parsePlanMarkdown(md || '');
+    setPlanObj(parsed);
+  } catch {}
+} else {
+  setPlanObj(null);
+}
+
+// In the JSX, AFTER the hero image/placeholder, render the grid when planObj exists:
+{!!planObj && (
+  <PlanSummaryCards
+    plan={planObj}
+    onOpenDetails={() =>
+      navigation.navigate('Projects', {
+        screen: 'DetailedInstructions',
+        params: { id: projectId },
+      } as any)
+    }
+  />
+)}
+
+
+Keep all existing polling/refresh logic that populates planObj. Just remove the old in-screen sheets/build-mode UI so the page is lean: hero image → summary grid → “Open full guide”.
+
+QA
+
+Build plan so status is ready, open Project Details → confirm 6 cards show.
+
+Tap any card → goes to DetailedInstructions.
+
+Back from DetailedInstructions → returns to Project Details as before.
+
+Pull-to-refresh still works; cards remain visib

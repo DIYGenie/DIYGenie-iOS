@@ -1,0 +1,40 @@
+You are working in the DIYGenieTheme front-end (Expo/React Native Web). Goal: wire the New Project + Projects screens to the backend exactly as specced, with clean UX and no manual IDs.
+
+Back-end contract (already implemented by the webhooks project):
+- POST /api/projects -> { ok:true, id, ... }
+- POST /api/projects/:id/image -> accepts multipart 'image' OR JSON { direct_url }, returns { ok:true }
+- POST /api/projects/:id/preview -> returns { ok:true } immediately (no auto-start elsewhere)
+- POST /api/projects/:id/build-without-preview -> returns { ok:true } immediately
+- GET  /api/projects?user_id=... -> items: [{ id, name, status, input_image_url, preview_url }]
+- GET  /me/entitlements/:userId -> { ok, tier, quota, remaining, previewAllowed }
+
+What to implement/verify
+1) Button gating & no auto-actions
+   - “Upload Photo” only sets the image; it does NOT start preview or plan.
+   - “Generate AI Preview” is enabled only if: previewAllowed=true, image uploaded, and remaining>0.
+   - “Build Plan Without Preview” is enabled only if: description≥10, budget selected, skill selected, remaining>0.
+2) Actions
+   - On “Generate AI Preview”: call POST /api/projects/:id/preview, show a toast “Preview requested”, navigate back to Projects. No local spinners beyond a short success indicator.
+   - On “Build Plan Without Preview”: call POST /api/projects/:id/build-without-preview, toast “Plan requested”, navigate back to Projects.
+3) Projects list
+   - Poll GET /api/projects?user_id=... every 2–3s while any item is in progress; show badges:
+     • draft → “Awaiting photo” (if no image)
+     • preview_requested → “Preview requested”
+     • preview_ready → show thumbnail using preview_url
+     • plan_ready → show “Plan ready”
+   - Never show a global yellow “CORS/BASE_URL” banner if the last /health check succeeded.
+4) Error UX
+   - If any POST returns { ok:false, error }, surface a friendly toast with the message and keep the user on the same screen (no infinite spinner). Never rely on HTML error responses.
+5) Zero manual IDs
+   - Use the app’s existing user lookup to fetch user_id; do not ask the user to paste IDs.
+6) App Tests
+   - Add an automated UI test (App Testing) that:
+     a) Creates a project (POST /api/projects) through the existing form
+     b) Uploads the image using direct_url = https://qnevigmqyuxfzyczmctc.supabase.co/storage/v1/object/public/uploads/room-test.jpeg (so tests work without the native picker)
+     c) If entitlements.previewAllowed is true, tap “Generate AI Preview” and verify the item flips to preview_ready within ~5–6s in the list. If not allowed, verify the button remains disabled with the “Upgrade” copy visible.
+     d) Tap “Build Plan Without Preview” and verify status flips to plan_ready within ~2s in the list.
+
+Please:
+- Keep ImagePicker code version-safe but not required for the App Test (use direct_url path in tests)
+- Do not change branding or navigation structure beyond what’s needed for the UX above
+- After implementing, run App Testing and print a concise pass/fail summary to the console. Fix issues until green.

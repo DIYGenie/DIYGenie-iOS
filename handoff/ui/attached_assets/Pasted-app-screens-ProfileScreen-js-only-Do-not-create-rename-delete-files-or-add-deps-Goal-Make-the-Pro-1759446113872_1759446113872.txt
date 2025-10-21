@@ -1,0 +1,149 @@
+app/screens/ProfileScreen.js only. Do not create/rename/delete files or add deps.
+
+Goal
+Make the Profile actions work end-to-end:
+
+Entitlements: GET ${EXPO_PUBLIC_BASE_URL}/me/entitlements?user_id=<uuid>
+(Fallback if 404 → GET ${BASE}/me/entitlements/<uuid>)
+
+Checkout: POST ${BASE}/api/billing/checkout with { tier, user_id } → { url }
+
+Portal: POST ${BASE}/api/billing/portal with { user_id } → { url } or 501
+
+Dev fallback: POST ${BASE}/api/billing/upgrade with { tier, user_id } → { ok:true }
+
+Implementation (inside app/screens/ProfileScreen.js)
+
+Add constants at top (near imports):
+
+const BASE = process.env.EXPO_PUBLIC_BASE_URL || 'http://localhost:5000';
+const ENDPOINTS = {
+  entitlementsShort: `${BASE}/me/entitlements`,                 // + ?user_id=<uuid>
+  entitlementsWithId: (id) => `${BASE}/me/entitlements/${id}`,  // fallback
+  checkout: `${BASE}/api/billing/checkout`,
+  portal:   `${BASE}/api/billing/portal`,
+  devUpgrade: `${BASE}/api/billing/upgrade`,
+};
+// Reuse your existing user id if available; otherwise keep a dev fallback:
+const CURRENT_USER_ID = globalThis.__DEV_USER_ID__ || '00000000-0000-0000-0000-000000000001';
+
+
+Add helpers in this file (no new modules):
+
+const api = async (url, opts = {}) => {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 12000);
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    signal: controller.signal,
+    ...opts,
+  });
+  clearTimeout(t);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) throw new Error('Non-JSON response');
+  return res.json();
+};
+
+const openExternal = async (url) => {
+  try {
+    if (Platform.OS === 'web') { window.open(url, '_blank', 'noopener,noreferrer'); return; }
+    const can = await Linking.canOpenURL(url);
+    if (!can) throw new Error('Cannot open URL');
+    await Linking.openURL(url);
+  } catch (e) {
+    Alert.alert('Billing', 'Could not open link. Please try again.');
+  }
+};
+
+
+Wire data funcs (inside the component):
+
+const [busy, setBusy] = React.useState(false);
+const [ents, setEnts] = React.useState({ tier: 'free', remaining: 0, previewAllowed: false });
+
+const getEntitlements = React.useCallback(async () => {
+  try {
+    const data = await api(`${ENDPOINTS.entitlementsShort}?user_id=${encodeURIComponent(CURRENT_USER_ID)}`);
+    setEnts({ tier: data.tier, remaining: data.remaining, previewAllowed: !!data.previewAllowed });
+  } catch (err) {
+    if (String(err.message).startsWith('404')) {
+      try {
+        const data = await api(ENDPOINTS.entitlementsWithId(CURRENT_USER_ID));
+        setEnts({ tier: data.tier, remaining: data.remaining, previewAllowed: !!data.previewAllowed });
+        return;
+      } catch (_) {}
+    }
+    Alert.alert('Billing', 'Could not load your plan. Use Sync Plan to retry.');
+  }
+}, []);
+
+const openPortal = async () => {
+  setBusy(true);
+  try {
+    const { url } = await api(ENDPOINTS.portal, { method: 'POST', body: JSON.stringify({ user_id: CURRENT_USER_ID }) });
+    await openExternal(url);
+  } catch (e) {
+    if (String(e.message).startsWith('501')) {
+      Alert.alert('Billing', 'Portal not available for this user yet.');
+    } else {
+      Alert.alert('Billing', 'Portal is unavailable. Try again later.');
+    }
+  } finally { setBusy(false); }
+};
+
+const openCheckout = async (tier) => {
+  setBusy(true);
+  try {
+    const { url } = await api(ENDPOINTS.checkout, { method: 'POST', body: JSON.stringify({ tier, user_id: CURRENT_USER_ID }) });
+    await openExternal(url);
+  } catch (e) {
+    if (String(e.message).startsWith('404') || String(e.message).startsWith('501')) {
+      try {
+        await api(ENDPOINTS.devUpgrade, { method: 'POST', body: JSON.stringify({ tier, user_id: CURRENT_USER_ID }) });
+        Alert.alert('Billing', `Upgraded to ${tier} in dev mode. Syncing…`);
+        await getEntitlements();
+      } catch {
+        Alert.alert('Billing', 'Upgrade fallback failed. Use Sync Plan or try again.');
+      }
+    } else {
+      Alert.alert('Billing', 'Checkout is unavailable. Try again later.');
+    }
+  } finally { setBusy(false); }
+};
+
+
+Hook lifecycle (mount + foreground refresh):
+
+React.useEffect(() => { getEntitlements(); }, [getEntitlements]);
+React.useEffect(() => {
+  const sub = AppState.addEventListener('change', (s) => { if (s === 'active') getEntitlements(); });
+  return () => sub.remove();
+}, [getEntitlements]);
+
+
+Bind UI buttons in this file (no new components):
+
+“Manage” → onPress={openPortal}
+
+“Upgrade Plan” → toggles your existing inline picker
+
+“Casual — 5 projects/mo + previews” → onPress={() => openCheckout('casual')}
+
+“Pro — 25 projects/mo + previews” → onPress={() => openCheckout('pro')}
+
+“Sync Plan” → onPress={getEntitlements}
+
+While busy → disable these buttons and show tiny inline “Syncing…” text you already have.
+
+Acceptance
+
+Upgrade → choose Casual/Pro → Stripe Checkout opens in a new tab (web) / browser (native); if routes not ready, dev fallback upgrades and the card refreshes.
+
+Manage → opens Portal or shows a clear 501 message.
+
+Sync Plan and foreground return refresh the plan.
+
+No new deps/files; bottom tabs fine; no infinite spinners.
+
+Make only these edits in app/screens/ProfileScreen.js. Do not touch other files.

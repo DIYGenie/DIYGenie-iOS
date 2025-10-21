@@ -1,0 +1,72 @@
+Goal: After tapping Scan, the captured photo should:
+
+Return to NewProject with the image saved,
+
+Show the thumbnail in the existing “Upload Photo” card,
+
+Enable the Generate AI Preview button when either a description ≥10 chars or a room photo exists, and
+
+Show a small toast “Room photo added”.
+
+Steps:
+
+Scan screen → return with URI
+
+Find the camera/scan screen (search: Scan room, expo-camera).
+
+On successful capture, navigation.navigate('NewProject', { photoUri }) (or goBack() + setParams if NewProject is on the stack). Ensure photoUri is a file:// or content:// URI that works with <Image source={{ uri: photoUri }} />.
+
+After navigating, show a toast/snackbar on NewProject like “Room photo added”.
+
+NewProject accepts and stores the image
+
+Locate the New Project screen (search: "Project Description" or "Upload Photo").
+
+Add const { params } = useRoute(); const initPhoto = params?.photoUri ?? null;
+
+Create state: const [roomPhotoUri, setRoomPhotoUri] = useState<string | null>(initPhoto);
+
+If there’s already an “Upload Photo” picker, make it display the image when roomPhotoUri is set:
+
+{roomPhotoUri ? (
+  <Image source={{ uri: roomPhotoUri }} style={{ width: '100%', height: 180, borderRadius: 16 }} />
+) : (
+  /* existing empty-state upload UI */
+)}
+
+
+Also keep your existing “Upload Photo” functionality; when the user uploads, call setRoomPhotoUri(uploadedUri).
+
+Enable/disable the primary CTA
+
+Find the Generate AI Preview (or equivalent) button logic.
+
+Compute:
+
+const descriptionOk = (description?.trim()?.length ?? 0) >= 10;
+const canGenerate = descriptionOk || !!roomPhotoUri;
+
+
+Bind disabled={!canGenerate} and apply the enabled purple style when canGenerate is true.
+
+UI polish & toast
+
+On mount of NewProject, if params?.photoUri exists and !roomPhotoUri, setRoomPhotoUri(params.photoUri) and show a toast/snackbar “Room photo added”.
+
+Optional: put a tiny “From scan” chip above the photo when roomPhotoUri came from the scanner.
+
+No breaking changes
+
+Do not remove the Upload Photo path.
+
+Keep web preview behavior unchanged. The “Scan” flow only needs to work on device.
+
+Acceptance:
+
+Scan → capture → returns to NewProject, thumbnail shows, toast displays.
+
+If I only scan (no description), the big CTA is enabled.
+
+If I remove the photo and have <10 chars description, CTA is disabled.
+
+Upload still works and also enables CTA.

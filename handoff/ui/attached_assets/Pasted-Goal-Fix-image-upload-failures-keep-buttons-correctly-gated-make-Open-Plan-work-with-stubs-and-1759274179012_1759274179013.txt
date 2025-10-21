@@ -1,0 +1,35 @@
+Goal: Fix image upload failures, keep buttons correctly gated, make “Open Plan” work with stubs, and unify the Project Details styling with the rest of the app.
+
+You are working in the DIYGenieTheme app. Do NOT change BASE_URL or any env.
+
+Objectives (keep stubs; no paid APIs):
+1) Image upload (Expo web + native) must succeed against POST /api/projects/:id/image.
+   - Use FormData key 'image' (NOT 'file').
+   - Name file 'room.jpg' and set type 'image/jpeg'.
+   - If the picked asset lacks a file name or blob on web, fetch the asset.uri and convert to Blob before appending to FormData.
+   - Fallback: support `direct_url` param by calling uploadRoomPhoto(projectId, undefined, testUrl) but only when a real asset fails; surface backend error text in a toast.
+
+2) Buttons & flow (NO auto-actions):
+   - Generate AI Preview: enabled only when {previewAllowed=true, remaining>0, image uploaded, project exists}.
+   - Build Plan Without Preview: enabled only when description≥10, budget + skill selected, remaining>0, project exists.
+   - After tapping either button, navigate immediately to Projects list and rely on polling; no infinite spinners.
+
+3) Plan open (stub):
+   - On Project Details, tapping “Open Plan” must request GET /api/projects/:id/plan.
+   - If status is plan_ready, show a simple PlanScreen rendering markdown or plain text from {plan_text} (stub).
+   - If plan isn’t ready, show a toast “Plan not ready yet” (no crash).
+
+4) Styling consistency:
+   - Make Project Details screen use the same header/title/badge style as Projects list (remove the mismatched purple fill and use the existing app gradient/brand tokens). Keep layout spacing consistent with the list.
+
+5) No manual IDs:
+   - Keep using the current useUser hook; all POSTs must include { user_id } automatically.
+
+Acceptance tests to run now:
+A. Pick a photo → POST /api/projects/:id/image returns 200 and the UI toasts success.
+B. With free tier (no preview), “Generate AI Preview” disabled with “Upgrade” hint; “Build Plan Without Preview” enabled when form valid.
+C. Tapping Build Plan Without Preview → POST /api/projects/:id/build-without-preview returns {ok:true}; navigate to Projects; item shows “In progress” then flips via polling.
+D. Project Details → “Open Plan” works when plan_ready (stub), otherwise shows friendly toast.
+E. No infinite spinners; all errors show toasts with server message.
+
+Make only the minimal code changes to pass A–E. Keep network console logs for the image request (method, status, error text). Provide a brief summary of changes and which tests passed.

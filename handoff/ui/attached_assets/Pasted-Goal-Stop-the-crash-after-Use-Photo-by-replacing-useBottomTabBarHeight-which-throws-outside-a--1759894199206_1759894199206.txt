@@ -1,0 +1,92 @@
+Goal: Stop the crash after “Use Photo” by replacing useBottomTabBarHeight() (which throws outside a Tab navigator) with a safe hook that falls back to the safe-area inset when no Tab exists.
+
+Tasks:
+
+Create file src/hooks/useOptionalTabBarHeight.ts with exactly this content:
+
+import * as React from 'react';
+import { BottomTabBarHeightContext } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+/**
+ * Safe tab-bar height:
+ * - Inside a Tab navigator → the real height
+ * - Outside a Tab navigator → use bottom safe-area (or 0)
+ */
+export default function useOptionalTabBarHeight() {
+  // Read the context directly; undefined outside tabs
+  // @ts-ignore - internal context is safe to read
+  const ctx: number | undefined = React.useContext(BottomTabBarHeightContext);
+  const { bottom } = useSafeAreaInsets();
+  return typeof ctx === 'number' ? ctx : (bottom ?? 0);
+}
+
+
+Replace imports & calls project-wide:
+
+Find all imports:
+
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+
+
+Remove them.
+
+Add this import instead (prefer alias if present):
+
+If tsconfig.json has "paths": {"@/*": ["src/*"]} then:
+
+import useOptionalTabBarHeight from '@/hooks/useOptionalTabBarHeight';
+
+
+Otherwise, compute the correct relative path from each file to src/hooks/useOptionalTabBarHeight.
+
+Replace each call to:
+
+const tabBarHeight = useBottomTabBarHeight();
+
+
+with:
+
+const tabBarHeight = useOptionalTabBarHeight();
+
+
+Also replace inline uses like paddingBottom: useBottomTabBarHeight() with paddingBottom: useOptionalTabBarHeight().
+
+Type-check & format
+
+Run TypeScript check (no emit) and fix any import paths if needed:
+
+npm run typecheck --silent || npx tsc --noEmit
+
+
+Run formatter/linter if available:
+
+npm run lint --silent || true
+npm run format --silent || true
+
+
+Run the app
+
+If Metro is already running, just trigger a reload.
+
+Otherwise start it with the existing tunnel command you’ve been using (don’t change ports).
+
+Acceptance Criteria:
+
+New file src/hooks/useOptionalTabBarHeight.ts exists with the code above.
+
+There are no remaining imports of useBottomTabBarHeight anywhere in the repo.
+
+All previous references now use useOptionalTabBarHeight.
+
+TypeScript passes with no import-path errors.
+
+App loads, taking a photo and tapping Use Photo no longer crashes with “Couldn’t find the bottom tab bar height”.
+
+Notes:
+
+Do not change any layout besides the hook usage.
+
+If a file cannot resolve @/hooks/..., fall back to the correct relative path for that file.
+
+Post a list of modified files and a short summary when finished.

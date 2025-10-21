@@ -1,0 +1,49 @@
+Hook up “Build + Visual AI Preview” to live preview endpoints.
+
+Changes:
+
+1) app/lib/api.ts
+- add:
+  export async function startPreview(projectId: string, roi?: any) {
+    const u = await supabase.auth.getSession();
+    const user_id = u?.data?.session?.user?.id;
+    const res = await fetch(`${base}/api/projects/${projectId}/preview`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ user_id, roi })
+    });
+    return { ok: res.ok, status: res.status, body: await res.json() };
+  }
+  export async function pollPreviewReady(projectId: string, timeoutMs=60000) {
+    const u = await supabase.auth.getSession();
+    const user_id = u?.data?.session?.user?.id;
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      const r = await fetch(`${base}/api/projects/${projectId}/preview/status?user_id=${user_id}`);
+      if (r.status === 200) return await r.json(); // { ok, status, preview_url, preview_meta }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    throw new Error('PREVIEW_TIMEOUT');
+  }
+
+2) app/screens/NewProject.tsx
+- In “Build + Visual AI Preview” handler:
+  • Disable inputs and show the purple in-place loading banner (reuse isBuilding state, label it “Generating visual preview…”).
+  • Call startPreview(draftId, lastScan?.roi).
+  • Then pollPreviewReady(draftId); on success, navigate to ProjectDetails with { projectId: draftId }.
+  • After navigation, clear the form (reuse existing clearingRef logic).
+
+3) app/screens/ProjectDetails.tsx
+- When loading project, if project.preview_url exists, render it as the header hero image (rounded-xl). Show small “Save to Photos” icon button that saves the image to camera roll (use expo-media-library; ask permission if needed).
+- If missing preview_url, render the existing placeholder.
+
+4) Logging:
+- Add logs:
+  [preview] start { projectId, hasROI: !!roi }
+  [preview] polling…
+  [preview] ready { url: preview_url }
+
+5) No behavior changes to “Build plan only”.
+
+Validate:
+- Tap “Build + Visual AI Preview” → banner appears, inputs disabled.
+- After ~instant stub, ProjectDetails shows image, save button works.

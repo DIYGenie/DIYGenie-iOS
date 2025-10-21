@@ -1,0 +1,117 @@
+Goal: Wire the “How it works” chips on HomeScreen to deep-link into NewProject and focus/scroll to the right section.
+
+Files: app/screens/HomeScreen.*, app/screens/NewProject.tsx
+
+HomeScreen – add chip actions
+
+On press, navigation.navigate('NewProject', { section: 'desc' | 'media' | 'preview' | 'plan' }).
+
+// inside items array (keep your width logic as-is)
+const items = [
+  { id: 1, icon: 'create-outline',   label: 'Describe',             section: 'desc' },
+  { id: 2, icon: 'image-outline',    label: isNarrow ? 'Room scan' : 'Photo / Room scan', section: 'media' },
+  { id: 3, icon: 'sparkles-outline', label: 'AI preview',           section: 'preview' },
+  { id: 4, icon: 'list-outline',     label: 'Build plan',           section: 'plan' },
+];
+
+// when rendering chip
+<TouchableOpacity
+  style={[chipStyles.chip, { width: chipWidth }]}
+  activeOpacity={0.85}
+  onPress={() => navigation.navigate('NewProject' as never, { section: item.section } as never)}
+>
+  ...
+</TouchableOpacity>
+
+
+NewProject.tsx – handle section param
+
+Add refs for ScrollView, description TextInput, Suggestions card, and the action buttons container.
+
+On mount (or when param changes) scroll/focus:
+
+desc → focus description input.
+
+media → call your existing onUploadPhoto() handler.
+
+preview → scroll to Suggestions card.
+
+plan → scroll to the bottom buttons.
+
+// imports
+import { useRoute, useNavigation } from '@react-navigation/native';
+import { ScrollView, TextInput, findNodeHandle } from 'react-native';
+import React from 'react';
+
+// refs near top of component
+const scrollRef = React.useRef<ScrollView>(null);
+const descRef   = React.useRef<TextInput>(null);
+const sugRef    = React.useRef<View>(null);
+const ctaRef    = React.useRef<View>(null);
+
+// read param
+const route = useRoute<any>();
+const section = route.params?.section as 'desc' | 'media' | 'preview' | 'plan' | undefined;
+
+// helper: scroll to a view
+const scrollToView = (ref: React.RefObject<View>) => {
+  ref.current?.measureLayout(
+    findNodeHandle(scrollRef.current) as number,
+    (x, y) => scrollRef.current?.scrollTo({ y: Math.max(y - 24, 0), animated: true }),
+    () => {}
+  );
+};
+
+// after layout, act on section once
+React.useEffect(() => {
+  if (!section) return;
+  const t = setTimeout(() => {
+    switch (section) {
+      case 'desc':
+        descRef.current?.focus();
+        break;
+      case 'media':
+        onUploadPhoto?.(); // use your existing handler
+        break;
+      case 'preview':
+        scrollToView(sugRef);
+        break;
+      case 'plan':
+        scrollToView(ctaRef);
+        break;
+    }
+  }, 250); // wait for layout
+  return () => clearTimeout(t);
+}, [section]);
+
+
+Attach refs where needed
+
+// Wrap your main content
+<ScrollView ref={scrollRef} ...>
+
+// Description input
+<TextInput ref={descRef} ... />
+
+// Suggestions card wrapper
+<View ref={sugRef}>
+  {/* Design Suggestions (beta) card */}
+</View>
+
+// Action buttons container (Generate / Build without preview)
+<View ref={ctaRef}>
+  {/* buttons */}
+</View>
+
+
+Acceptance
+
+Tapping Describe opens New Project and focuses the description field.
+
+Room scan / Photo opens the picker/scan flow immediately.
+
+AI preview scrolls to the Suggestions card.
+
+Build plan scrolls to the action buttons.
+
+No regressions, no new warnings.

@@ -1,0 +1,98 @@
+Goal
+Tighten the top layout and give the Tools section more visual “life,” while keeping all logic intact.
+
+🎯 Edits in app/screens/DetailedInstructions.tsx
+1️⃣ Safety / Permits callouts — smaller & lighter
+
+Reduce height and weight:
+
+padding: 8–10 → 6
+
+fontSize: 16 → 13 for both title and body
+
+borderLeftWidth: 3 → 2
+
+marginVertical: 12 → 8
+
+lineHeight: 18
+
+Change background colors slightly lighter (#FFD9D9 for red, #FFF6CC for yellow).
+
+Round the corners ( borderRadius: 8 ).
+Result → small banner-style ribbons instead of big blocks.
+
+2️⃣ Title / Summary card — reduce size and weight
+
+Title font: 28 → 22, fontWeight: '800' → '700'.
+
+Add lineHeight: 26, marginBottom: 4.
+
+Subtitle (“Step-by-step builder’s guide”) → fontSize: 13, opacity: 0.8.
+
+Card padding: 16 → 12; outer margin: 16 → 12.
+
+Stats row gap → 8.
+
+3️⃣ Tools section — more visual life
+
+Inside the Tools render block:
+
+Add a header row:
+
+<Text style={{
+  fontSize: 18,
+  fontWeight: '700',
+  color: '#3A2EB0',
+  marginBottom: 8
+}}>
+  Tools
+</Text>
+
+
+Wrap required / optional lists in a card:
+
+<View style={{
+  backgroundColor: '#F9F8FF',
+  borderRadius: 12,
+  padding: 12,
+  marginBottom: 12,
+  shadowColor: '#000',
+  shadowOpacity: 0.05,
+  shadowRadius: 4,
+  elevation: 2
+}}>
+  ...
+</View>
+
+
+Each tool name:
+
+<Text style={{ fontSize: 15, color: '#222', marginBottom: 4 }}>• {name}</Text>
+
+
+If both Required and Optional exist, render small sub-headers:
+
+<Text style={{ fontSize: 14, fontWeight: '600', color: '#555', marginTop: 4 }}>
+  Required
+</Text>
+
+4️⃣ Text safety
+
+Keep using <Text> for all strings, no new emoji.
+
+✅ Testing (App Testing = ON)
+
+Reload Expo Go → Projects → Open Detailed Build Plan.
+
+Verify:
+
+Safety/Permits look like small ribbon banners.
+
+Title section smaller and balanced.
+
+Tools section now has colored header + light cards + bullet list.
+
+No red errors.
+
+Deliverable note:
+“Shrunk Safety/Permits callouts; reduced title section size; refreshed Tools section with header, bullets, and soft card styling.”

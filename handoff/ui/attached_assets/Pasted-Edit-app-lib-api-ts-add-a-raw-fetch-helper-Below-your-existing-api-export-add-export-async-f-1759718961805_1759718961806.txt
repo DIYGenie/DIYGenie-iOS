@@ -1,0 +1,78 @@
+Edit app/lib/api.ts – add a raw fetch helper
+
+Below your existing api() export, add:
+
+export async function apiRaw(path: string, init: RequestInit = {}) {
+  const base = process.env.EXPO_PUBLIC_API_BASE || 'http://localhost:3001';
+  const url = path.startsWith('http') ? path : `${base}${path}`;
+
+  const res = await fetch(url, init); // no default headers here
+
+  if (!res.ok) {
+    let payloadText = '<no body>';
+    try { payloadText = await res.clone().text(); } catch {}
+    console.error('API_RAW_ERROR', {
+      url,
+      method: (init.method || 'GET').toUpperCase(),
+      status: res.status,
+      statusText: res.statusText,
+      payloadText,
+    });
+    throw new Error(`API_RAW ${init.method || 'GET'} ${url} failed: ${res.status}`);
+  }
+  // try JSON, fallback to text
+  try { return await res.json(); } catch { return await res.text(); }
+}
+
+
+2) Edit app/screens/NewProject.tsx — 3-step build fallback
+
+In onBuildWithoutPreview(), replace the build section with:
+
+let r: any = null;
+
+// Attempt 1: raw POST with NO headers/body (truly empty)
+try {
+  // @ts-ignore
+  r = await apiRaw(`/api/projects/${id}/build-without-preview`, { method: 'POST' });
+} catch (e) {
+  console.log('[build attempt 1 failed]', e?.message || e);
+}
+
+// Attempt 2: minimal JSON { id }
+if (!r || r.ok === false) {
+  try {
+    r = await api(`/api/projects/${id}/build-without-preview`, {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    });
+  } catch (e) {
+    console.log('[build attempt 2 failed]', e?.message || e);
+  }
+}
+
+// Attempt 3: previous enriched payload (project_id, user_id, goal, budget, skill)
+if (!r || r.ok === false) {
+  const payload = {
+    project_id: id,
+    user_id: USER_ID,
+    goal: (description || '').trim(),
+    budget: (budget || '').trim(),
+    skill: (skillLevel || '').trim(),
+  };
+  r = await api(`/api/projects/${id}/build-without-preview`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+
+Acceptance
+
+Network shows first call with no Content-Type and no body.
+
+If server accepts it: status 200/202 → toast + navigate.
+
+If not, step 2 tries { id }. If still no, step 3 uses enriched JSON.
+
+If any step still returns 422, your console will show which attempt failed.

@@ -1,0 +1,71 @@
+What we want
+
+Scan flow saves ROI and links the scan to the current draft’s project_id.
+
+Then it navigates back to NewProject and shows a small “Saved scan” card.
+
+It does not kick off a plan or open Project Details yet.
+
+Minimal, safe changes
+1) From the scan screen (or RoiModal) → navigate back with the result
+
+After a successful save:
+
+// inside ScanScreen or RoiModal after saving ROI + linking to project_id
+const result = { scanId, imageUrl, source: 'ar' as const };
+
+Toast.show('Scan saved'); // or Alert
+
+// IMPORTANT: go back to NewProject and pass the saved scan
+navigation.navigate('NewProject', { savedScan: result });
+
+
+If your New Project lives under the Tabs, target the tab route:
+
+navigation.navigate('NewProjectTab', {
+  screen: 'NewProject',
+  params: { savedScan: result },
+});
+
+2) In NewProject.tsx consume & clear the param
+
+On mount/focus, read the param, stash it in local state, then clear the param so it doesn’t re-apply later.
+
+import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
+const route = useRoute<any>();
+const navigation = useNavigation<any>();
+const [savedScan, setSavedScan] = useState<null | { scanId: string; imageUrl?: string; source: 'ar' | 'upload' }>(null);
+
+useFocusEffect(
+  useCallback(() => {
+    const paramScan = route.params?.savedScan;
+    if (paramScan) {
+      setSavedScan(paramScan);
+      // clear it so revisits don’t re-run
+      navigation.setParams({ savedScan: undefined });
+    }
+  }, [route.params?.savedScan, navigation])
+);
+
+
+Then render your “Saved scan” card based on savedScan (you already do this for uploads—this just feeds the same UI).
+
+3) Don’t auto-build a plan yet
+
+Make sure neither the scan save nor returning to NewProject triggers the plan job. Only run build when the user taps:
+
+Generate AI Preview (paid)
+
+Build Plan Without Preview (free)
+
+That means any requestBuild() or /api/build call should live only in those button handlers.
+
+4) Logs you should see (success path)
+
+[scan] saveArScan start { projectId: ..., source: 'ar', roi: {...} }
+
+[scan] saved { scanId: '...' }
+
+(optional) [scan] link project_id → OK
+
+On return to NewProject: [newProject] param savedScan detected

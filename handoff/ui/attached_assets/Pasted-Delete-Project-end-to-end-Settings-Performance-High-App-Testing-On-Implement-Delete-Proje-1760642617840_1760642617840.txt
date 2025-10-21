@@ -1,0 +1,66 @@
+Delete Project end-to-end)
+
+Settings: Performance = High. App Testing = On.
+
+Implement “Delete Project” in the React Native app:
+
+Create app/lib/deleteProject.ts that exports deleteProjectDeep(projectId: string): Promise<{ ok: boolean; usedApi: boolean; message?: string }> with this behavior:
+
+Prefer a backend call: DELETE ${API_BASE}/api/projects/${projectId} with same auth headers we use elsewhere. If it returns 200/204, return { ok: true, usedApi: true }.
+
+If the API 404s or route is missing or fails, fallback to Supabase:
+
+Import the existing Supabase client and fetchProjectById.
+
+Get the project; read any media paths on the project record (e.g., image, preview, scan) and delete best-effort from storage:
+
+If path contains /uploads/, delete from bucket ${process.env.EXPO_PUBLIC_UPLOADS_BUCKET}.
+
+If path contains /room-scans/, delete from bucket room-scans.
+
+Guard all deletes with try/catch; log but don’t fail the whole operation.
+
+Delete dependent rows if they exist (e.g., project_media or similar) only if those tables are present; wrap in try/catch so it’s safe when missing.
+
+Finally delete the row in projects where id = projectId. Return { ok: true, usedApi: false } on success.
+
+Add a tiny helper safeLogEvent(name: string, props?: any) that attempts to insert into a lightweight telemetry/event util or table if available, but silently ignores errors. Call it with ('project_deleted', { projectId, usedApi }).
+
+Wire UI: In app/screens/ProjectDetails.tsx:
+
+Add a “Delete Project” action at the bottom in the existing “Settings/More” section; if none exists, add a View with a red Pressable labeled Delete Project and a small caption “This action is permanent.”
+
+On press: show Alert.alert('Delete Project?', 'This action is permanent and cannot be undone.', [{ text: 'Cancel', style:'cancel' }, { text:'Delete', style:'destructive', onPress: doDelete }]).
+
+doDelete:
+
+setDeleting(true);
+const res = await deleteProjectDeep(projectId);
+setDeleting(false);
+if (!res.ok) { Toast.show('Could not delete project. Please try again.'); return; }
+Toast.show('Project deleted');
+// navigate back and refresh list
+navigation.goBack();
+// If Projects list uses focus refetch or context, also emit a refresh event:
+// e.g., DeviceEventEmitter.emit('projects:refresh');
+
+
+While deleting, disable the button and show an activity indicator inline.
+
+Projects list refresh: In app/screens/ProjectsScreen.tsx, if not already present, add a useFocusEffect or useEffect listener for DeviceEventEmitter 'projects:refresh' to trigger a refetch, then unregister on unmount. If the screen already refetches on focus, you can skip this.
+
+Errors & UX:
+
+Use the existing Toast utility for success/error messages.
+
+Ensure navigation doesn’t crash if you delete the currently open project — navigate first if needed after success.
+
+Tests (quick run):
+
+Create a throwaway project with an image + (optional) scan.
+
+Open Project Details → tap Delete Project → confirm.
+
+Verify: you return to Projects list and the item is gone; there are no red errors in the console. If the API route is missing, Supabase fallback still removes the project row; storage deletes are best-effort.
+
+Please keep styling minimal (native destructive look). Do not modify unrelated screens. Keep all new code typed (TS). Save all files and run the app.

@@ -1,0 +1,87 @@
+Define a single canonical route for the plan screen and use it everywhere (stable V1 behavior).
+
+*** FILE: app/navigation/routeNames.ts (NEW)
++// Canonical screen names used across the app (V1)
++export const ROOT_TABS_ID = 'root-tabs';
++export const PROJECTS_TAB = 'Projects';
++export const PROJECTS_LIST_SCREEN = 'ProjectsList';
++export const PLAN_SCREEN = 'OpenPlan'; // <- single, canonical plan route for V1
+
+*** FILE: app/navigation/ProjectsNavigator.tsx
+@@
+-import React from 'react';
++import React from 'react';
+ import { createNativeStackNavigator } from '@react-navigation/native-stack';
+ import ProjectsScreen from '../screens/ProjectsScreen';
+ import ProjectDetails from '../screens/ProjectDetails';
++import OpenPlanScreen from '../screens/OpenPlanScreen'; // ensure this import exists
++import { PLAN_SCREEN, PROJECTS_LIST_SCREEN } from './routeNames';
+ 
+ const Stack = createNativeStackNavigator();
+ 
+ export default function ProjectsNavigator() {
+   return (
+     <Stack.Navigator>
+-      <Stack.Screen name="ProjectsList" component={ProjectsScreen} options={{ headerShown: false }} />
+-      <Stack.Screen name="ProjectDetails" component={ProjectDetails} />
++      <Stack.Screen name={PROJECTS_LIST_SCREEN} component={ProjectsScreen} options={{ headerShown: false }} />
++      <Stack.Screen name="ProjectDetails" component={ProjectDetails} />
++      {/* Canonical plan screen for V1 */}
++      <Stack.Screen name={PLAN_SCREEN} component={OpenPlanScreen} />
+     </Stack.Navigator>
+   );
+ }
+
+*** FILE: app/screens/ProjectDetails.tsx
+@@
+-import { View, Image, ActivityIndicator, Pressable, Text, ScrollView, InteractionManager } from 'react-native';
++import { View, Image, ActivityIndicator, Pressable, Text, ScrollView, InteractionManager } from 'react-native';
+ import { useRoute, useNavigation, RouteProp, useFocusEffect } from '@react-navigation/native';
+ import { useSafeBack } from '../lib/useSafeBack';
+ import { fetchProjectById, fetchLatestScanForProject, fetchProjectPlanMarkdown } from '../lib/api';
+ import StatusBadge from '../components/StatusBadge';
++import { ROOT_TABS_ID, PROJECTS_TAB, PROJECTS_LIST_SCREEN, PLAN_SCREEN } from '../navigation/routeNames';
+@@
+-      <Pressable
+-        onPress={() => {
+-          // Seed Projects stack, then try to open a plan screen safely.
+-          const parent = navigation.getParent?.('root-tabs') ?? navigation.getParent?.();
+-          if (parent) {
+-            // Step 1: ensure we’re on Projects tab with the list seeded underneath
+-            parent.navigate('Projects', { screen: 'ProjectsList' });
+-            // Step 2: after nav settles, try known plan routes in order
+-            InteractionManager.runAfterInteractions(() => {
+-              // Try OpenPlan first (common name), then BuildPlan as fallback
+-              try { parent.navigate('Projects', { screen: 'OpenPlan', params: { id: projectId } }); } catch {}
+-              try { parent.navigate('Projects', { screen: 'OpenPlanScreen', params: { id: projectId } }); } catch {}
+-              try { parent.navigate('Projects', { screen: 'BuildPlan', params: { id: projectId } }); } catch {}
+-              try { parent.navigate('Projects', { screen: 'BuildPlanScreen', params: { id: projectId } }); } catch {}
+-            });
+-            return;
+-          }
+-          // Final fallback: try local navigate (in case we’re already inside Projects stack)
+-          try { navigation.navigate('OpenPlan' as never, { id: projectId } as never); } catch {}
+-          try { navigation.navigate('OpenPlanScreen' as never, { id: projectId } as never); } catch {}
+-          try { navigation.navigate('BuildPlan' as never, { id: projectId } as never); } catch {}
+-          try { navigation.navigate('BuildPlanScreen' as never, { id: projectId } as never); } catch {}
+-        }}
+-        style={{ backgroundColor: '#6D28D9', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 }}
+-      >
++      <Pressable
++        onPress={() => {
++          // Seed Projects stack, then open the single canonical plan route.
++          const parent = navigation.getParent?.(ROOT_TABS_ID) ?? navigation.getParent?.();
++          if (parent) {
++            parent.navigate(PROJECTS_TAB, { screen: PROJECTS_LIST_SCREEN });
++            InteractionManager.runAfterInteractions(() => {
++              parent.navigate(PROJECTS_TAB, { screen: PLAN_SCREEN, params: { id: projectId } });
++            });
++            return;
++          }
++          // Fallback if already inside Projects stack
++          navigation.navigate(PLAN_SCREEN as never, { id: projectId } as never);
++        }}
++        style={{ backgroundColor: '#6D28D9', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 }}
++      >
+         <Text style={{ color: 'white', fontWeight: '700' }}>View Plan</Text>
+       </Pressable>

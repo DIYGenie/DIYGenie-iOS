@@ -1,0 +1,139 @@
+Goal: Redesign Project Details to match the “simple block list + single CTA” inspiration. Make Detailed Build Plan a separate, long, document-style guide (not the same cards). Keep all existing data/plumbing; just change layout and navigation.
+
+What to build
+
+ProjectDetails screen (rewrite layout)
+
+Files to edit:
+
+app/screens/ProjectDetails.tsx (main)
+
+app/navigation/ProjectsNavigator.tsx (if route names/params needed)
+
+app/components (add a new component below)
+
+Replace the current grid/cards/sheets with a single vertical list of tappable/expandable blocks in this exact order:
+
+Overview — subtitle: “What you’ll build”
+
+Steps — subtitle: “{N} steps”
+
+Materials — subtitle: “{N} items”
+
+Tools — subtitle: “{N} tools”
+
+Cuts — subtitle: “{N} cuts”
+
+Time & Cost — subtitle: “Estimates”
+
+Each block:
+
+Rounded card, soft purple tint (#F3E8FF/#EEEAFE) with subtle shadow.
+
+Left icon (info, list, cube, hammer, scissors, clock).
+
+Title (semibold, larger), small subtitle under it.
+
+Chevron on right.
+
+On tap: expand inline to show a concise summary for that section (e.g., first 1–2 step titles; first 3 materials; etc.). Keep expansion animated (height/collapse); no bottom sheets.
+
+On second tap: collapse.
+
+Top hero area:
+
+Header row: project title.
+
+Large preview/placeholder area (“No scan image yet” or the preview if present).
+
+ONE CTA button centered under the hero:
+
+Label: “Open Detailed Build Plan”
+
+Sub-label (smaller, muted): “Document-style guide with every step and detail”
+
+On press → navigate to DetailedInstructions screen.
+
+Remove any other buttons/Build-Mode UI from this screen.
+
+Keep current plan loading behavior. When planObj is not ready, show a single lavender info banner (“Plan is building…”) in place of the list.
+
+PlanSummaryList component
+
+File: app/components/PlanSummaryList.tsx
+
+Props: { plan: Plan }
+
+Renders the 6 cards in the order above with expand/collapse.
+
+Summary rules:
+
+Overview: first paragraph (truncate to ~3 lines).
+
+Steps: show count and preview first 2 step titles.
+
+Materials: first 3 with qty/unit.
+
+Tools: first 4 tool names.
+
+Cuts: first 3 items (name + size).
+
+Time & Cost: “~{hours} hrs, ~${cost}”
+
+All counts come from the parsed Plan object (we already have parsePlanMarkdown).
+
+DetailedInstructions screen (ensure truly detailed)
+
+File: app/screens/DetailedInstructions.tsx
+
+Keep this as the full, linear, document-style guide. No cards/grids. Sections appear in this order with clear H2 headers and generous spacing:
+
+Title + brief overview paragraph
+
+Materials (full list)
+
+Tools (full list)
+
+Cut List (full)
+
+Step-by-Step (all steps with body text)
+
+Time & Cost
+
+Keep “Save all sections to Photos” as is. Do not duplicate the summary list here.
+
+Navigation / back behavior
+
+Tapping Open Detailed Build Plan: navigate('DetailedInstructions', { projectId }).
+
+Back from DetailedInstructions must return to ProjectDetails (not Home). Verify stack order in ProjectsNavigator.tsx.
+
+Polish & theming
+
+Typography: larger title on cards; smaller muted subtitle.
+
+Card padding: 16–18px; corner radius: 16–20; shadow: very soft.
+
+Icons: use existing icon set (Ionicons/lucide) matching labels above.
+
+Button style matches current primary CTA (solid purple). Sub-label smaller and muted; do not overpower the main label.
+
+Keep existing logic
+
+Keep plan polling/fetching and Plan parser.
+
+Do not reintroduce the old “building plan page.”
+
+Ensure New Project still clears after successful build (already implemented).
+
+Acceptance criteria
+
+ProjectDetails shows one top CTA + six expandable blocks (no other controls).
+
+Expanding a block shows a short summary without navigating.
+
+DetailedInstructions shows the full stitched narrative (not cards) and can save images.
+
+Back from DetailedInstructions returns to ProjectDetails.
+
+No “Build Mode”, no detail sheets, no duplicate lists on either screen.

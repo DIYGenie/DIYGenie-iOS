@@ -1,0 +1,94 @@
+THEME
+*** FILE: app/screens/NewProjectMedia.js
+@@
+-  const handleUpload = guard(async () => {
++  const handleUpload = guard(async () => {
+     try {
+       await authPreflight();
+ 
+       // 1) Ensure there is a project for this draft
+       const projectId = await ensureProjectForDraft(draft);
+       if (!draft?.projectId) {
+         onDraftChange?.({ ...draft, projectId });
+       }
+ 
+       // 2) Perform the upload
+       const { uploadRoomScan } = await import('../lib/uploadRoomScan');
+       const result = await uploadRoomScan(); // keep existing picker flow
+       if (!result?.scanId) {
+         Toast.show('Upload failed. Try again.');
+         return;
+       }
+ 
+       // 3) Link the scan to the project (authoritative association)
+       await supabase
+         .from('room_scans')
+         .update({ project_id: projectId })
+         .eq('id', result.scanId);
+ 
+-      setSavedScan({ ...result, projectId }); // single-scan mode
++      // NOTE: uploads are non-AR; disable measurement in UI for V1
++      setSavedScan({ ...result, projectId, source: 'upload', allowMeasure: false });
+       Toast.show('Scan saved to project!');
+     } catch (e) {
+       console.log('[upload/link failed]', e);
+       // authPreflight already shows a toast for auth issues
+       if (String(e?.message || e).includes('AUTH_REQUIRED')) return;
+       Toast.show('Upload failed. Please try again.');
+     }
+   });
+@@
+-      {savedScan && (
++      {savedScan && (
+         <View
+           style={{
+             marginTop: 16,
+             backgroundColor: '#F3F0FF',
+             borderRadius: 16,
+             padding: 12,
+             alignItems: 'center',
+           }}
+         >
+           <Image
+             source={{ uri: savedScan.imageUrl }}
+             style={{ width: 220, height: 140, borderRadius: 12 }}
+             resizeMode="cover"
+           />
+           <Text style={{ marginTop: 8, fontWeight: '600' }}>Saved Scan</Text>
+-          <View style={{ flexDirection: 'row', gap: 12, marginTop: 10 }}>
++          <View style={{ flexDirection: 'row', gap: 12, marginTop: 10 }}>
+             <Pressable
+               onPress={() => setShowRoi(true)}
+               style={{ backgroundColor: '#7C3AED', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 }}
+             >
+               <Text style={{ color: 'white', fontWeight: '600' }}>Mark Area</Text>
+             </Pressable>
+-            <Pressable
+-              onPress={() => setShowMeasure(true)}
+-              style={{ backgroundColor: '#7C3AED', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 }}
+-            >
+-              <Text style={{ color: 'white', fontWeight: '600' }}>Measure</Text>
+-            </Pressable>
++            {/* Measurements available only for AR scans in V1 */}
++            {savedScan?.allowMeasure ? (
++              <Pressable
++                onPress={() => setShowMeasure(true)}
++                style={{ backgroundColor: '#7C3AED', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 }}
++              >
++                <Text style={{ color: 'white', fontWeight: '600' }}>Measure</Text>
++              </Pressable>
++            ) : null}
+           </View>
++          {!savedScan?.allowMeasure ? (
++            <Text style={{ marginTop: 8, color: '#6B7280', textAlign: 'center' }}>
++              Measurements are available when you use <Text style={{ fontWeight: '700' }}>Scan room</Text>.
++            </Text>
++          ) : null}
+         </View>
+       )}
+ 
+-      <RoiModal visible={showRoi} onClose={() => setShowRoi(false)} scan={savedScan} />
+-      <MeasureModal visible={showMeasure} onClose={() => setShowMeasure(false)} scan={savedScan} />
++      <RoiModal visible={showRoi} onClose={() => setShowRoi(false)} scan={savedScan} />
++      {/* Keep MeasureModal wired but only reachable when allowMeasure=true */}
++      <MeasureModal visible={showMeasure} onClose={() => setShowMeasure(false)} scan={savedScan} />

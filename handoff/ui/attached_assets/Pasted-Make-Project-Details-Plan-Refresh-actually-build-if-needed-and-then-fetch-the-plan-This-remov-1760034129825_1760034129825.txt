@@ -1,0 +1,120 @@
+Make Project Details → Plan → Refresh actually build (if needed) and then fetch the plan. This removes the “stuck on draft / nothing happens” issue by hitting POST /api/projects/:id/build-without-preview and polling /api/projects/:id/plan until it’s ready.
+
+THEME
+*** FILE: app/lib/api.ts
+@@
+ export async function fetchProjectPlanMarkdown(
+   projectId: string,
+   opts?: { signal?: AbortSignal; timeoutMs?: number }
+ ): Promise<string | null> {
+@@
+   } finally {
+     clearTimeout(timeout);
+   }
+ }
++
++// Kick off a build without preview (server marks ready when complete)
++export async function buildPlanWithoutPreview(projectId: string): Promise<boolean> {
++  const base =
++    (global as any).__API_BASE_URL__ ??
++    process.env.EXPO_PUBLIC_API_BASE ??
++    process.env.API_BASE ??
++    'https://diy-genie-webhooks-tyekowalski.replit.app';
++  const url = `${base}/api/projects/${projectId}/build-without-preview`;
++  const res = await fetch(url, { method: 'POST' });
++  if (!res.ok) {
++    const t = await res.text().catch(() => '');
++    throw new Error(`build failed: ${res.status} ${t}`);
++  }
++  return true;
++}
++
++// Poll plan endpoint until it is available (or time out)
++export async function waitForPlanReady(
++  projectId: string,
++  opts?: { totalMs?: number; stepMs?: number }
++): Promise<string | null> {
++  const totalMs = opts?.totalMs ?? 12000;
++  const stepMs = opts?.stepMs ?? 800;
++  const start = Date.now();
++  while (Date.now() - start < totalMs) {
++    const md = await fetchProjectPlanMarkdown(projectId).catch(() => null);
++    if (md !== null) return md; // ready (even if empty string)
++    await new Promise((r) => setTimeout(r, stepMs));
++  }
++  return null; // timed out still not ready
++}
+
+*** FILE: app/screens/ProjectDetails.tsx
+@@
+-import { fetchProjectById, fetchLatestScanForProject, fetchProjectPlanMarkdown } from '../lib/api';
++import {
++  fetchProjectById,
++  fetchLatestScanForProject,
++  fetchProjectPlanMarkdown,
++  buildPlanWithoutPreview,
++  waitForPlanReady,
++} from '../lib/api';
+@@
+   const load = useCallback(async () => {
+     if (!projectId) return;
+@@
+         if (p?.status === 'ready') {
+           setPlanLoading(true);
+           try {
+             const md = await fetchProjectPlanMarkdown(projectId, { signal: controller.signal, timeoutMs: 10000 });
+             if (!controller.signal.aborted) setPlanMd(md);
+           } catch (e) {
+             if ((e as any)?.name !== 'AbortError') console.log('[plan fetch error]', String(e));
+           } finally {
+             if (!controller.signal.aborted) setPlanLoading(false);
+           }
+         } else {
+           setPlanMd(null);
+         }
+       }
+@@
++  // Smart refresh: if project is not ready, start build; then poll for plan.
++  const smartRefresh = useCallback(async () => {
++    if (!projectId) return;
++    setPlanLoading(true);
++    try {
++      const fresh = await fetchProjectById(projectId, { timeoutMs: 8000 }).catch(() => project);
++      if (fresh) setProject(fresh);
++      if (!fresh || fresh.status !== 'ready') {
++        await buildPlanWithoutPreview(projectId);
++      }
++      const md = await waitForPlanReady(projectId, { totalMs: 15000, stepMs: 900 });
++      if (md !== null) {
++        setPlanMd(md);
++      } else {
++        // still not ready—leave "building" message
++        setPlanMd(null);
++      }
++    } catch (e) {
++      console.log('[plan smartRefresh error]', String((e as any)?.message || e));
++    } finally {
++      setPlanLoading(false);
++    }
++  }, [projectId, project]);
+@@
+-          <Pressable
+-            onPress={async () => {
+-              if (!projectId) return;
+-              setPlanLoading(true);
+-              try {
+-                const md = await fetchProjectPlanMarkdown(projectId, { timeoutMs: 10000 });
+-                setPlanMd(md);
+-              } catch (e) {
+-                console.log('[plan refresh error]', String(e));
+-              } finally {
+-                setPlanLoading(false);
+-              }
+-            }}
++          <Pressable
++            onPress={smartRefresh}
+             style={{ paddingHorizontal: 10, paddingVertical: 6 }}
+           >
+             <Text style={{ color: '#7C3AED', fontWeight: '600' }}>Refresh</Text>
+           </Pressable>
+         </View>

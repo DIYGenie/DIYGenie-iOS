@@ -1,0 +1,266 @@
+**project:** Theme (DIYGenieTheme – Expo/TS)
+**autonomy:** low
+**app testing:** off
+
+**Single Agent-3 Prompt — Launch Prep (TestFlight/Play) — versioning, env, health checks, crash guard, EAS build profiles (no new deps)**
+
+> Make the client shippable tonight. Don’t touch server. Keep diffs small, no new libraries.
+
+---
+
+### 1) App config: env-aware `app.config.js` + production extras
+
+**Create/Update** `app.config.js` (replace if `app.json` is used; preserve existing values)
+
+```js
+// app.config.js
+// Env-aware Expo config without extra deps.
+// APP_ENV defaults to 'development'. For prod builds, set APP_ENV=production.
+const APP_ENV = process.env.APP_ENV || 'development';
+
+const isProd = APP_ENV === 'production';
+const version = require('./package.json').version || '1.0.0';
+
+module.exports = {
+  expo: {
+    name: "DIY Genie",
+    slug: "diy-genie",
+    version,
+    scheme: "diygenie",
+    orientation: "portrait",
+    userInterfaceStyle: "light",
+    icon: "./assets/icon.png",
+    splash: {
+      image: "./assets/splash.png",
+      resizeMode: "contain",
+      backgroundColor: "#ffffff"
+    },
+    ios: {
+      supportsTablet: true,
+      bundleIdentifier: "com.diygenie.app", // keep current if already set; do NOT change if one exists
+      buildNumber: version,
+      infoPlist: {
+        NSCameraUsageDescription: "DIY Genie uses the camera to capture room photos for AI previews.",
+        NSPhotoLibraryUsageDescription: "DIY Genie accesses photos you select for project previews.",
+        NSPhotoLibraryAddUsageDescription: "DIY Genie saves preview images to your library when you choose."
+      }
+    },
+    android: {
+      package: "com.diygenie.app", // keep current if already set; do NOT change if one exists
+      versionCode: 1,
+      adaptiveIcon: {
+        foregroundImage: "./assets/adaptive-icon.png",
+        backgroundColor: "#ffffff"
+      },
+      permissions: ["CAMERA", "READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE"]
+    },
+    web: {
+      favicon: "./assets/favicon.png"
+    },
+    updates: {
+      url: "https://u.expo.dev", // EAS updates default
+      enabled: true,
+      checkAutomatically: "ON_LOAD",
+      fallbackToCacheTimeout: 0
+    },
+    runtimeVersion: {
+      policy: "sdkVersion"
+    },
+    extra: {
+      appEnv: APP_ENV,
+      apiBase: isProd ? "https://api.diygenieapp.com" : "https://api.diygenieapp.com", // same for now
+      previewApiBase: isProd ? "https://api.diygenieapp.com" : "https://api.diygenieapp.com",
+    }
+  }
+};
+```
+
+> If you already have bundle identifiers/packages set, keep them; this file should **read and preserve** existing values rather than overwriting.
+
+---
+
+### 2) EAS build profiles for TestFlight / Play
+
+**Create/Update** `eas.json`
+
+```json
+{
+  "cli": { "version": ">= 14.0.0" },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": { "APP_ENV": "development" }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": { "APP_ENV": "preview" }
+    },
+    "production": {
+      "autoIncrement": "version",
+      "env": { "APP_ENV": "production" }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
+```
+
+---
+
+### 3) Version bump helper (sync package.json → iOS buildNumber / Android versionCode)
+
+**Add script** in `package.json` (don’t remove existing scripts):
+
+```json
+{
+  "scripts": {
+    "version:bump": "node scripts/bump-version.js"
+  }
+}
+```
+
+**Create** `scripts/bump-version.js`
+
+```js
+// scripts/bump-version.js
+// Increments patch version and echoes it; EAS 'autoIncrement:version' will propagate.
+const fs = require('fs');
+const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+const [maj,min,pat] = (pkg.version || '1.0.0').split('.').map(n=>parseInt(n||'0',10));
+const next = `${maj}.${min}.${(pat||0)+1}`;
+pkg.version = next;
+fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+console.log(next);
+```
+
+---
+
+### 4) Runtime env & health sanity on app start (no deps)
+
+**Edit** `app/lib/api.ts` (or wherever you centralize base URLs)
+
+* Read Expo runtime extras (no new libs):
+
+```ts
+import Constants from 'expo-constants';
+const extras = (Constants?.expoConfig as any)?.extra ?? {};
+export const API_BASE = extras.apiBase || 'https://api.diygenieapp.com';
+export const PREVIEW_API_BASE = extras.previewApiBase || API_BASE;
+```
+
+**Add** a **startup health ping** (non-blocking):
+
+* **Create** `app/lib/health.ts`
+
+```ts
+export async function softHealthCheck(base = API_BASE) {
+  try {
+    const res = await fetch(`${base}/health/full`, { method: 'GET' });
+    if (!res.ok) return console.warn('[health] non-200', res.status);
+    const json = await res.json();
+    console.log('[health] ok', { modes: json?.modes, uptime_s: json?.uptime_s });
+  } catch (e) {
+    console.warn('[health] failed', String(e));
+  }
+}
+```
+
+**Call once** on app boot (e.g., in `App.tsx` or root navigator’s `useEffect`):
+
+```ts
+useEffect(() => { softHealthCheck(); }, []);
+```
+
+---
+
+### 5) Crash guard: global & screen boundary (no deps)
+
+**Create** `app/components/ErrorBoundary.tsx`
+
+```tsx
+import React from 'react';
+import { View, Text } from 'react-native';
+
+export class ErrorBoundary extends React.Component<any, {error: any}> {
+  constructor(props:any){ super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error:any){ return { error }; }
+  componentDidCatch(error:any, info:any){ console.error('[crash] boundary', { error: String(error), info }); }
+  render(){
+    if (this.state.error){
+      return (
+        <View style={{ flex:1, padding:16, alignItems:'center', justifyContent:'center' }}>
+          <Text style={{ fontSize:16, fontWeight:'700' }}>Something went wrong</Text>
+          <Text style={{ marginTop:8, opacity:0.7 }}>Please restart the app. If this persists, contact support.</Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+```
+
+**Wrap** your root app tree (in `App.tsx`):
+
+```tsx
+import { ErrorBoundary } from 'app/components/ErrorBoundary';
+
+export default function App() {
+  // existing providers...
+  return (
+    <ErrorBoundary>
+      <RootNavigator />
+    </ErrorBoundary>
+  );
+}
+```
+
+**Global handler** (in `App.tsx` top-level):
+
+```ts
+// silence noisy debug logs in production
+if (process.env.APP_ENV === 'production') {
+  const _log = console.log; // keep log
+  console.debug = () => {};
+  console.info = _log;
+  console.warn = _log;
+}
+
+// set global error handler
+// @ts-ignore
+if (global.ErrorUtils && typeof global.ErrorUtils.setGlobalHandler === 'function') {
+  // @ts-ignore
+  global.ErrorUtils.setGlobalHandler((e:any, isFatal?:boolean) => {
+    console.error('[crash] global', { msg: String(e?.message||e), fatal: !!isFatal });
+  });
+}
+```
+
+---
+
+### 6) Build-time checklist (automatable)
+
+* Ensure assets exist: `assets/icon.png`, `assets/adaptive-icon.png`, `assets/splash.png`, `assets/favicon.png`.
+* Confirm `ios.bundleIdentifier` / `android.package` align with your existing values (don’t change if already set).
+* `NS*UsageDescription` strings present (camera/photos).
+* Verify `PREVIEW_API_BASE` already points at `https://api.diygenieapp.com`.
+* EAS login is configured on Replit build agent (already handled outside code).
+
+---
+
+### 7) Acceptance (what to verify now)
+
+* `yarn node scripts/bump-version.js` prints a bumped version and updates `package.json`; building with `eas build -p ios --profile production` uses that version for iOS buildNumber & Android versionCode auto-increment.
+* App boot logs one line: `[health] ok { modes: {decor8:'live', openai:'live'}, … }` or a warning if offline.
+* Intentional throw inside a screen renders the fallback boundary UI (no red screen in production).
+* No TypeScript errors, no new deps.
+
+---
+
+**Stop after these edits.**
+Report back:
+
+* The new `package.json` version after `version:bump`.
+* The `[health] ok` boot log modes line.
+* Confirm the app still builds and runs in production profile (`APP_ENV=production`).

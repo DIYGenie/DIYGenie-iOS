@@ -1,0 +1,143 @@
+Step: Kill the 422s by forcing Scan to use an existing projectId (never create from Scan) and hard-fail if it’s missing.
+
+Automation: high
+Testing: on
+
+Files to touch
+
+app/screens/NewProjectMedia.js
+
+app/screens/ScanScreen.tsx
+
+app/lib/scanEvents.ts (defensive check only; no behavior change if already correct)
+
+Patch / Code
+
+app/screens/NewProjectMedia.js — ensure Scan always navigates with a valid projectId created from the New Project draft (same flow as Upload).
+
+@@
+ export default function NewProjectMedia(props) {
+   const {
+     draft = {},
+     onDraftChange = () => {},
+     isFormValid = false,
+     onBlocked = () => {},
+   } = props;
+@@
+-  const handleScan = guard(async () => {
+-    Alert.alert('AR Scan', 'AR scan coming soon.');
+-  });
++  const handleScan = guard(async () => {
++    try {
++      // confirm session
++      const { data: sess } = await supabase.auth.getSession();
++      if (!sess?.session?.user?.id) {
++        onBlocked?.();
++        Alert.alert('Session expired', 'Please sign in again.');
++        await supabase.auth.signOut();
++        return;
++      }
++      // ensure project exists from the draft (creates once, then reuses)
++      const projectId = await ensureProjectForDraft(draft);
++      if (!draft?.projectId) onDraftChange({ ...draft, projectId });
++
++      console.log('[scan] starting with projectId', projectId);
++      // navigate to Scan with explicit projectId;
++      // adjust the parent route name if your tabs differ
++      // ('Main' is the typical root tabs/stack container)
++      // If your tree uses a different id, keep screen='ScanScreen' and pass params.
++      (props.navigation ?? navigation).navigate('Main', {
++        screen: 'ScanScreen',
++        params: { projectId },
++      });
++    } catch (e) {
++      console.log('[scan nav failed]', String(e && e.message || e));
++      Alert.alert('Scan unavailable', 'Please complete the form first.');
++    }
++  });
+
+
+Note: if this file doesn’t have navigation in props, it’s already in scope via the screen; (props.navigation ?? navigation) handles both cases safely. If you only have the hook, replace with navigation.navigate(...).
+
+app/screens/ScanScreen.tsx — require projectId and NEVER create projects here.
+
+@@
+-import React from 'react';
+-import { View, Alert } from 'react-native';
+-import { useRoute, useNavigation } from '@react-navigation/native';
++import React, { useEffect } from 'react';
++import { View, Alert } from 'react-native';
++import { useRoute, useNavigation } from '@react-navigation/native';
++import { saveArScan } from '../lib/scanEvents';
+ 
+ export default function ScanScreen() {
+   const route = useRoute();
+   const navigation = useNavigation();
+-  // ... existing ROI UI code
++  // Require projectId passed from New Project flow
++  const projectId = route?.params?.projectId;
++
++  useEffect(() => {
++    if (!projectId) {
++      console.log('[scan] missing projectId – bailing');
++      Alert.alert('Missing project', 'Open Scan from New Project after filling the form.');
++      navigation.goBack();
++    }
++  }, [projectId, navigation]);
+ 
+   async function handleSave(roi) {
+-    // old: maybe created project here (bad) → remove/avoid
+-    // link scan to projectId and return to New Project
+-    // ...
++    try {
++      if (!projectId) return; // guarded above, double-safe
++      console.log('[scan] saveArScan start', { projectId, roi });
++      const { scanId, imageUrl } = await saveArScan({ projectId, roi });
++      console.log('[scan] saved', { scanId });
++      // Return to New Project with a param so the “Saved scan (AR)” card renders
++      navigation.navigate('Main', {
++        screen: 'NewProject',
++        params: { savedScan: { scanId, imageUrl, source: 'ar' } },
++      });
++    } catch (e) {
++      console.log('[scan save error]', String(e && e.message || e));
++      Alert.alert('Save failed', 'Please try again.');
++    }
+   }
+ 
+   return (
+     <View style={{ flex: 1, backgroundColor: '#0B0B0C' }}>
+       {/* existing canvas + adjustable ROI rectangle UI */}
+       {/* on confirm/save → call handleSave(roi) */}
+     </View>
+   );
+ }
+
+
+app/lib/scanEvents.ts — defensive: refuse to create projects here; require projectId.
+
+@@
+ export async function saveArScan(opts: {
+-  projectId?: string;
++  projectId: string;
+   imageUrl?: string;
+   roi?: { x:number; y:number; w:number; h:number };
+ }): Promise<{ scanId:string; imageUrl?:string }> {
+-  // DEFENSIVE: do not create projects here
+-  if (!opts.projectId) throw new Error('PROJECT_ID_REQUIRED');
++  if (!opts.projectId) throw new Error('PROJECT_ID_REQUIRED');
+ 
+   // Insert scan linked to project with AR source + ROI in meta
+   const { data, error } = await supabase
+     .from('room_scans')
+     .insert({
+       project_id: opts.projectId,
+       source: 'ar',
+       image_url: opts.imageUrl ?? null,
+       meta: { roi: opts.roi ?? null },
+     })
+     .select('id, image_url')
+     .single();
+   if (error) throw error;
+   return { scanId: data.id, imageUrl: data.image_url ?? undefined };
+ }

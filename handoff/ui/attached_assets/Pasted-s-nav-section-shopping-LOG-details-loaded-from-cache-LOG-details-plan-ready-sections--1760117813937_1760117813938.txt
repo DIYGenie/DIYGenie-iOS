@@ -1,0 +1,46 @@
+s] nav section=shopping
+ LOG  [details] loaded from cache
+ LOG  [details] plan ready {"sections": {"cuts": 0, "materials": 0, "steps": 0, "tools": 0}}
+ LOG  [details] toggle=build steps open=false
+ LOG  [details] nav section=shopping
+ LOG  [details] loaded from cache
+ LOG  [details] plan ready {"sections": {"cuts": 0, "materials": 0, "steps": 0, "tools": 0}}
+ LOG  [details] nav section=shopping
+ LOG  [details] loaded from cache
+ LOG  [details] plan ready {"sections": {"cuts": 0, "materials": 0, "steps": 0, "tools": 0}}
+ LOG  [projects] focus → refetch
+ LOG  [projects fetch webhooks] userId=%s → %d items (A=%d, B=%d) 99198c4b-8470-49e2-895c-75593c5aa181 95 88 7
+ LOG  [details] loaded from cache
+ LOG  [details] plan ready {"sections": {"cuts": 0, "materials": 0, "steps": 0, "tools": 0}}
+ LOG  [projects] focus → refetch
+ LOG  [projects fetch webhooks] userId=%s → %d items (A=%d, B=%d) 99198c4b-8470-49e2-895c-75593c5aa181 95 88 7
+ LOG  [details] plan ready {"sections": {"cuts": 0, "materials": 0, "steps": 0, "tools": 0}}
+ LOG  [projects] focus → refetch
+ LOG  [projects fetch webhooks] userId=%s → %d items (A=%d, B=%d) 99198c4b-8470-49e2-895c-75593c5aa181 95 88 7
+ LOG  [details] loaded from cache
+ LOG  [details] plan ready {"sections": {"cuts": 0, "materials": 0, "steps": 0, "tools": 0}}
+ LOG  [details] nav section=overview
+ LOG  [details] loaded from cache
+ LOG  [details] plan ready {"sections": {"cuts": 0, "materials": 0, "steps": 0, "tools": 0}}
+ LOG  [details] nav section=overview
+ LOG  [details] loaded from cache
+ LOG  [details] plan ready {"sections": {"cuts": 0, "materials": 0, "steps": 0, "tools": 0}}
+ LOG  [details] toggle=materials + tools open=true
+ LOG  [details] toggle=build steps open=false
+ LOG  [projects] focus → refetch
+ LOG  [projects fetch webhooks] userId=%s → %d items (A=%d, B=%d) 99198c4b-8470-49e2-895c-75593c5aa181 95 88 7
+ LOG  [details] loaded from cache
+ LOG  [projects] focus → refetch
+ LOG  [details] loaded from cache
+ LOG  [projects fetch webhooks] userId=%s → %d items (A=%d, B=%d) 99198c4b-8470-49e2-895c-75593c5aa181 95 88 7
+ LOG  [projects fetch webhooks] userId=%s → %d items (A=%d, B=%d) 99198c4b-8470-49e2-895c-75593c5aa181 95 88 7
+ LOG  [details] plan ready {"sections": {"cuts": 0, "materials": 0, "steps": 0, "tools": 0}}
+ LOG  [details] nav section=overview
+ LOG  [details] loaded from cache
+ LOG  [details] plan ready {"sections": {"cuts": 0, "materials": 0, "steps": 0, "tools": 0}}
+ LOG  [details] nav section=shopping
+ LOG  [details] loaded from cache
+ LOG  [details] plan ready {"sections": {"cuts": 0, "materials": 0, "steps": 0, "tools": 0}}
+ LOG  [details] nav section=steps
+ LOG  [details] loaded from cache
+ LOG  [details] plan ready {"sections": {"cuts": 0, "materials": 0, "steps": 0, "tools": 0}}

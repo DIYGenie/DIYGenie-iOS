@@ -1,0 +1,88 @@
+Goal
+
+Introduce a brand purple palette and replace all orange CTAs with unified components. No behavior changes—visual only.
+
+Tasks
+
+Add brand palette
+
+Edit app/theme/colors.ts (or create if missing) and export:
+
+export const brand = {
+  primary: '#7C4DFF',      // main DIY Genie purple
+  primary600: '#6A3CE9',
+  primary700: '#5B2ED1',
+  primary300: '#B39DFF',
+  surface: '#FFFFFF',
+  surfaceAlt: '#F6F6FA',
+  text: '#101828',
+  textMuted: '#667085',
+  success: '#12B76A',
+  danger:  '#EF4444',
+  border:  '#E5E7EB',
+};
+
+
+Re-export brand from any central theme index if we have one.
+
+Create unified buttons
+
+Add app/components/Buttons.tsx with:
+
+PrimaryButton (solid): brand.primary background, white text, rounded 12, padding 16, minHeight 52, full-width, disabled variants (use primary600 with 60% opacity).
+
+SecondaryButton (outline): transparent bg, border brand.primary, text brand.primary.
+
+Props: title, onPress, disabled?, testID?, style?.
+
+Use Pressable with pressed opacity.
+
+Replace orange CTAs with components
+
+Update these screens to use the new buttons (keep existing testIDs):
+
+app/screens/NewProject.tsx
+
+“Generate AI Preview” → PrimaryButton
+
+“Build Plan Without Preview” → SecondaryButton
+
+app/screens/ProfileScreen.js
+
+“Upgrade Plan”, “Sync Plan”, “Manage” CTA button(s) → PrimaryButton
+
+app/screens/ProjectDetailScreen.js
+
+“Get detailed build plan” → PrimaryButton
+
+Remove any inline orange colors. Search & replace hardcoded oranges like 'orange', '#F59E0B', '#FDBA74', etc., to use brand tokens.
+
+Bottom tab gradient
+
+Where the bottom nav gradient is defined (likely in app/navigation/*), adjust to a subtle purple gradient, e.g. [brand.primary700, brand.primary300].
+
+Badges/labels
+
+Any accent chips (e.g., “Pro”, “Most Popular”) using orange → use brand.primary300 background with brand.primary700 text.
+
+Accessibility
+
+Ensure primary button text contrast (white on brand.primary) and focus/pressed states (reduce opacity to 0.9 on press).
+
+Do not
+
+Change any API calls, navigation logic, or testIDs beyond swapping components.
+
+Touch server code.
+
+Quick test (App Testing)
+
+New Project: both buttons show purple styling; disabled state looks muted.
+
+Profile: “Upgrade Plan” is purple; Sync/Manage look consistent.
+
+Projects > Details: “Get detailed build plan” is purple.
+
+Tab bar shows purple gradient.
+
+Commit as: theme: brand purple + unified CTAs

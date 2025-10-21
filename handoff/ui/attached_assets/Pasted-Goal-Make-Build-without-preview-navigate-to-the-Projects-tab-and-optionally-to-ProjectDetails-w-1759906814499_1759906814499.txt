@@ -1,0 +1,73 @@
+Goal: Make “Build without preview” navigate to the Projects tab (and optionally to ProjectDetails) without the “not handled by any navigator” error.
+
+Steps:
+
+Give the Tab navigator a stable id.
+
+Find the file where the bottom tabs are defined (e.g. app/navigation/RootTabs.tsx or similar).
+
+Ensure the Tabs are created like:
+
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+const Tab = createBottomTabNavigator();
+export default function RootTabs() {
+  return (
+    <Tab.Navigator id="root-tabs">
+      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="NewProject" component={NewProjectStack} />
+      <Tab.Screen name="Projects" component={ProjectsStack} />
+      <Tab.Screen name="Profile" component={ProfileScreen} />
+    </Tab.Navigator>
+  );
+}
+
+
+Important: the screen name must be exactly "Projects" on the Tab.
+
+Ensure the Projects stack declares ProjectDetails.
+
+Open the file that defines the Projects stack (e.g. app/navigation/ProjectsStack.tsx).
+
+Confirm it includes something like:
+
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+const Stack = createNativeStackNavigator();
+export default function ProjectsStack() {
+  return (
+    <Stack.Navigator>
+      <Stack.Screen name="ProjectsList" component={ProjectsListScreen} />
+      <Stack.Screen name="ProjectDetails" component={ProjectDetailsScreen} />
+    </Stack.Navigator>
+  );
+}
+
+
+Route to the Projects tab via its parent.
+
+In app/screens/NewProject.tsx, replace every:
+
+navigation.navigate('Projects', ...);
+
+
+with:
+
+navigation.getParent?.('root-tabs')?.navigate('Projects');
+
+
+When you want to go straight to the details screen after creating the project, use:
+
+navigation.getParent?.('root-tabs')?.navigate('Projects', {
+  screen: 'ProjectDetails',
+  params: { id: newProjectId },
+});
+
+
+Keep a small try/catch around it and log failures.
+
+Acceptance criteria:
+
+From New Project screen, tapping Build without preview switches to the Projects tab with no red error in the console.
+
+If called with { screen: 'ProjectDetails', params: { id } }, it lands on the details screen inside the Projects stack.
+
+Bottom tabs remain visible on Projects screens; back behaves normally.

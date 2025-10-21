@@ -1,0 +1,95 @@
+Replace the current “How it works” row on the Home screen with a fixed 2×2 tile grid (phone-only). No arrows. Full labels: Describe, Scan, Preview, Build. Use a hammer icon for Build.
+
+Targets
+
+Update the Home screen file that renders “How it works” (likely app/screens/HomeScreen.js). If it’s a separate component, replace that instead.
+
+Build
+
+Add a HowItWorks component and render it under the welcome text.
+
+Layout: 4 tiles in a 2×2 grid that always fits on phones.
+
+Use flexWrap: 'wrap', justifyContent: 'space-between'.
+
+Each tile width: '48%' (so two per row with a small gap).
+
+No text truncation (no ellipses).
+
+Icons:
+
+Describe: Ionicons name="create-outline"
+
+Scan: Ionicons name="image-outline"
+
+Preview: Ionicons name="sparkles-outline"
+
+Build: MaterialCommunityIcons name="hammer"
+
+Style: soft card (#F4F1FF), rounded (14), subtle shadow, theme purple #5B39F5 for icons.
+
+Code (add/replace):
+
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+
+const HowItWorks = () => {
+  const Chip = ({ icon, label }) => (
+    <View style={styles.hiwChip}>
+      {icon}
+      <Text style={styles.hiwLabel}>{label}</Text>
+    </View>
+  );
+
+  return (
+    <View style={styles.hiwWrap}>
+      <Chip icon={<Ionicons name="create-outline" size={18} color="#5B39F5" />} label="Describe" />
+      <Chip icon={<Ionicons name="image-outline" size={18} color="#5B39F5" />} label="Scan" />
+      <Chip icon={<Ionicons name="sparkles-outline" size={18} color="#5B39F5" />} label="Preview" />
+      <Chip icon={<MaterialCommunityIcons name="hammer" size={18} color="#5B39F5" />} label="Build" />
+    </View>
+  );
+};
+
+// In HomeScreen JSX: <HowItWorks /> where the old row used to be.
+
+const styles = StyleSheet.create({
+  hiwWrap: {
+    marginTop: 8,
+    marginBottom: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 10,
+  },
+  hiwChip: {
+    width: '48%',          // 2 per row on phones
+    minHeight: 56,
+    backgroundColor: '#F4F1FF',
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  hiwLabel: { fontSize: 14, fontWeight: '600', color: '#1B133C' },
+});
+
+
+Acceptance
+
+Always renders as a 2×2 grid on iPhones (no scrolling, no truncation, no arrows).
+
+Labels are exactly: Describe, Scan, Preview, Build.
+
+Build uses the hammer icon.
+
+Spacing with the CTA and Recent Projects remains balanced (no crowding).
+
+Remove the previous “How it works” implementation.

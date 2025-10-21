@@ -1,0 +1,176 @@
+Scope: Theme only (no new files/deps).
+Files to touch (ONLY when patterns exist):
+
+app/screens/NewProject.tsx
+
+app/screens/NewProjectMedia.js (if present)
+
+app/screens/ProjectDetailsScreen.* (if it contains picker code)
+
+any other file under app/screens/** that calls expo-image-picker permissions or navigates to a media picker screen.
+
+Goal
+
+Kill the “could not grant permissions” error by removing all permission APIs on web and never navigating to a separate picker screen.
+
+Force web to use a FileReader.readAsDataURL() picker; force native to use launchImageLibraryAsync() without permission calls.
+
+Route every “Upload Photo” / “Change Photo” button to the same onUploadPhoto handler in its file.
+
+Never call /api/projects/:id/image from these screens. Photo stays local.
+
+1) In every file that has an “Upload Photo” or uses ImagePicker (start with app/screens/NewProject.tsx)
+
+Imports (ensure):
+
+import { Platform, Alert } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+
+
+Add a cross-platform picker (INLINE in each file that needs it):
+
+function pickPhotoWeb(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    try {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) return reject(new Error('No file selected'));
+        if (!file.type?.startsWith?.('image/')) return reject(new Error('Please select an image'));
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.onload = () => {
+          const dataUrl = String(reader.result);
+          console.info('[photo] picked web', { type: file.type, size: file.size });
+          resolve(dataUrl);
+        };
+        reader.readAsDataURL(file);
+      };
+      input.click();
+    } catch (e) { reject(e); }
+  });
+}
+
+async function pickPhotoNative(): Promise<string> {
+  const res = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsEditing: false,
+    quality: 0.85,
+    base64: false,
+  });
+  if ((res as any).canceled) throw new Error('Selection canceled');
+  const uri = (res as any).assets?.[0]?.uri;
+  if (!uri) throw new Error('No image URI');
+  console.info('[photo] picked native', { uri });
+  return uri;
+}
+
+async function onUploadPhoto() {
+  try {
+    const uri = Platform.OS === 'web' ? await pickPhotoWeb() : await pickPhotoNative();
+    // EXPECT a local state setter named setPhotoUri in this file/screen. If different, use the correct setter:
+    setPhotoUri(uri);
+    // Do NOT upload to server here. Suggestions/plan can run separately.
+  } catch (err: any) {
+    Alert.alert('Photo picker', err?.message || 'Could not select photo');
+  }
+}
+
+
+Wire every “Upload Photo” / “Change Photo” button in this file to the handler above:
+
+<ButtonPrimary
+  title={photoUri ? 'Change Photo' : 'Upload Photo'}
+  onPress={onUploadPhoto}
+  testID="btn-upload-photo"
+/>
+
+
+Ensure a preview renders (in this file):
+
+{photoUri ? (
+  <Image
+    source={{ uri: photoUri }}
+    style={{ width: '100%', height: 200, borderRadius: 12, marginTop: 12 }}
+    resizeMode="cover"
+    testID="np-photo-preview"
+  />
+) : null}
+
+
+Remove/disable ANY of these in this file (if present):
+
+ImagePicker.requestMediaLibraryPermissionsAsync()
+
+ImagePicker.getMediaLibraryPermissionsAsync()
+
+ImagePicker.requestCameraPermissionsAsync()
+
+Navigation to a dedicated picker screen (e.g., navigation.navigate('NewProjectMedia')) — replace with onUploadPhoto.
+
+Any call to /api/projects/:id/image or FormData in this screen.
+
+2) In app/screens/NewProjectMedia.js (if it exists and is used)
+
+If this screen is still navigated to for picking, stop navigation from callers and use the inline handler above in the caller.
+
+In this file, either:
+
+Remove permission requests + uploads entirely, or
+
+Leave it, but add:
+
+if (Platform.OS === 'web') {
+  Alert.alert('Use Upload Photo', 'Please use the Upload Photo button on the previous screen.');
+  return null;
+}
+
+
+(Goal: the app should no longer come here on web.)
+
+3) Repo-wide guard (only if these calls exist in any screen)
+
+Search in app/screens/** and delete or guard any remaining permission calls:
+
+requestMediaLibraryPermissionsAsync
+
+getMediaLibraryPermissionsAsync
+
+requestCameraPermissionsAsync
+
+If you must keep them for native flows, wrap:
+
+if (Platform.OS !== 'web') {
+  await ImagePicker.requestMediaLibraryPermissionsAsync();
+}
+
+4) Hard stop: remove the old generic “permissions” toast
+
+Find any string like “could not grant permissions contact support” and replace with:
+
+Alert.alert('Photo picker', 'Please choose an image from your device. If this is web preview, no special permissions are needed.')
+
+
+(We don’t want stale toasts masking real issues.)
+
+Acceptance Criteria
+
+On web (Replit preview):
+
+Clicking Upload Photo opens the OS file chooser immediately.
+
+Selecting an image does not show the old “permissions” message.
+
+A preview image renders (testID="np-photo-preview").
+
+DevTools Console logs [photo] picked web ….
+
+No network call to /api/projects/:id/image is made from these screens.
+
+On native (if you test later):
+
+Clicking Upload Photo opens the library, no explicit permission code runs in our files (OS handles it).
+
+No new files or dependencies were added.

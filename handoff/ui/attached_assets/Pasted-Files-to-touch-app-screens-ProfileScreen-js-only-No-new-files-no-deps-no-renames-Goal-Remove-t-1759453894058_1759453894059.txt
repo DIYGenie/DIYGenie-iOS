@@ -1,0 +1,73 @@
+Files to touch: app/screens/ProfileScreen.js only. No new files, no deps, no renames.
+
+Goal
+Remove the temporary Billing Debug (temp) panel and ensure the visible controls work and are accessible:
+
+Manage → opens Stripe Portal
+
+Sync Plan → refreshes entitlements
+
+Upgrade cards → call openCheckout('pro'|'casual')
+
+Settings rows wired (Account, Billing & Payments, Help & Support, Log Out)
+
+Buttons disable while busy; no overlays block taps
+
+Changes (surgical)
+
+Delete debug code
+
+Remove the entire UI block that renders the “Billing Debug (temp)” section (look for that heading).
+
+Remove related state/functions: dbg, setDbg, logDbg, logErr, pingEntitlements, testCheckout, testPortal, devUpgrade, and any dbg-* testIDs.
+
+Keep these helpers intact: api, openExternal, getEntitlements, openCheckout, openPortal, AppState refresh.
+
+Wire real buttons
+
+Manage button: ensure it is a Pressable calling openPortal, with accessibilityRole="button", hitSlop, disabled={busy}, testID="btn-manage-portal".
+
+Sync Plan text: make it a Pressable calling getEntitlements, with testID="btn-sync-plan" and shows busy ? 'Syncing…' : 'Sync Plan'.
+
+Upgrade cards: keep as-is visually; confirm CTAs call openCheckout('pro') / openCheckout('casual'), disabled={busy}, testID="plan-pro-cta" / "plan-casual-cta".
+
+Settings rows (tap targets)
+Wrap each row container with a Pressable (or ensure existing wrapper) and wire:
+
+Account Settings → Alert.alert('Coming soon', 'Account settings will land here.') (testID="row-account")
+
+Billing & Payments → openPortal() (testID="row-billing")
+
+Help & Support → guarded Linking.openURL('mailto:support@diygenieapp.com?subject=DIY%20Genie%20Support') (testID="row-help")
+
+Log Out → if a Supabase client is available in scope, call supabase.auth.signOut().catch(()=>{}); otherwise Alert.alert('Logged out (dev)') (testID="row-logout").
+All rows: accessibilityRole="button", hitSlop={10}, disabled={busy}.
+
+Tap reliability
+
+On the plan card container, set pointerEvents="auto" and style={{ zIndex: 1 }}.
+
+If any decorative header/gradient sits above, give that element pointerEvents="none" (do not change layout).
+
+Keep behavior
+
+Do not change env usage or endpoints.
+
+Keep the dev fallback inside openCheckout (calls /api/billing/upgrade on 404/501).
+
+Do not modify other screens.
+
+Acceptance Criteria
+
+The Billing Debug (temp) section is gone.
+
+Manage opens a Stripe Portal URL in a new tab/window (or shows a clear alert if 501).
+
+Sync Plan fetches entitlements and updates the plan text/badge without full-screen spinners.
+
+Start Pro / Start Casual open Stripe Checkout; buttons are disabled while busy.
+
+Settings rows respond as specified (Portal/email/placeholder/logout).
+
+No view intercepts taps; all interactive elements have accessibilityRole="button" and the following testIDs exist:
+btn-manage-portal, btn-sync-plan, plan-pro-cta, plan-casual-cta, row-account, row-billing, row-help, row-logout.

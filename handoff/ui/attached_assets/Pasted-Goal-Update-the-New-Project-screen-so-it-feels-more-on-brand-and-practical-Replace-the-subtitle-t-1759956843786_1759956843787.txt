@@ -1,0 +1,156 @@
+Goal:
+Update the New Project screen so it feels more on-brand and practical:
+
+Replace the subtitle text under the screen title.
+
+Add a new Project Title / Name field at the top of the form.
+
+Keep all existing validation and draft persistence working.
+
+Project: [THEME]
+Autonomy: Low
+App Testing: ON
+
+THEME
+// EDIT FILE: app/screens/NewProject.tsx
+// Update screen heading and subtitle only (keep everything else).
+
+import React from 'react';
+import { View, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import T from '../components/T';
+import Toast from '../components/Toast';
+import NewProjectForm from './NewProjectForm';
+import NewProjectMedia from './NewProjectMedia';
+import { useNewProjectDraft } from '../lib/useNewProjectDraft';
+
+export default function NewProject() {
+  const { draft, setDraft, isValid } = useNewProjectDraft();
+
+  return (
+    <KeyboardAvoidingScreen>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
+        <T.h2>Create Your New Project</T.h2>
+        <T.p>
+          Tell us a little about your DIY project so Genie can guide you through
+          scanning, planning, and building.
+        </T.p>
+
+        <NewProjectForm
+          draft={draft}
+          onDraftChange={setDraft}
+        />
+
+        <NewProjectMedia
+          isFormValid={isValid}
+          onBlocked={() =>
+            Toast.show('Complete name, budget, and skill level to continue.')
+          }
+        />
+      </ScrollView>
+    </KeyboardAvoidingScreen>
+  );
+}
+
+function KeyboardAvoidingScreen({ children }: { children: React.ReactNode }) {
+  return (
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+    >
+      <View style={{ flex: 1 }}>{children}</View>
+    </KeyboardAvoidingView>
+  );
+}
+
+THEME
+// EDIT FILE: app/screens/NewProjectForm.js
+// Add a new "Project Title" field at the top of the form.
+
+import React from 'react';
+import { View, TextInput, Pressable, Text } from 'react-native';
+import T from '../components/T';
+
+export default function NewProjectForm({ draft, onDraftChange }) {
+  const set = (patch) => onDraftChange({ ...draft, ...patch });
+
+  const SkillButton = ({ value, label }) => {
+    const selected = draft.skill_level === value;
+    return (
+      <Pressable
+        onPress={() => set({ skill_level: value })}
+        style={{
+          paddingVertical: 10,
+          paddingHorizontal: 14,
+          borderRadius: 12,
+          backgroundColor: selected ? '#6D28D9' : '#EEE',
+          marginRight: 8,
+        }}
+      >
+        <Text style={{ color: selected ? 'white' : '#111' }}>{label}</Text>
+      </Pressable>
+    );
+  };
+
+  return (
+    <View style={{ gap: 12 }}>
+      {/* 🆕 Project Title */}
+      <T.label>Project Title</T.label>
+      <TextInput
+        placeholder="e.g., Built-in Bookcase"
+        value={draft.title || ''}
+        onChangeText={(t) => set({ title: t })}
+        style={{
+          borderWidth: 1, borderColor: '#DDD', borderRadius: 12, padding: 12,
+        }}
+      />
+
+      <T.label>Project Description</T.label>
+      <TextInput
+        placeholder="Describe your project idea..."
+        value={draft.name}
+        onChangeText={(t) => set({ name: t })}
+        style={{
+          borderWidth: 1, borderColor: '#DDD', borderRadius: 12, padding: 12,
+        }}
+      />
+
+      <T.label>Budget (USD)</T.label>
+      <TextInput
+        placeholder="e.g., 800"
+        keyboardType="number-pad"
+        value={draft.budget}
+        onChangeText={(t) => set({ budget: t })}
+        style={{
+          borderWidth: 1, borderColor: '#DDD', borderRadius: 12, padding: 12,
+        }}
+      />
+
+      <T.label>Skill Level</T.label>
+      <View style={{ flexDirection: 'row' }}>
+        <SkillButton value="beginner" label="Beginner" />
+        <SkillButton value="intermediate" label="Intermediate" />
+        <SkillButton value="advanced" label="Advanced" />
+      </View>
+    </View>
+  );
+}
+
+THEME
+// EDIT FILE: app/lib/useNewProjectDraft.ts
+// Add "title" field to draft state (keeps persistence working).
+
+export type NewProjectDraft = {
+  title?: string;
+  name: string;
+  budget: string;
+  skill_level: 'beginner' | 'intermediate' | 'advanced' | '';
+};
+
+// inside initial state:
+const [draft, setDraft] = useState<NewProjectDraft>({
+  title: '',
+  name: '',
+  budget: '',
+  skill_level: '',
+});

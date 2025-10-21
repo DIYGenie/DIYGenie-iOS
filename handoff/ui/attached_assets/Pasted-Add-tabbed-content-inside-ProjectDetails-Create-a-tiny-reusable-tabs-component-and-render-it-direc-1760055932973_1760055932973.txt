@@ -1,0 +1,287 @@
+Add tabbed content inside ProjectDetails
+
+Create a tiny, reusable tabs component and render it directly on ProjectDetails when a plan is ready.
+
+app/components/PlanTabs.tsx
+
+import React, { useMemo, useState } from 'react';
+import { View, Text, Pressable } from 'react-native';
+
+type Plan = {
+  overview?: string;
+  materials?: { name: string; qty?: string | number; unit?: string }[];
+  tools?: string[];
+  cuts?: { part: string; size: string; qty?: number }[];
+  steps?: { title?: string; body?: string }[];
+  time_estimate_hours?: number;
+  cost_estimate_usd?: number;
+};
+
+const pill = (active: boolean) => ({
+  paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16,
+  backgroundColor: active ? '#6D28D9' : '#EEF2FF', marginRight: 8,
+});
+const pillTxt = (active: boolean) => ({
+  color: active ? 'white' : '#111827', fontWeight: '700'
+});
+
+export default function PlanTabs({ plan }: { plan: Plan }) {
+  const tabs = useMemo(() => ([
+    { key: 'Overview', render: () => (
+      <View style={{ backgroundColor:'#fff', borderRadius:12, padding:16 }}>
+        <Text style={{ fontWeight:'700', fontSize:18, marginBottom:8 }}>Overview</Text>
+        <Text>{plan.overview ?? 'High-level summary will appear here.'}</Text>
+      </View>
+    )},
+    { key: 'Materials', render: () => (
+      <View style={{ backgroundColor:'#fff', borderRadius:12, padding:16 }}>
+        <Text style={{ fontWeight:'700', fontSize:18, marginBottom:8 }}>Materials</Text>
+        {(plan.materials?.length ? plan.materials : []).map((m, i) => (
+          <Text key={i}>• {m.name}{m.qty ? ` — ${m.qty}${m.unit ? ` ${m.unit}` : ''}` : ''}</Text>
+        ))}
+        {!plan.materials?.length && <Text>No materials listed yet.</Text>}
+      </View>
+    )},
+    { key: 'Cuts', render: () => (
+      <View style={{ backgroundColor:'#fff', borderRadius:12, padding:16 }}>
+        <Text style={{ fontWeight:'700', fontSize:18, marginBottom:8 }}>Cut list</Text>
+        {(plan.cuts?.length ? plan.cuts : []).map((c, i) => (
+          <Text key={i}>• {c.part}: {c.size}{c.qty ? `  ×${c.qty}` : ''}</Text>
+        ))}
+        {!plan.cuts?.length && <Text>No cut list yet.</Text>}
+      </View>
+    )},
+    { key: 'Tools', render: () => (
+      <View style={{ backgroundColor:'#fff', borderRadius:12, padding:16 }}>
+        <Text style={{ fontWeight:'700', fontSize:18, marginBottom:8 }}>Tools</Text>
+        {(plan.tools?.length ? plan.tools : []).map((t, i) => (<Text key={i}>• {t}</Text>))}
+        {!plan.tools?.length && <Text>No tools listed yet.</Text>}
+      </View>
+    )},
+    { key: 'Steps', render: () => (
+      <View style={{ backgroundColor:'#fff', borderRadius:12, padding:16 }}>
+        <Text style={{ fontWeight:'700', fontSize:18, marginBottom:8 }}>Steps</Text>
+        {(plan.steps?.length ? plan.steps : []).map((s, i) => (
+          <View key={i} style={{ marginBottom:10 }}>
+            <Text style={{ fontWeight:'700' }}>{i+1}. {s.title ?? 'Step'}</Text>
+            {!!s.body && <Text>{s.body}</Text>}
+          </View>
+        ))}
+        {!plan.steps?.length && <Text>No steps yet.</Text>}
+      </View>
+    )},
+    { key: 'Time & Cost', render: () => (
+      <View style={{ backgroundColor:'#fff', borderRadius:12, padding:16 }}>
+        <Text style={{ fontWeight:'700', fontSize:18, marginBottom:8 }}>Time & Cost</Text>
+        <Text>Estimated time: {plan.time_estimate_hours ?? '—'} hrs</Text>
+        <Text>Estimated cost: {plan.cost_estimate_usd != null ? `$${plan.cost_estimate_usd}` : '—'}</Text>
+      </View>
+    )},
+  ]), [plan]);
+
+  const [active, setActive] = useState(0);
+
+  return (
+    <View style={{ marginTop: 16 }}>
+      <View style={{ flexDirection:'row', marginBottom:12, flexWrap:'wrap' }}>
+        {tabs.map((t, i) => (
+          <Pressable key={t.key} onPress={() => setActive(i)} style={pill(i===active)}>
+            <Text style={pillTxt(i===active)}>{t.key}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {tabs[active].render()}
+    </View>
+  );
+}
+
+
+Update ProjectDetails.tsx – render the tabs when plan is ready and rename the CTA:
+
+// ...imports
+import PlanTabs from '../components/PlanTabs';
+// plus your StatusBadge etc.
+
+export default function ProjectDetails() {
+  // existing state: project, scan, loading...
+  // assume project.plan holds the generated plan JSON (or fetch it similarly)
+
+  const plan = project?.plan ?? null;
+
+  // headerLeft remains safeBack; title already shows project name + StatusBadge
+
+  return (
+    <View style={{ flex: 1, padding: 16 }}>
+      {/* title & status already in header */}
+      {/* scan image area you already have */}
+
+      {/* PLAN CARD (status gate) */}
+      {!plan ? (
+        <View style={{ backgroundColor:'#F6F7FF', borderRadius:16, padding:14, marginTop:16 }}>
+          <Text style={{ fontWeight:'700', marginBottom:8 }}>Plan</Text>
+          <Text>Your plan is building. This screen will update automatically; you can also pull to refresh.</Text>
+        </View>
+      ) : (
+        <>
+          {/* TABS right on Project Details */}
+          <PlanTabs plan={plan} />
+
+          {/* CTA → dedicated linear guide */}
+          <Pressable
+            onPress={() => navigation.navigate('DetailedInstructions', { id: project.id })}
+            style={{ marginTop:16, backgroundColor:'#6D28D9', borderRadius:16, padding:14, alignItems:'center' }}
+          >
+            <Text style={{ color:'white', fontWeight:'700' }}>Get detailed instructions</Text>
+          </Pressable>
+        </>
+      )}
+    </View>
+  );
+}
+
+2) Make Get detailed instructions a linear, saveable guide
+
+This screen stitches everything into a single, scrollable sequence and lets the user save images to Photos (section-by-section to keep it reliable for long content).
+
+Install once (already in your repo for previews in many cases):
+
+react-native-view-shot
+
+expo-media-library
+
+app/screens/DetailedInstructions.tsx
+
+import React, { useRef } from 'react';
+import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { RouteProp, useRoute } from '@react-navigation/native';
+import { captureRef } from 'react-native-view-shot';
+import * as MediaLibrary from 'expo-media-library';
+import { fetchProjectById } from '../lib/api';
+
+type R = RouteProp<Record<'DetailedInstructions', { id: string }>, 'DetailedInstructions'>;
+
+export default function DetailedInstructions() {
+  const { params } = useRoute<R>();
+  const [project, setProject] = React.useState<any>(null);
+  const [saving, setSaving] = React.useState(false);
+
+  const refs = {
+    cover: useRef<View>(null),
+    materials: useRef<View>(null),
+    cuts: useRef<View>(null),
+    tools: useRef<View>(null),
+    steps: useRef<View>(null),
+    summary: useRef<View>(null),
+  };
+
+  React.useEffect(() => {
+    (async () => {
+      try { setProject(await fetchProjectById(params.id)); } catch {}
+    })();
+  }, [params.id]);
+
+  const plan = project?.plan ?? {};
+
+  async function saveSection(ref: React.RefObject<View>, name: string) {
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') { Alert.alert('Permission needed', 'Please allow Photo access.'); return; }
+      setSaving(true);
+      const uri = await captureRef(ref, { format: 'png', quality: 1 });
+      await MediaLibrary.saveToLibraryAsync(uri);
+      Alert.alert('Saved', `${name} saved to Photos.`);
+    } catch (e) {
+      Alert.alert('Save failed', 'Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveAll() {
+    const order: [React.RefObject<View>, string][] = [
+      [refs.cover, 'Cover'],
+      [refs.materials, 'Materials'],
+      [refs.cuts, 'Cut list'],
+      [refs.tools, 'Tools'],
+      [refs.steps, 'Steps'],
+      [refs.summary, 'Summary'],
+    ];
+    for (const [r, n] of order) { // sequential to avoid memory spikes
+      // eslint-disable-next-line no-await-in-loop
+      await saveSection(r, n);
+    }
+  }
+
+  return (
+    <ScrollView contentContainerStyle={{ padding:16, gap:16 }}>
+      {/* Cover */}
+      <View ref={refs.cover} collapsable={false} style={{ backgroundColor:'#fff', borderRadius:16, padding:16 }}>
+        <Text style={{ fontSize:22, fontWeight:'800', marginBottom:4 }}>{project?.name ?? 'Project'}</Text>
+        <Text>Detailed, step-by-step instructions.</Text>
+      </View>
+
+      {/* Materials */}
+      <View ref={refs.materials} collapsable={false} style={{ backgroundColor:'#fff', borderRadius:16, padding:16 }}>
+        <Text style={{ fontSize:18, fontWeight:'700', marginBottom:8 }}>Materials</Text>
+        {(plan.materials?.length ? plan.materials : []).map((m:any, i:number) => (
+          <Text key={i}>• {m.name}{m.qty ? ` — ${m.qty}${m.unit ? ` ${m.unit}` : ''}` : ''}</Text>
+        ))}
+        {!plan.materials?.length && <Text>No materials listed.</Text>}
+      </View>
+
+      {/* Cuts */}
+      <View ref={refs.cuts} collapsable={false} style={{ backgroundColor:'#fff', borderRadius:16, padding:16 }}>
+        <Text style={{ fontSize:18, fontWeight:'700', marginBottom:8 }}>Cut list</Text>
+        {(plan.cuts?.length ? plan.cuts : []).map((c:any, i:number) => (
+          <Text key={i}>• {c.part}: {c.size}{c.qty ? `  ×${c.qty}` : ''}</Text>
+        ))}
+        {!plan.cuts?.length && <Text>No cut list.</Text>}
+      </View>
+
+      {/* Tools */}
+      <View ref={refs.tools} collapsable={false} style={{ backgroundColor:'#fff', borderRadius:16, padding:16 }}>
+        <Text style={{ fontSize:18, fontWeight:'700', marginBottom:8 }}>Tools</Text>
+        {(plan.tools?.length ? plan.tools : []).map((t:string, i:number) => (<Text key={i}>• {t}</Text>))}
+        {!plan.tools?.length && <Text>No tools listed.</Text>}
+      </View>
+
+      {/* Steps */}
+      <View ref={refs.steps} collapsable={false} style={{ backgroundColor:'#fff', borderRadius:16, padding:16 }}>
+        <Text style={{ fontSize:18, fontWeight:'700', marginBottom:8 }}>Step-by-step</Text>
+        {(plan.steps?.length ? plan.steps : []).map((s:any, i:number) => (
+          <View key={i} style={{ marginBottom:10 }}>
+            <Text style={{ fontWeight:'700' }}>{i+1}. {s.title ?? 'Step'}</Text>
+            {!!s.body && <Text>{s.body}</Text>}
+          </View>
+        ))}
+        {!plan.steps?.length && <Text>No steps yet.</Text>}
+      </View>
+
+      {/* Summary */}
+      <View ref={refs.summary} collapsable={false} style={{ backgroundColor:'#fff', borderRadius:16, padding:16 }}>
+        <Text style={{ fontSize:18, fontWeight:'700', marginBottom:8 }}>Time & Cost</Text>
+        <Text>Estimated time: {plan.time_estimate_hours ?? '—'} hrs</Text>
+        <Text>Estimated cost: {plan.cost_estimate_usd != null ? `$${plan.cost_estimate_usd}` : '—'}</Text>
+      </View>
+
+      {/* Save buttons */}
+      <Pressable disabled={saving} onPress={saveAll}
+        style={{ backgroundColor:'#6D28D9', borderRadius:16, padding:14, alignItems:'center' }}>
+        <Text style={{ color:'white', fontWeight:'700' }}>{saving ? 'Saving…' : 'Save all sections to Photos'}</Text>
+      </Pressable>
+    </ScrollView>
+  );
+}
+
+3) Wire the new screen
+
+Add the route in your Projects stack.
+
+app/navigation/AppNavigator.js (or wherever your stack is defined)
+
+// imports...
+import DetailedInstructions from '../screens/DetailedInstructions';
+
+// inside the Projects stack:
+<Stack.Screen name="ProjectDetails" component={ProjectDetails} />
+<Stack.Screen name="DetailedInstructions" component={DetailedInstructions} options={{ title: 'Project Plan' }} />

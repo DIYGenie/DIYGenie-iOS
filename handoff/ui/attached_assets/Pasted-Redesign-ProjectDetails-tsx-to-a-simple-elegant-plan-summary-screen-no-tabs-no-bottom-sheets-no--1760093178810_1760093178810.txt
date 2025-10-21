@@ -1,0 +1,63 @@
+Redesign ProjectDetails.tsx to a simple, elegant plan summary screen (no tabs, no bottom sheets, no build mode). Follow these specs:
+
+Header + Preview
+
+Keep the dynamic header title + status badge you already built.
+
+At the top of the scrollview, render a 16:9 rounded preview block:
+
+If project.preview_url exists: show <Image> filling the card; add a small “Save image” button (top-right overlay) that saves the image to Photos (iOS permission-safe; no-op toast on Android Expo Go).
+
+Else: show a centered “No scan image yet” placeholder.
+
+Add a small caption row under the image if preview exists: “Visual mockup generated from your scan”.
+
+Plan summary cards (like the inspo)
+
+Replace tabs/sheets with a single column of compact cards (rounded, soft shadow, subtle lilac background).
+
+Cards (in this order): Overview, Steps, Materials, Tools, Cuts, Time & Cost.
+
+Each card shows:
+
+Left icon (Ionicons): information-circle-outline, list-outline, cube-outline, hammer-outline, cut-outline, time-outline.
+
+Title (bold), and a tiny subline:
+
+Overview → “What you’ll build” (first 1–2 lines of overview if available).
+
+Steps → “{N} steps”.
+
+Materials → “{N} items”.
+
+Tools → “{N} tools”.
+
+Cuts → “{N} cuts”.
+
+Time & Cost → “Est: {hours || —} hrs · {cost || —}”.
+
+Tap on any card → navigation.navigate('DetailedInstructions', { projectId: project.id, section: <'overview'|'steps'|'materials'|'tools'|'cuts'|'time'> }).
+
+Data
+
+We already parse markdown into a Plan object. Use that parsed object on this screen. If it’s not loaded yet but status is ready, show skeleton placeholders in the cards; auto-load using the existing fetch/parse helpers (no polling loops here).
+
+Remove legacy UI
+
+Delete/stop rendering: PlanTabs, any sheet/peek components on this screen, and any “Get detailed instructions” button. This page is now the summary; the full guide lives only in DetailedInstructions (and should scroll to the passed section anchor).
+
+Style
+
+Soft lilac card bg (#F4F1FF), rounded-xl, subtle shadow, internal padding 14–16. Title ~17–18 semibold; subline 13–14 muted. Icon size 22–24. Vertical spacing 10–12 between cards.
+
+Acceptance
+
+With a ready plan, I see 6 cards with correct counts/peeks.
+
+Tapping “Materials” opens DetailedInstructions at Materials.
+
+If preview exists, “Save image” writes to Photos and toasts “Saved”.
+
+No tabs/sheets appear anywhere on Project Details.
+
+Keep file touches minimal (mainly ProjectDetails.tsx + a small PlanSummaryCard.tsx component). Keep TypeScript strict.

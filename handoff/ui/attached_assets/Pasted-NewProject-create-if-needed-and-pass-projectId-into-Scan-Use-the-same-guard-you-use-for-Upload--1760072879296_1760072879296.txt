@@ -1,0 +1,71 @@
+NewProject: create (if needed) and pass projectId into Scan
+
+Use the same guard you use for Upload. Do not let Scan open unless the form is valid and a project exists.
+
+// NewProject.tsx (or NewProjectMedia.js)
+// inside your handlers
+const handleScan = guard(async () => {
+  await authPreflight();                               // confirm session
+  const projectId = await ensureProjectForDraft(draft); // creates once, reuses later
+  if (!draft?.projectId) onDraftChange({ ...draft, projectId });
+
+  // go to Scan and PASS the id
+  navigation.navigate('Main', {
+    screen: 'ScanScreen',
+    params: { projectId },
+  });
+});
+
+2) ScanScreen: require projectId (don’t try to create projects here)
+
+Hard-fail early if it’s missing, so we never hit 422 again.
+
+// ScanScreen.tsx
+const route = useRoute<any>();
+const navigation = useNavigation<any>();
+const projectId = route.params?.projectId;
+
+useEffect(() => {
+  if (!projectId) {
+    console.log('[scan] missing projectId – bailing');
+    Alert.alert('Missing project', 'Please start the scan from the New Project form.');
+    navigation.goBack();
+  }
+}, [projectId, navigation]);
+
+3) Scan save: link to the given project, tag as AR, then return to New Project
+
+Do NOT call any build APIs here.
+
+// after you capture ROI / finish scan
+const result = await supabase
+  .from('room_scans')
+  .insert({
+    project_id: projectId,
+    source: 'ar',              // important for UI
+    // ... any ROI / meta fields you store
+  })
+  .select('id')
+  .single();
+
+const scanId = result.data?.id;
+
+// Go back to New Project with a param so it shows the card
+navigation.navigate('Main', {
+  screen: 'NewProject',
+  params: { savedScan: { scanId, source: 'ar' } },
+});
+
+4) NewProject: consume savedScan param (you already have this)
+
+You’ve got the useFocusEffect reader/clearer in place—keep it. It should log:
+
+[newProject] param savedScan detected { scanId: '...', source: 'ar' }
+
+5) Double-check: no auto-builds anywhere but the two buttons
+
+Search and confirm nothing calls /api/build (or similar) except:
+
+“Generate AI Preview”
+
+“Build Plan Without Preview”

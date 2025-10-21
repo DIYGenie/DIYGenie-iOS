@@ -1,0 +1,181 @@
+**project:** Theme
+**autonomy:** low
+**app testing:** on
+
+**Single Agent-3 Prompt — Add “Ruler” overlay (client-only, off by default) to ProjectDetails hero**
+
+**Scope**
+
+* Expo/TypeScript only. No backend changes. No new deps.
+* Draw a horizontal ruler overlay on top of the hero image using `scale_px_per_in` from `projects`.
+* Toggle is OFF by default; only shows if `scale_px_per_in` is present.
+* Match existing UI style (subtle, clean, non-intrusive).
+
+**Tasks**
+
+1. **Create** `app/components/RulerOverlay.tsx`
+
+* A pure component that:
+
+  * Accepts `widthPx: number`, `pxPerIn: number`, optional `primaryColor?: string` (default `#6D28D9`), optional `labelEvery?: number` (default `6`).
+  * Renders a horizontal ruler with 1″ ticks across the given width.
+  * Tick sizes: full (1″) = 12px height; half-inch (optional) skip; we’ll keep it simple: 1″ only.
+  * Label every N inches (default 6″).
+  * Container has `pointerEvents="none"` so it doesn’t intercept touches.
+
+```tsx
+// app/components/RulerOverlay.tsx
+import React, { memo, useMemo } from 'react';
+import { View, Text } from 'react-native';
+
+type Props = {
+  widthPx: number;
+  pxPerIn: number;
+  primaryColor?: string;
+  labelEvery?: number; // inches
+};
+
+const RulerOverlay: React.FC<Props> = memo(({ widthPx, pxPerIn, primaryColor = '#6D28D9', labelEvery = 6 }) => {
+  if (!widthPx || !pxPerIn || pxPerIn <= 0) return null;
+
+  const inches = Math.max(0, Math.floor(widthPx / pxPerIn));
+  const ticks = useMemo(() => {
+    const arr = [];
+    for (let i = 0; i <= inches; i++) {
+      const left = Math.round(i * pxPerIn);
+      const isLabeled = i % labelEvery === 0;
+      arr.push({ i, left, isLabeled });
+    }
+    return arr;
+  }, [inches, pxPerIn, labelEvery]);
+
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: 0, right: 0, bottom: 0,
+        height: 28,
+        backgroundColor: 'rgba(255,255,255,0.55)',
+        borderTopWidth: 1,
+        borderColor: 'rgba(0,0,0,0.08)',
+      }}
+    >
+      {/* baseline */}
+      <View style={{
+        position: 'absolute',
+        left: 0, right: 0, bottom: 6,
+        height: 2, backgroundColor: primaryColor, opacity: 0.6,
+      }} />
+      {/* ticks */}
+      {ticks.map(t => (
+        <View key={t.i} style={{ position: 'absolute', left: t.left, bottom: 6, alignItems: 'center' }}>
+          <View style={{ width: 2, height: 12, backgroundColor: primaryColor, opacity: 0.9 }} />
+          {t.isLabeled && (
+            <Text style={{ fontSize: 10, marginTop: 2, color: '#111827', opacity: 0.8 }}>{t.i}"</Text>
+          )}
+        </View>
+      ))}
+    </View>
+  );
+});
+
+export default RulerOverlay;
+```
+
+2. **Update** `app/screens/ProjectDetails.tsx`
+
+* Wrap the hero image in a relative container.
+* Measure the rendered hero width with `onLayout` to compute `widthPx`.
+* Add `showRuler` switch (default false) that only appears when `pxPerIn` exists.
+* Render `<RulerOverlay widthPx={heroWidth} pxPerIn={pxPerIn} />` when toggled on.
+
+**Edits (surgical):**
+
+* **Imports (add):**
+
+```ts
+import { useState, useCallback } from 'react';
+import RulerOverlay from 'app/components/RulerOverlay';
+import { Switch } from 'react-native';
+```
+
+* **State (inside component):**
+
+```ts
+const [showRuler, setShowRuler] = useState(false);
+const [heroW, setHeroW] = useState(0);
+const onHeroLayout = useCallback((e) => {
+  const w = e?.nativeEvent?.layout?.width ?? 0;
+  if (w && w !== heroW) setHeroW(w);
+}, [heroW]);
+```
+
+* **After you derive AR values (you already log `[details] ar …`) make sure you have:**
+
+```ts
+const pxPerIn = typeof project?.scale_px_per_in === 'number' ? project.scale_px_per_in : null;
+```
+
+* **Hero container:**
+  Replace your current hero wrapper with a `View` that has `position:'relative'` and calls `onHeroLayout`:
+
+```tsx
+<View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: '#f3f4f6', marginBottom: 8, position: 'relative' }} onLayout={onHeroLayout}>
+  {hero ? (
+    <Image source={{ uri: hero }} style={{ width: '100%', aspectRatio: 4/3 }} />
+  ) : (
+    <View style={{ width: '100%', aspectRatio: 4/3, alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ opacity: 0.6 }}>[details] No image available</Text>
+    </View>
+  )}
+  {/* Ruler overlay */}
+  {(showRuler && pxPerIn && heroW > 0) && (
+    <RulerOverlay widthPx={heroW} pxPerIn={pxPerIn} />
+  )}
+</View>
+```
+
+* **Toggle row (just below hero, near your AR badge row)**
+  Only show the toggle if `pxPerIn` exists:
+
+```tsx
+{pxPerIn ? (
+  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6, marginBottom: 8 }}>
+    <Switch value={showRuler} onValueChange={setShowRuler} />
+    <Text style={{ fontSize: 14, opacity: 0.85 }}>Show ruler</Text>
+    <Text style={{ marginLeft: 8, fontSize: 12, opacity: 0.6 }}>Scale: {pxPerIn.toFixed(2)} px/in</Text>
+  </View>
+) : null}
+```
+
+3. **(Optional) Dimension chips under toggle**
+
+* If you want, add tiny chips for W/H from `dimensions_json` (you already compute these). Keep it non-blocking and subtle.
+
+4. **Styling constraints**
+
+* Don’t change existing paddings/margins more than shown.
+* Overlay must never block gestures (pointerEvents off).
+* Keep text small and neutral; primary color `#6D28D9`.
+
+**Logging**
+
+* Add one line when toggled:
+  `console.log('[ruler] toggle', { on: showRuler, pxPerIn, heroW });`
+
+**Acceptance**
+
+* With `scale_px_per_in` present:
+
+  * “Show ruler” toggle appears (OFF by default).
+  * When ON: a translucent ruler bar overlays the bottom of the hero with 1″ ticks and labels every 6″.
+  * No layout jumps; scrolling remains smooth; image tap/scroll unaffected.
+* With no `scale_px_per_in`: no toggle, no overlay.
+* No TS errors, no new deps.
+
+**Stop after these edits and report:**
+
+* Files touched
+* A screenshot or quick note that ticks/labels align roughly to inches (we’re using measured width / pxPerIn)
+* The `[ruler] toggle` log with `heroW` and `pxPerIn` values

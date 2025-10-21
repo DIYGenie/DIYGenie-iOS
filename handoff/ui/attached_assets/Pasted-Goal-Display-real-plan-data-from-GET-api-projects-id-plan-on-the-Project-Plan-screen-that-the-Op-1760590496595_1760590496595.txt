@@ -1,0 +1,108 @@
+Goal:
+Display real plan data from GET /api/projects/:id/plan on the Project Plan screen that the “Open Detailed Build Plan” button navigates to. Keep styling minimal for now; accuracy over polish. Do not change existing flows or gating.
+
+Before you edit — confirm file names
+
+If the screen/component names differ from these, pause and ask me to confirm exact paths before creating new files:
+
+Project details screen: app/screens/ProjectDetails.tsx
+
+Project plan screen: app/screens/ProjectPlan.tsx
+
+API client: app/lib/api.ts (or similar)
+
+Types/models folder: app/types/ (or similar)
+
+Navigation route name used by “Open Detailed Build Plan” button
+
+Tasks:
+
+API client
+
+Add getProjectPlan(projectId: string) → calls /api/projects/:id/plan.
+
+Use the production-ready base URL env you already use for other endpoints.
+
+Handle non-2xx: return { ok:false, error } to the screen.
+
+Types
+
+Create TypeScript interfaces mirroring the frozen schema from PLAN_ENDPOINT_IMPLEMENTATION.md:
+
+PlanResponse, PlanSummary, PlanPreview, PlanMaterial, PlanTools, PlanCutList, PlanStep, PlanSafety, PlanPermits, PlanQuota.
+
+Export from app/types/plan.ts.
+
+Project Plan screen
+
+On mount, read projectId from route params and call getProjectPlan.
+
+Show loading state, error state, and the data state.
+
+Render sections in this order (basic styling is fine):
+
+Summary: title, hero image (if present), est time (hrs), est cost ($).
+
+Preview: before/after images if URLs exist (stacked or side-by-side).
+
+Materials: list rows with qty unit · name and optional subtotalUsd.
+
+Tools: Required (bulleted), Optional (bulleted).
+
+Cut List: items table (board, dims, qty); if layoutSvgUrl exists, render an image placeholder with link.
+
+Steps: numbered list n. title and text; show diagram image if available. (Checkboxes come later; render read-only now.)
+
+Safety: bullet notes if present.
+
+Permits: if needed true or note present, show a callout box.
+
+If quota indicates user is blocked, show a small inline banner that mirrors your existing gating copy (no new logic).
+
+Navigation
+
+Ensure the “Open Detailed Build Plan” button on Project Details navigates to this screen passing the correct projectId. If the route is already wired, keep it; otherwise wire it.
+
+No redesign / no side effects
+
+Do not change other screens, pricing UI, or auth screens.
+
+No renames/moves; minimal, targeted edits.
+
+Testing (App Testing = ON)
+
+Use a real project ID that currently returns a valid plan.
+
+Also test:
+
+A project with partial data (e.g., missing preview or materials).
+
+A 404 projectId (show error state).
+
+A quota-blocked response (show banner).
+
+Post screenshots in the PR description of: loading, happy path, partial data, error/quota.
+
+Deliverables:
+
+New getProjectPlan API call.
+
+app/types/plan.ts with exported interfaces.
+
+Updated Project Plan screen rendering all sections read-only.
+
+PR description with:
+
+The route name/path used by the button → plan screen.
+
+Example projectId used for testing.
+
+3–4 screenshots (states listed above).
+
+Any assumptions or places you had to create a file because it didn’t exist (list paths).
+
+Stop Conditions (must ask me before proceeding):
+
+If you can’t find the exact files mentioned above or the navigation route for “Open Detailed Build Plan”.
+
+If the base URL or auth header differs from other working endpoints.

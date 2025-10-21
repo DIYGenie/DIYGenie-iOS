@@ -1,0 +1,68 @@
+Goal: On HomeScreen, (1) rename the second chip to “Photo / Room scan” and (2) add tiny chevron arrows between the four chips to imply left→right flow. Arrows are decorative only (no touch), soft color, vertically centered.
+
+File: app/screens/HomeScreen.* (tsx/js)
+
+Update items array
+
+const items = [
+  { id: 1, icon: 'create-outline',   label: 'Describe' },
+  { id: 2, icon: 'image-outline',    label: 'Photo / Room scan' },
+  { id: 3, icon: 'sparkles-outline', label: 'AI preview' },
+  { id: 4, icon: 'list-outline',     label: 'Build plan' },
+];
+
+
+Replace chip row render to inject arrows between chips
+
+<View style={chipStyles.row}>
+  {items.map((item, idx) => (
+    <React.Fragment key={item.id}>
+      <TouchableOpacity style={chipStyles.chip} activeOpacity={0.85}>
+        <Ionicons name={item.icon as any} size={20} color={colors.brand} />
+        <Text style={chipStyles.chipLabel} numberOfLines={1}>{item.label}</Text>
+      </TouchableOpacity>
+
+      {idx < items.length - 1 && (
+        <View pointerEvents="none" style={chipStyles.arrowWrap}>
+          <Ionicons name="chevron-forward" size={14} color="rgba(110,64,255,0.45)" />
+        </View>
+      )}
+    </React.Fragment>
+  ))}
+</View>
+
+
+Add/adjust styles
+
+const chipWidth = 82;
+
+const chipStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center' },
+  chip: {
+    width: chipWidth, height: 76, borderRadius: 12,
+    backgroundColor: colors.brand50, borderWidth: 1,
+    borderColor: 'rgba(110,64,255,0.12)',
+    alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 8,
+    marginHorizontal: 2,
+  },
+  chipLabel: {
+    fontSize: 11, lineHeight: 14, fontWeight: '600',
+    color: colors.ink700, textAlign: 'center', maxWidth: chipWidth - 12, marginTop: 6,
+  },
+  arrowWrap: { width: 14, alignItems: 'center', justifyContent: 'center', marginHorizontal: 4 },
+});
+
+
+Cleanup
+
+Ensure the row stays single-line (no wrapping) as in the current layout.
+
+Arrows must not be focusable or tappable (pointerEvents="none").
+
+Acceptance
+
+Second chip label = “Photo / Room scan”.
+
+Small chevrons between chips, subtle color, vertically centered.
+
+No layout shift or scroll jank; Home loads with zero TS/ESLint errors.

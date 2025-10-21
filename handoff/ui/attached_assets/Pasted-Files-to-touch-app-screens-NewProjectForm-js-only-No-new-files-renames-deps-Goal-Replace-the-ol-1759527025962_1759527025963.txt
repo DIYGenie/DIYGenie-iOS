@@ -1,0 +1,88 @@
+Files to touch: app/screens/NewProjectForm.js only. No new files/renames/deps.
+
+Goal
+
+Replace the old “permission/contact support” toasts with real server messages and align the create-project call to the backend you just fixed:
+
+Always send { user_id: "auto", name, budget, skill_level }
+
+Read ID from { ok:true, item:{ id } } (fallback to .id)
+
+On failure, display details || error || HTTP <code> (no “permission” wording)
+
+Implement (surgical edits)
+
+At the top of the file, ensure (add if missing):
+
+const BASE = process.env.EXPO_PUBLIC_BASE_URL || 'https://api.diygenieapp.com';
+
+
+Locate the project creation code (the block that sets isUploading and posts to /api/projects). Replace just the payload and the success/error handling:
+
+Payload: send user_id:"auto" and map skill → skill_level:
+
+const payload = {
+  user_id: 'auto',
+  name: description.trim(),       // or your local variable for description
+  budget,                         // existing state
+  skill_level: skill,             // NOTE: use skill_level key
+};
+
+
+Success path: derive the id from either shape and proceed as before:
+
+const data = (response && response.data) || response || {};
+const ok = data.ok !== false; // treat missing ok as truthy
+const projectId = data?.item?.id || data?.id || data?.project?.id;
+
+if (!ok || !projectId) {
+  const msg = data?.details || data?.error || `HTTP ${response?.status || 400}`;
+  showToast(`Create failed: ${String(msg)}`, 'error');
+  triggerHaptic && triggerHaptic('error');
+  setIsUploading(false);
+  return;
+}
+
+// success: continue exactly as you do today (store id / navigate)
+
+
+Error path (catch): remove the “permission/contact support” wording and show the real server message:
+
+} catch (err) {
+  const status = err?.response?.status;
+  const body   = err?.response?.data || {};
+  const msg    = body?.details || body?.error || err?.message || `HTTP ${status || 500}`;
+  showToast(`Create failed: ${String(msg)}`, 'error');
+  triggerHaptic && triggerHaptic('error');
+  setIsUploading(false);
+  return;
+}
+
+
+Remove the two hard-coded toasts at the lines you found (around 146 and 154):
+
+// DELETE these legacy lines:
+// showToast("Couldn't create your project (permission). Try again or contact support.", 'error');
+
+
+If this file checks projectData.ok === false || !projectData.id, update it to:
+
+const ok = projectData?.ok !== false;
+const projectId = projectData?.item?.id || projectData?.id;
+if (!ok || !projectId) { /* use the new error block above */ }
+
+
+Do not add image uploads here. Photo stays local; the suggestions flow will handle network calls.
+
+Acceptance criteria
+
+Creating a project from NewProjectForm.js sends:
+
+{ "user_id": "auto", "name": "<desc>", "budget": "<budget>", "skill_level": "<skill>" }
+
+
+On success, it obtains projectId from item.id (or .id) and proceeds as before.
+
+On failure, toast reads “Create failed: <real server message>” (no “permission/contact support”).
+
+No changes to other screens or dependencies.

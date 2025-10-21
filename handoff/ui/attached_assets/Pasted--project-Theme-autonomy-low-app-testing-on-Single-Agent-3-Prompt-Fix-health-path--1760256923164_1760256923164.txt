@@ -1,0 +1,177 @@
+**project:** Theme
+**autonomy:** low
+**app testing:** on
+
+**Single Agent-3 Prompt — Fix health path + add hidden Diagnostics screen (safe, surgical)**
+
+* Goal: (1) Make health check robust if `/api` is accidentally included, (2) add a hidden **Diagnostics** screen reachable from **Profile** via a 7-tap reveal (for TestFlight reviewers).
+
+---
+
+### 1) Robust API base + health fallback
+
+**Edit:** `app/lib/api.ts`
+
+* Add a safe join + base normalizer and ensure `API_BASE` **never** ends with `/api`.
+
+```ts
+import Constants from 'expo-constants';
+
+function trimSlash(s?: string){ return (s || '').replace(/\/+$/,''); }
+function stripApiSuffix(s?: string){ return (s || '').replace(/\/api\/?$/,''); }
+function joinUrl(base: string, path: string){
+  return `${trimSlash(base)}/${path.replace(/^\/+/,'')}`;
+}
+
+const extras = (Constants?.expoConfig as any)?.extra ?? {};
+const RAW_API_BASE = extras.apiBase || 'https://api.diygenieapp.com';
+export const API_BASE = stripApiSuffix(trimSlash(RAW_API_BASE)) || 'https://api.diygenieapp.com';
+
+// Keep PREVIEW_API_BASE if you actually want /api there; otherwise normalize it too:
+const RAW_PREVIEW = extras.previewApiBase || RAW_API_BASE;
+export const PREVIEW_API_BASE = stripApiSuffix(trimSlash(RAW_PREVIEW)) || API_BASE;
+
+export { joinUrl };
+```
+
+**Edit:** `app/lib/health.ts`
+
+* Use `joinUrl(API_BASE, 'health/full')`; fallback to `/api/health/full` on 404.
+
+```ts
+import { API_BASE, joinUrl } from './api';
+
+export async function softHealthCheck(base = API_BASE) {
+  try {
+    let url = joinUrl(base, 'health/full');
+    let res = await fetch(url);
+    if (res.status === 404) {
+      // fallback if server mounted behind /api
+      url = joinUrl(base, 'api/health/full');
+      res = await fetch(url);
+    }
+    if (!res.ok) return console.warn('[health] non-200', res.status);
+    const json = await res.json();
+    console.log('[health] ok', { modes: json?.modes, uptime_s: json?.uptime_s });
+  } catch (e) {
+    console.warn('[health] failed', String(e));
+  }
+}
+```
+
+---
+
+### 2) Hidden Diagnostics screen
+
+**Create:** `app/screens/Diagnostics.tsx`
+
+* Read version/env and call `softHealthCheck()` with a “Run health” button.
+
+```tsx
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import Constants from 'expo-constants';
+import { API_BASE } from 'app/lib/api';
+import { softHealthCheck } from 'app/lib/health';
+
+export default function Diagnostics(){
+  const [last, setLast] = useState<any>(null);
+  const info = {
+    name: Constants?.expoConfig?.name,
+    version: Constants?.expoConfig?.version,
+    appEnv: (Constants?.expoConfig as any)?.extra?.appEnv,
+    apiBase: API_BASE,
+  };
+
+  const run = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/health/full`);
+      setLast({ status: res.status, json: await res.json().catch(()=>null) });
+    } catch (e) {
+      setLast({ error: String(e) });
+    }
+  };
+
+  return (
+    <ScrollView contentContainerStyle={{ padding:16 }}>
+      <Text style={{ fontSize:18, fontWeight:'700', marginBottom:8 }}>Diagnostics</Text>
+      <Text>Name: {info.name}</Text>
+      <Text>Version: {info.version}</Text>
+      <Text>Env: {info.appEnv}</Text>
+      <Text>API: {info.apiBase}</Text>
+
+      <TouchableOpacity onPress={() => { softHealthCheck(); run(); }}
+        style={{ marginTop:16, backgroundColor:'#6D28D9', borderRadius:12, padding:12, alignItems:'center' }}>
+        <Text style={{ color:'white', fontWeight:'600' }}>Run health</Text>
+      </TouchableOpacity>
+
+      <View style={{ marginTop:16, backgroundColor:'white', borderRadius:12, padding:12 }}>
+        <Text style={{ fontWeight:'600', marginBottom:6 }}>Last result</Text>
+        <Text selectable style={{ fontFamily:'Menlo' }}>
+          {JSON.stringify(last ?? {}, null, 2)}
+        </Text>
+      </View>
+    </ScrollView>
+  );
+}
+```
+
+**Register the screen (hidden):**
+
+* Add a non-tab route named `'Diagnostics'` to your **top-level stack** (the one that also contains `Main`/`RootTabs`).
+* Typical file: `app/navigation/AppNavigator.tsx` or similar.
+* Do **not** add it to tabs.
+
+```ts
+// In the root Stack navigator:
+<Stack.Screen name="Diagnostics" component={Diagnostics} options={{ headerTitle: 'Diagnostics', presentation: 'card' }} />
+```
+
+**Reveal via 7-tap on version in Profile**
+**Edit:** `app/screens/ProfileScreen.js`
+
+* Add a small reveal around your version label.
+
+```jsx
+// inside ProfileScreen component:
+const [tapCount, setTapCount] = React.useState(0);
+const [showDiag, setShowDiag] = React.useState(false);
+
+function onVersionTap(){
+  const n = tapCount + 1;
+  setTapCount(n);
+  if (n >= 7) setShowDiag(true);
+  setTimeout(()=>setTapCount(0), 1500); // reset window
+}
+
+// In the version row:
+<TouchableOpacity onPress={onVersionTap}>
+  <Text style={{ opacity:0.6 }}>Version {Constants?.expoConfig?.version}</Text>
+</TouchableOpacity>
+
+{showDiag && (
+  <TouchableOpacity
+    onPress={() => navigation.navigate('Diagnostics')}
+    style={{ marginTop:12, backgroundColor:'#EEF2FF', padding:10, borderRadius:8 }}
+  >
+    <Text style={{ color:'#4F46E5', fontWeight:'600' }}>Open Diagnostics</Text>
+  </TouchableOpacity>
+)}
+```
+
+*(If `Constants` isn’t imported in ProfileScreen.js yet, add `import Constants from 'expo-constants';` at top.)*
+
+---
+
+### 3) Acceptance
+
+* On app boot, `[health] ok …` appears; if the root path 404s, fallback succeeds silently.
+* Tapping the **version label** in Profile 7 times reveals a one-time “Open Diagnostics” button.
+* Diagnostics screen shows version/env/API base and can run health to display modes + status.
+
+**Stop after these edits.**
+Tell me:
+
+* Whether the boot log now shows `[health] ok` (no 404).
+* That the 7-tap reveal worked and the Diagnostics screen opens.
+* What `modes` you see on the Diagnostics health result.

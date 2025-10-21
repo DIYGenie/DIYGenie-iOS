@@ -1,0 +1,85 @@
+: ProjectDetails – auto-poll plan status + better Refresh UX
+
+Update app/screens/ProjectDetails.tsx:
+
+Add a polling timer that runs only while the plan is building.
+
+Stop polling as soon as status becomes one of: plan_ready, ready, preview_ready.
+
+Improve Refresh: disable the link and show a spinner while load() is in flight.
+
+Patch
+
+// imports
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { View, Image, ActivityIndicator, Pressable, Text } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+
+// inside component
+const [refreshing, setRefreshing] = useState(false);
+const pollRef = useRef<NodeJS.Timeout | null>(null);
+
+const isBuilding = (s?: string) =>
+  !!s && (s.includes('requested') || s.includes('building') || s === 'draft');
+const isReady = (s?: string) =>
+  !!s && (s.includes('plan_ready') || s.includes('preview_ready') || s === 'ready');
+
+const clearPoll = () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+
+const load = useCallback(async () => {
+  if (!projectId) return;
+  abortRef.current?.abort();
+  const controller = new AbortController();
+  abortRef.current = controller;
+  setLoading(true);
+  try {
+    const [p, s] = await Promise.all([
+      fetchProjectById(projectId, { signal: controller.signal, timeoutMs: 8000 }),
+      fetchLatestScanForProject(projectId),
+    ]);
+    if (!controller.signal.aborted) {
+      setProject(p); setScan(s);
+      // (re)arm polling based on latest status
+      clearPoll();
+      if (isBuilding(p?.status)) {
+        pollRef.current = setInterval(() => {
+          // cheap re-check: only refetch project
+          fetchProjectById(projectId).then(np => {
+            setProject(prev => ({ ...prev, ...np }));
+            if (isReady(np?.status)) clearPoll();
+          }).catch(()=>{});
+        }, 5000); // 5s cadence
+      }
+    }
+  } catch (e:any) {
+    if (e?.name !== 'AbortError') console.log('[ProjectDetails load error]', String(e));
+  } finally {
+    if (!controller.signal.aborted) setLoading(false);
+  }
+}, [projectId]);
+
+useFocusEffect( useCallback(() => { load(); return () => { abortRef.current?.abort(); clearPoll(); }; }, [load]) );
+useEffect(() => () => clearPoll(), []);
+
+// Replace your existing Refresh control with:
+const RefreshLink = () => (
+  <Pressable
+    onPress={async () => { if (refreshing) return; setRefreshing(true); await load(); setRefreshing(false); }}
+    disabled={refreshing}
+    style={{ paddingHorizontal: 8, paddingVertical: 4, opacity: refreshing ? 0.6 : 1 }}
+  >
+    {refreshing ? <ActivityIndicator size="small" /> : <Text style={{ color: '#6C2BD9', fontWeight: '600' }}>Refresh</Text>}
+  </Pressable>
+);
+
+// In your Plan section header where "Refresh" was:
+// <RefreshLink />  // (use this component)
+
+
+Verify
+
+Create a project → land on ProjectDetails.
+
+While status shows “building”, the screen auto-updates within ~5s of any backend change.
+
+Tapping Refresh shows a spinner briefly and never double-fires.

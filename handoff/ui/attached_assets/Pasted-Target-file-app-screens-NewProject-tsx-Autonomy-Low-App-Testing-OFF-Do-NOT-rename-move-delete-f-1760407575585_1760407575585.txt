@@ -1,0 +1,117 @@
+Target file: app/screens/NewProject.tsx
+Autonomy: Low • App Testing: OFF
+Do NOT rename/move/delete files or add deps.
+
+Exact changes (safe minimal diff in this file only):
+
+Imports – ensure these are present; add if missing:
+
++import { Alert } from 'react-native';
++import { supabase } from '../lib/supabase'; // keep existing path if different
+
+
+Base URL helper (reuse if already defined):
+
++const RAW_BASE = process.env.EXPO_PUBLIC_BASE_URL || 'http://localhost:5000';
++const API_BASE_URL = RAW_BASE.startsWith('http') ? RAW_BASE : `https://${RAW_BASE}`;
+
+
+Replace the existing preview submit handler (or add if missing) so it sends the correct payload and persists preview to Supabase. Find your current async function handleBuildWithPreview() and replace its contents with this:
+
+ async function handleBuildWithPreview() {
+-  if (isBuilding || isPreviewing) return;
+-  setPreviewFailedOrTimeout(false);
+-  // old code trying to submit only projectId…
+-  // …
++  if (isBuilding || isPreviewing) return;
++  setPreviewFailedOrTimeout(false);
++
++  // 1) Auth required (we already depend on user_id in DB)
++  const { data: { user } } = await supabase.auth.getUser();
++  if (!user) {
++    Alert.alert('Sign in required', 'Please sign in to build with preview.');
++    return;
++  }
++
++  // 2) Validate required fields from this form
++  //    We use `goal` as the Decor8 prompt
++  if (!projectId) { Alert.alert('Missing project', 'Create the project first.'); return; }
++  if (!goal || goal.trim().length < 3) { Alert.alert('Add goal', 'Please enter a short goal/style description.'); return; }
++
++  // 3) Load latest project data to get image + dimensions (fallback to in-memory if present)
++  const { data: projRow, error: projErr } = await supabase
++    .from('projects')
++    .select('id,input_image_url,dimensions_json')
++    .eq('id', projectId)
++    .single();
++  if (projErr || !projRow) {
++    Alert.alert('Project not found', 'Could not load project for preview.');
++    return;
++  }
++
++  const photo_url = projRow.input_image_url || imageUrl || '';
++  const measurements = projRow.dimensions_json || dimensions || null;
++  if (!photo_url) {
++    Alert.alert('Add a photo', 'Please upload a photo before generating a preview.');
++    return;
++  }
++
++  try {
++    setIsPreviewing(true);
++
++    // 4) Call backend /preview with required fields
++    const res = await fetch(`${API_BASE_URL}/preview`, {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({
++        photo_url,
++        prompt: goal,
++        measurements
++      })
++    });
++    const data = await res.json();
++    if (!res.ok || !data?.ok || !data?.preview_url) {
++      throw new Error(data?.error || `HTTP ${res.status}`);
++    }
++
++    // 5) Persist preview to Supabase
++    const { error: upErr } = await supabase
++      .from('projects')
++      .update({
++        preview_url: data.preview_url,
++        preview_status: 'ready',
++        preview_meta: { source: data.source || 'stub|decor8', at: new Date().toISOString() },
++        updated_at: new Date().toISOString()
++      })
++      .eq('id', projectId);
++    if (upErr) throw upErr;
++
++    // 6) Navigate to details screen now that preview is ready
++    navigation.navigate('ProjectDetailScreen', { projectId });
++  } catch (e:any) {
++    console.error('[preview submit] fail', e);
++    Alert.alert('Could not start preview', String(e?.message || e));
++    setPreviewFailedOrTimeout(true);
++  } finally {
++    setIsPreviewing(false);
++  }
+ }
+
+
+Notes/assumptions (do not rename):
+
+Form fields available in this screen: goal, projectId, imageUrl (or equivalent), dimensions (optional).
+
+DB columns used: input_image_url, dimensions_json, preview_url, preview_status, preview_meta, updated_at.
+
+Navigator route name: 'ProjectDetailScreen' accepts { projectId }. If your route name differs, keep your existing name.
+
+Success criteria:
+
+Tapping Build plan with visual mockup:
+
+Calls POST ${API_BASE_URL}/preview with { photo_url, prompt: goal, measurements }.
+
+Saves preview_url + preview_status='ready' into projects.
+
+Navigates to ProjectDetailScreen showing the preview image (no spinner error).

@@ -1,0 +1,119 @@
+Files to touch: app/screens/ProfileScreen.js only. No new files/deps/renames.
+
+Goals
+
+Make Sync Plan perform a visible refresh (loading state, success message, error alert).
+
+Clean up the Current Plan card so it reads attractively: “Pro — 25 projects/month + previews” with a subtle plan badge.
+
+Changes (surgical)
+1) Add tier metadata (top of file, near constants)
+const TIER_INFO = {
+  free:   { label: 'Free',   projects: 2,  previews: false, badgeColor: '#A0AEC0' },
+  casual: { label: 'Casual', projects: 5,  previews: true,  badgeColor: '#6E8BFF' },
+  pro:    { label: 'Pro',    projects: 25, previews: true,  badgeColor: '#6F4BFF' },
+};
+
+2) Add local sync feedback state (inside component)
+const [lastSyncAt, setLastSyncAt] = React.useState(null);
+const [syncNote, setSyncNote] = React.useState('');
+
+3) Make a dedicated handler for Sync Plan (inside component)
+const handleSyncPlan = async () => {
+  if (busy) return;
+  setSyncNote('Syncing…');
+  setBusy(true);
+  try {
+    await getEntitlements();       // uses your existing API helper
+    const ts = new Date();
+    setLastSyncAt(ts);
+    setSyncNote('Synced just now');
+    setTimeout(() => setSyncNote(''), 2500); // fade note after a moment
+    console.log('[SyncPlan] refreshed at', ts.toISOString());
+  } catch (e) {
+    console.warn('[SyncPlan] failed', e);
+    Alert.alert('Sync failed', 'Could not refresh your plan. Please try again.');
+    setSyncNote('');
+  } finally {
+    setBusy(false);
+  }
+};
+
+4) Wire the Sync Plan pressable to the new handler
+
+Replace the existing Sync pressable with:
+
+<Pressable
+  onPress={handleSyncPlan}
+  accessibilityRole="button"
+  hitSlop={10}
+  disabled={busy}
+  testID="btn-sync-plan"
+  style={{ alignSelf: 'center', paddingVertical: 8 }}
+>
+  <Text style={{ color: '#F4A307', fontWeight: '600' }}>
+    {busy ? 'Syncing…' : 'Sync Plan'}
+  </Text>
+</Pressable>
+{syncNote ? (
+  <Text testID="sync-note" style={{ textAlign:'center', fontSize:12, opacity:0.8, marginTop:4 }}>
+    {syncNote}
+  </Text>
+) : null}
+
+5) Polish the Current Plan card content
+
+Inside the “Your Plan” card where you currently show “Current Plan: X”, compute and render a nice badge + details:
+
+const info = TIER_INFO[ents?.tier] || TIER_INFO.free;
+const planLine = `${info.projects} projects/month` + (info.previews ? ' + previews' : ' (no previews)');
+// …
+
+
+Replace the plan title/line area with:
+
+<View style={{ flexDirection:'row', alignItems:'center', justifyContent:'space-between' }}>
+  <View style={{ flexShrink: 1, paddingRight: 12 }}>
+    <View style={{ flexDirection:'row', alignItems:'center', marginBottom: 4 }}>
+      <Text style={{ fontSize:16, fontWeight:'700', marginRight:8 }}>Current Plan:</Text>
+      <View
+        testID="current-plan-badge"
+        style={{
+          paddingHorizontal:10, paddingVertical:4, borderRadius:999,
+          backgroundColor: info.badgeColor + '20', // subtle tint
+          borderWidth:1, borderColor: info.badgeColor
+        }}
+      >
+        <Text style={{ fontWeight:'700', color:'#1A1D21' }}>{info.label}</Text>
+      </View>
+    </View>
+    <Text testID="current-plan-line" style={{ color:'#3B4450' }}>{planLine}</Text>
+  </View>
+
+  {/* Manage button stays a pressable calling openPortal */}
+  <Pressable
+    onPress={openPortal}
+    accessibilityRole="button"
+    hitSlop={12}
+    disabled={busy}
+    testID="btn-manage-portal"
+    style={{ paddingVertical: 8, paddingHorizontal: 6 }}
+  >
+    <Text style={{ color: '#F4A307', fontWeight: '600' }}>Manage</Text>
+  </Pressable>
+</View>
+
+
+(Keep your existing card/container styling. Ensure the plan card parent has pointerEvents="auto" and a non-negative zIndex so taps are not intercepted.)
+
+Acceptance Criteria
+
+Tapping Sync Plan shows “Syncing…” then “Synced just now”; no silent failures.
+
+After a successful Stripe upgrade to Pro, tapping Sync Plan updates the top card to show the Pro badge and “25 projects/month + previews”.
+
+Manage still opens Stripe Portal; Upgrade cards still open Stripe Checkout; settings rows still work.
+
+No new dependencies; only ProfileScreen.js changed; accessibility roles and testIDs present:
+
+btn-sync-plan, btn-manage-portal, current-plan-badge, current-plan-line, plan-pro-cta, plan-casual-cta.

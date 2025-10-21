@@ -1,0 +1,41 @@
+You are working in the DIYGenieTheme app. Do NOT modify env, BASE_URL, API calls, or logic. This task is purely styling.
+
+🎯 Goal
+Make ProjectDetailsScreen visually consistent with ProjectsScreen:
+- White (theme background) page with our standard spacing, not the purple/gradient block.
+- Title, subtitle row, and status pill match the Projects list styles.
+- Room photo appears in a “card” that matches project cards (radius, shadow/elevation).
+- Primary CTA (“Open Plan”) uses the same button style/tokens as elsewhere.
+- Keep all current functionality (Open Plan flow, polling, toasts) unchanged.
+
+🔧 Requirements
+1) Replace any full-screen gradient/purple container in ProjectDetailsScreen with:
+   - <SafeAreaView> + <ScrollView> using theme.colors.background (white).
+   - Horizontal padding = 16, section spacing = 16–20 (match Projects screen).
+2) Header block:
+   - Title style matches Projects list card title (font size/weight/color).
+   - Info row (icons like camera/star) aligns left-to-right with 8 spacing between items.
+   - Status pill: reuse the same component/styles as the project list pill (green for ready, orange for requested/in-progress). If the pill style is duplicated, extract a small shared StatusPill component in app/components/StatusPill.tsx and use it in both places without changing data.
+3) Photo card:
+   - Wrap the image in a card container that uses the same radius/shadow/elevation as a project card in ProjectsScreen.
+   - Image should be 100% width of content area with fixed aspect ratio ~16:9 and `resizeMode='cover'`.
+4) CTA button:
+   - Use the same primary button component/style tokens the app uses elsewhere (color, height, radius).
+   - Full-width within content padding. Top margin 24 from photo card.
+5) Theming & safety:
+   - Respect theme (light/dark ready): use theme tokens (colors.background, colors.text, colors.muted, colors.primary) instead of hard-coded hex values where possible.
+   - Keep accessibility (min touch target 44, sufficient contrast).
+6) No functional changes:
+   - Do NOT alter data fetching, navigation, or API endpoints.
+   - Keep Open Plan behavior as-is (stub or real). Only the look changes.
+
+✅ Acceptance checks (run after changes):
+- The Project Details page has a white background and standard page padding like ProjectsScreen.
+- Title typography and status pill exactly match the Projects list styles.
+- Photo displays inside a card with the same radius/shadow as list items.
+- “Open Plan” button uses the same primary style as other CTAs.
+- No regressions: upload, preview, build, plan open still work; no new warnings.
+
+Deliverables:
+- The updated ProjectDetailsScreen and any extracted shared components/styles.
+- A brief summary of files changed and screenshots (or style notes) showing the before/after tokens used.

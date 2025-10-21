@@ -1,0 +1,120 @@
+Goal: polish Project Details & New Project UX.
+
+Changes:
+
+Replace the large “OFFLINE” pill with a tiny subtle badge (or hide it entirely for now).
+
+Make the “Save to Photos” control an icon-only overlay button (no text) in the hero image, top-right.
+
+On New Project, if the user uploads a photo (not AR), the card label must read “Saved photo” (and show the thumbnail). Reserve “Saved scan (AR)” only for AR captures.
+
+After a plan is successfully built and we auto-navigate to ProjectDetails, the New Project form must clear everything, including the saved photo/scan card, and not re-persist via autosave.
+
+Implement:
+
+Tiny/hidden offline badge
+
+File: app/components/StatusPill.tsx (or wherever the “OFFLINE” pill is rendered)
+
+If present in ProjectDetailsHeader or HeaderTitle, change:
+
+Reduce height to 22, fontSize 11, paddingHorizontal 8, borderRadius 999.
+
+Or temporarily hide: return null while we’re in early testing.
+
+// StatusPill.tsx
+export const StatusPill = ({ label, color = '#22c55e', hidden }: {label:string;color?:string;hidden?:boolean}) => {
+  if (hidden) return null;
+  return (
+    <View style={{height:22,paddingHorizontal:8,borderRadius:999,backgroundColor:color,alignItems:'center',justifyContent:'center'}}>
+      <Text style={{fontSize:11,fontWeight:'600',color:'#fff'}}>{label}</Text>
+    </View>
+  );
+};
+
+
+Where used on ProjectDetails title bar, pass hidden (true) for now.
+
+Icon-only “Save to Photos”
+
+File: app/screens/ProjectDetails.tsx (hero/preview header)
+
+Replace the big CTA with a floating icon button:
+
+// inside hero image container
+<TouchableOpacity
+  onPress={handleSaveHero}
+  accessibilityLabel="Save image"
+  style={{
+    position:'absolute', right:12, top:12,
+    width:36, height:36, borderRadius:18,
+    backgroundColor:'rgba(0,0,0,0.35)',
+    alignItems:'center', justifyContent:'center'
+  }}
+>
+  <Ionicons name="download-outline" size={20} color="#fff" />
+</TouchableOpacity>
+
+
+Remove text “Save to Photos”.
+
+“Saved scan” → “Saved photo” when appropriate
+
+File: app/screens/NewProject.tsx
+
+Ensure we differentiate sources when setting the preview card state:
+
+// when AR completes
+setLastScan({ id: scanId, source: 'ar', thumbUri: previewUrl });
+
+// when user picks a photo
+setPhotoUri(localUri);
+setLastScan({ id: null, source: 'photo', thumbUri: localUri });
+
+
+File: app/components/ScanSummaryCard.tsx (or wherever the saved card renders)
+
+const title = item?.source === 'ar' ? 'Saved scan (AR)' : 'Saved photo';
+<Text style={styles.title}>{title}</Text>
+
+
+Make sure thumbnail uses thumbUri.
+
+Guarantee full clear after build (including the saved card)
+
+File: app/screens/NewProject.tsx
+
+We already clear basic fields—add photoUri and lastScan and guard autosave:
+
+const clearingRef = useRef(false);
+
+// in autosave effect
+if (clearingRef.current) return;
+
+// on build success (both flows)
+try {
+  clearingRef.current = true;
+  await clearNewProjectDraft?.(); // must also remove 'photoUri' and 'lastScan'
+  setDraftId(null);
+  setTitle(''); setDescription('');
+  setBudget(''); setSkillLevel('');
+  setPhotoUri(null);
+  setLastScan(null);
+} finally {
+  setTimeout(() => { clearingRef.current = false; }, 0);
+}
+
+
+File: app/lib/draft.ts (or wherever draft persistence lives)
+
+Ensure saveDraft() writes photoUri and lastScan when present.
+
+Ensure clearNewProjectDraft() removes keys: title, description, budget, skill_level, photoUri, lastScan, projectId.
+
+QA notes:
+
+ProjectDetails: confirm the hero shows only the image + small download icon; no second placeholder block.
+
+New Project: upload a photo → card shows “Saved photo”; AR scan → “Saved scan (AR)”.
+
+Build a plan → after auto-nav to details, return to New Project: the card is gone; form is blank; autosave didn’t re-persist the old card.

@@ -1,0 +1,145 @@
+Replace app/components/SectionCard.tsx with the following implementation. Do not modify any other files.
+
+// app/components/SectionCard.tsx
+import React from 'react';
+import { View, Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { brand } from '../../theme/colors';
+
+type IconArg =
+  | React.ReactNode
+  | string
+  | { name?: string; size?: number; color?: string }
+  | null
+  | undefined;
+
+type Props = {
+  icon?: IconArg;
+  title: string;
+  summary?: string;
+  countBadge?: number | string;
+  children?: React.ReactNode;
+  isOpen?: boolean;
+  onToggle?: () => void;
+};
+
+function renderIcon(icon?: IconArg) {
+  if (!icon) return null;
+
+  // Already a valid React element? Render as-is.
+  if (React.isValidElement(icon)) return icon;
+
+  // Icon specified by name string
+  if (typeof icon === 'string') {
+    return (
+      <Ionicons
+        name={icon as any}
+        size={18}
+        color={brand.purple ?? '#6C3EF2'}
+      />
+    );
+  }
+
+  // Object form: { name, size?, color? }
+  if (typeof icon === 'object') {
+    const { name, size, color } = icon as any;
+    if (typeof name === 'string') {
+      return (
+        <Ionicons
+          name={name as any}
+          size={size ?? 18}
+          color={color ?? brand.purple ?? '#6C3EF2'}
+        />
+      );
+    }
+  }
+
+  // Anything else → ignore safely
+  return null;
+}
+
+export default function SectionCard({
+  icon,
+  title,
+  summary,
+  countBadge,
+  children,
+}: Props) {
+  return (
+    <View
+      style={{
+        backgroundColor: 'white',
+        marginHorizontal: 16,
+        marginVertical: 8,
+        borderRadius: 16,
+        padding: 16,
+        shadowColor: '#000',
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 2 },
+        elevation: 2,
+      }}
+    >
+      {/* Header */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          marginBottom: summary ? 6 : 0,
+        }}
+      >
+        <View>{renderIcon(icon)}</View>
+
+        <Text
+          style={{
+            fontSize: 18,
+            fontWeight: '700',
+            color: '#1A1A1A',
+            flexShrink: 1,
+          }}
+          numberOfLines={1}
+        >
+          {title}
+        </Text>
+
+        {countBadge !== undefined && countBadge !== null && (
+          <View
+            style={{
+              marginLeft: 'auto',
+              backgroundColor: '#F2EDFF',
+              borderRadius: 999,
+              paddingHorizontal: 8,
+              paddingVertical: 2,
+            }}
+          >
+            <Text
+              style={{
+                color: brand.purple ?? '#6C3EF2',
+                fontSize: 12,
+                fontWeight: '600',
+              }}
+            >
+              {String(countBadge)}
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {summary ? (
+        <Text
+          style={{
+            color: '#6B7280',
+            fontSize: 14,
+            marginBottom: 8,
+          }}
+        >
+          {summary}
+        </Text>
+      ) : null}
+
+      {/* Body */}
+      {children ? <View style={{ marginTop: 4 }}>{children}</View> : null}
+    </View>
+  );
+}

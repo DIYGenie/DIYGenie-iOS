@@ -1,0 +1,51 @@
+* **project:** Theme
+
+* **Automy:** low
+
+* **app testing:** off
+
+* Create a **one-off generator** to replace `/assets/splash.png` with a **1290×2796** PNG (meets/ exceeds iPhone 17 Pro Max portrait). No manual inputs.
+
+* **Add dev-only tool (auto-install)**
+
+  * Add devDependency: `sharp` (only for asset generation; build doesn’t depend on it).
+  * New script: `scripts/gen-splash.ts` that:
+
+    * Canvas size: **1290×2796**
+    * Background: vertical **linear gradient** `#8B5CF6` → `#FFFFFF` (top→bottom).
+    * Center the existing **logo** by importing `/assets/icon.png`, scale to ~**38%** width, preserve aspect, add ~**6%** transparent padding.
+    * Export **PNG** to `/assets/splash.png` (overwrite).
+    * Log: `[splash] updated { size:"1290x2796", gradient:"#8B5CF6→#FFFFFF", logoScale:"38%" }`.
+
+* **Exact file content to create**
+
+  * `scripts/gen-splash.ts` (TypeScript; compile on the fly with ts-node or run via `node --loader ts-node/esm` if available; otherwise Agent 3 can transpile to JS transparently):
+
+    * Load `sharp`
+    * Build gradient as an **SVG** string (full-bleed), render via `sharp(Buffer.from(svg))` → PNG base
+    * Composite centered `/assets/icon.png` with calculated scale & padding
+    * Write to `/assets/splash.png`
+  * If `/assets/icon.png` missing, fail with clear log: `[splash] error: icon missing`.
+
+* **Config & verification**
+
+  * Ensure in `app.config.js`:
+
+    ```js
+    splash: { image: './assets/splash.png', resizeMode: 'contain', backgroundColor: '#8B5CF6' }
+    ```
+  * After generating, **verify**:
+
+    * Read `/assets/splash.png` via `sharp().metadata()` and assert `width===1290 && height===2796`.
+    * Print: `[assets] ok { splash:true, size:"1290x2796" }`.
+
+* **Acceptance**
+
+  * New `/assets/splash.png` is **1290×2796 PNG** with gradient + centered logo.
+  * `app.config.js` points at `./assets/splash.png`, `resizeMode:'contain'`, `backgroundColor:'#8B5CF6'`.
+  * Console logs show both lines:
+
+    * `[splash] updated { size:"1290x2796", gradient:"#8B5CF6→#FFFFFF", logoScale:"38%" }`
+    * `[assets] ok { splash:true, size:"1290x2796" }`
+
+* **Do not** alter any other assets or routes.

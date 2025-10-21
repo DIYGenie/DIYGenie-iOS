@@ -1,0 +1,64 @@
+**Task:** Make “Save to Photos” actually save the current hero image to the iOS Camera Roll.
+
+This adds a robust save handler (with permission request + error handling). One file only.
+
+---
+
+### Replit Agent 3 Prompt (ONE task)
+
+**Scope:** THEME (Expo RN)
+**Repo:** `DIYGenieTheme`
+**Target file:** `app/screens/ProjectDetails.tsx`
+**Autonomy:** Low • **App Testing:** OFF
+**Do NOT** add deps; use Expo built-ins only.
+
+**Edits (safe minimal diffs):**
+
+1. **Imports** (add if missing):
+
+```diff
++import * as FileSystem from 'expo-file-system';
++import * as MediaLibrary from 'expo-media-library';
++import { Alert } from 'react-native';
+```
+
+2. **Ensure we already have `heroUri` or `resolvedHero`** (you do). Add the handler near other handlers:
+
+```diff
++  const handleSaveHeroToPhotos = async () => {
++    const uri = heroUri || project?.input_image_url || scan?.imageUrl;
++    if (!uri) { Alert.alert('Nothing to save', 'No image available.'); return; }
++    try {
++      // ask permission once
++      const { status } = await MediaLibrary.requestPermissionsAsync();
++      if (status !== 'granted') { Alert.alert('Permission needed', 'Enable Photos access to save.'); return; }
++
++      // download to app cache first (RN Image cannot save remote URLs directly)
++      const fileName = `diygenie_${project?.id || 'preview'}.jpg`;
++      const tmpPath = `${FileSystem.cacheDirectory}${fileName}`;
++      const dl = await FileSystem.downloadAsync(uri, tmpPath);
++      if (dl.status !== 200) throw new Error(`Download failed (${dl.status})`);
++
++      // create asset in Photos
++      await MediaLibrary.saveToLibraryAsync(dl.uri);
++      Alert.alert('Saved', 'Image saved to Photos.');
++    } catch (e:any) {
++      console.error('[save:hero]', e);
++      Alert.alert('Save failed', String(e?.message || e));
++    }
++  };
+```
+
+3. **Wire it to your existing Save button** (replace that button’s handler; keep styles/label):
+
+```diff
+-  onPress={/* existing placeholder or noop */}
++  onPress={handleSaveHeroToPhotos}
+```
+
+*(If you don’t have a Save button yet, add a simple `TouchableOpacity` next to your share/export controls that calls `handleSaveHeroToPhotos`.)*
+
+**Success criteria:**
+
+* Tapping **Save to Photos** downloads the current hero (preview if available; otherwise uploaded photo) and saves it to Camera Roll with one permission prompt.
+* Alerts show success/failure.

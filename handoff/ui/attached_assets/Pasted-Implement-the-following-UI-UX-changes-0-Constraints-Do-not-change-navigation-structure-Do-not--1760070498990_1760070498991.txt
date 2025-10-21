@@ -1,0 +1,221 @@
+Implement the following UI/UX changes:
+
+0) Constraints
+
+Do not change navigation structure.
+
+Do not add new APIs. Use the existing planObj (parsed plan) or fallbacks.
+
+Keep the existing “Get detailed instructions” screen (DetailedInstructions.tsx) route id.
+
+Keep all current status/plan-ready logic intact.
+
+1) Project Details → “At-a-glance cards”
+
+File: app/screens/ProjectDetails.tsx
+
+Import a small helper component and two label helpers:
+
+import SummaryCard from '../components/ui/SummaryCard';
+import { countLabel, stepsTimeCost } from '../lib/planLabels';
+
+
+After the hero image and the existing small “Plan” message, render five tappable cards that summarize the plan (if planObj exists). Each card navigates to DetailedInstructions with an initialTab param:
+
+{/* Summary cards (only if plan is ready and planObj exists) */}
+{!!planObj && (
+  <View style={{ gap: 12, marginTop: 12 }}>
+    <SummaryCard
+      title="Overview"
+      subtitle={planObj?.overview?.slice(0, 80) || 'High-level summary'}
+      onPress={() => navigation.navigate('DetailedInstructions', { id: projectId, initialTab: 'overview' })}
+    />
+    <SummaryCard
+      title="Materials"
+      subtitle={countLabel(planObj?.materials?.length, 'item')}
+      onPress={() => navigation.navigate('DetailedInstructions', { id: projectId, initialTab: 'materials' })}
+    />
+    <SummaryCard
+      title="Cuts"
+      subtitle={countLabel(planObj?.cuts?.length, 'cut')}
+      onPress={() => navigation.navigate('DetailedInstructions', { id: projectId, initialTab: 'cuts' })}
+    />
+    <SummaryCard
+      title="Tools"
+      subtitle={countLabel(planObj?.tools?.length, 'tool')}
+      onPress={() => navigation.navigate('DetailedInstructions', { id: projectId, initialTab: 'tools' })}
+    />
+    <SummaryCard
+      title="Steps / Time & Cost"
+      subtitle={stepsTimeCost(planObj)}
+      onPress={() => navigation.navigate('DetailedInstructions', { id: projectId, initialTab: 'steps' })}
+    />
+  </View>
+)}
+
+
+Keep the existing tabs below if you already render them, but it’s fine if these cards appear above the tabs as the “at-a-glance” section.
+
+2) Helper component + label utils
+
+New file: app/components/ui/SummaryCard.tsx
+
+import React from 'react';
+import { View, Text, Pressable } from 'react-native';
+
+export default function SummaryCard({ title, subtitle, onPress }:{
+  title: string; subtitle?: string; onPress?: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        backgroundColor: '#F4F3FF',
+        borderRadius: 16,
+        padding: 16,
+      }}
+    >
+      <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 4 }}>{title}</Text>
+      {!!subtitle && <Text style={{ color: '#6B7280' }}>{subtitle}</Text>}
+    </Pressable>
+  );
+}
+
+
+New file: app/lib/planLabels.ts
+
+import type { Plan } from './plan';
+
+export function countLabel(n?: number, word='item'){
+  if (!n) return `No ${word}s`;
+  return `${n} ${n===1 ? word : word+'s'}`;
+}
+
+export function stepsTimeCost(p?: Plan){
+  if (!p) return 'No steps yet';
+  const steps = p.steps?.length ? `${p.steps.length} steps` : 'No steps';
+  const time  = p.time?.hours ? `${p.time.hours} hrs` : '— hrs';
+  const cost  = p.cost?.usd ? `~$${p.cost.usd}` : '—';
+  return `${steps} • ${time} • ${cost}`;
+}
+
+3) Project Plan (DetailedInstructions) → real document-style
+
+File: app/screens/DetailedInstructions.tsx
+
+Use the already-parsed planObj (or parse existing markdown if needed) and render rich, long-form content.
+
+Keep the existing “Save all sections to Photos” button.
+
+Add simple atoms for consistent layout.
+
+3a) Add atoms
+
+New file: app/components/ui/DocAtoms.tsx
+
+import React from 'react';
+import { View, Text } from 'react-native';
+
+export const Section = ({ title, children }:{ title: string; children: any }) => (
+  <View style={{ backgroundColor:'#F8FAFF', borderRadius:16, padding:16, marginBottom:14 }}>
+    <Text style={{ fontSize:20, fontWeight:'700', marginBottom:8 }}>{title}</Text>
+    {children}
+  </View>
+);
+
+export const Bullets = ({ items }:{ items: string[] }) => (
+  <View style={{ gap:6 }}>
+    {items.map((t,i)=> <Text key={i}>{'\u2022'} {t}</Text>)}
+  </View>
+);
+
+export const Paragraph = ({ children }:{ children:any }) => (
+  <Text style={{ marginBottom:8, lineHeight:20 }}>{children}</Text>
+);
+
+export const DimText = ({ children }:{ children:any }) => (
+  <Text style={{ color:'#6B7280' }}>{children}</Text>
+);
+
+export const Subtle = ({ children }:{ children:any }) => (
+  <Text style={{ color:'#6B7280', fontStyle:'italic', marginTop:6 }}>{children}</Text>
+);
+
+export const Step = ({ n, title, children }:{ n:number; title?:string; children:any }) => (
+  <View style={{ marginBottom:12 }}>
+    <Text style={{ fontWeight:'700', marginBottom:6 }}>{n}. {title ?? 'Step'}</Text>
+    {children}
+  </View>
+);
+
+3b) Render deep instructions
+
+In DetailedInstructions.tsx, near the main scroll content, replace stub text with:
+
+import { Section, Bullets, Paragraph, DimText, Subtle, Step } from '../components/ui/DocAtoms';
+
+{/* Title block */}
+<Section title={project?.name || 'Project'}>
+  <Paragraph>Detailed, step-by-step instructions.</Paragraph>
+</Section>
+
+<Section title="Materials">
+  {plan.materials?.length
+    ? <Bullets items={plan.materials.map(m => `${m.name}${m.qty ? ` — ${m.qty}${m.unit ? ' '+m.unit : ''}` : ''}${m.note?` • ${m.note}`:''}`)} />
+    : <DimText>No materials listed.</DimText>}
+</Section>
+
+<Section title="Cut list">
+  {plan.cuts?.length
+    ? <Bullets items={plan.cuts.map(c => `${c.part}: ${c.width}" × ${c.height}" ×${c.qty ?? 1}`)} />
+    : <DimText>No cut list.</DimText>}
+</Section>
+
+<Section title="Tools">
+  <DimText style={{marginBottom:8}}>Wear eye & hearing protection.</DimText>
+  {plan.tools?.length ? <Bullets items={plan.tools} /> : <DimText>No tools listed.</DimText>}
+</Section>
+
+<Section title="Step-by-step">
+  {plan.steps?.length ? plan.steps.map((s,i)=>(
+    <Step key={i} n={i+1} title={s.title}>
+      {s.purpose && <Paragraph><Text style={{fontWeight:'700'}}>Why:</Text> {s.purpose}</Paragraph>}
+      {s.inputs?.length ? <Bullets items={s.inputs} /> : null}
+      {s.instructions?.map((line,idx)=><Paragraph key={idx}>{line}</Paragraph>)}
+      {s.checks?.length && (<>
+        <Subtle>Before you move on, check:</Subtle>
+        <Bullets items={s.checks} />
+      </>)}
+      {s.pitfalls?.length && (<>
+        <Subtle>Common mistakes:</Subtle>
+        <Bullets items={s.pitfalls} />
+      </>)}
+    </Step>
+  )) : <DimText>No steps yet.</DimText>}
+</Section>
+
+<Section title="Time & Cost">
+  <Paragraph>Estimated time: {plan.time?.hours ?? '—'} hrs</Paragraph>
+  <Paragraph>Estimated cost: {plan.cost?.usd ? `$${plan.cost.usd}` : '—'}</Paragraph>
+</Section>
+
+
+Support initialTab param if present by scrolling to that section (optional; nice to have).
+
+4) New Project polish
+
+File: app/screens/NewProjectMedia.js
+
+Rename the card label from “Saved scan” to “Uploaded photo” (do not change behavior).
+
+File: app/screens/NewProject.tsx
+
+When user taps Upload Photo or Scan room with missing required fields, Alert:
+
+Title: “Almost there”
+
+Body: “Please fill in title and description first.”
+
+Then scroll to the first missing input (scrollRef.current?.scrollTo({ y: <titleY>, animated: true })).
+
+Wrap form in KeyboardAvoidingView + ScrollView with keyboardShouldPersistTaps="handled". Ensure the hero image has an explicit height to avoid layout jumps.

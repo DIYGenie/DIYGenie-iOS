@@ -1,0 +1,67 @@
+You are working in DIYGenieTheme.
+
+Wire the UI to show a built plan and a project details page using the webhooks API. Follow the Frozen Spec (AR Scan Edition).
+
+Requirements:
+1) API client additions (app/lib/api.ts)
+   - add fetchProject(id): GET /api/projects/:id
+   - keep existing list + create + image + preview + buildWithoutPreview calls
+   - unify base URL from EXPO_PUBLIC_BASE_URL, append /api
+
+2) ProjectDetailsScreen (NEW)
+   - Route: 'ProjectDetails' with param { id:string }
+   - On mount: GET /api/projects/:id
+   - Show:
+     • Header with project name and status badge
+     • Room photo (input_image_url) or placeholder
+     • If status === 'preview_ready': show preview image (preview_url)
+     • If status === 'plan_ready': show “Open Plan” button
+     • If status is requested states, show a subtle progress hint (no infinite spinner)
+   - Errors → toast; back navigation works
+
+3) PlanScreen (NEW)
+   - Route: 'Plan' with param { id:string }
+   - On mount: GET /api/projects/:id; require project.plan
+   - Render a pleasant checklist:
+     • Summary (title, est_cost, est_time, difficulty)
+     • Steps (numbered, expandable)
+     • Tools, Materials (simple lists with qty/unit)
+     • Safety & Tips sections
+   - Add “Share / Export” button stub (no-op toast)
+   - If plan missing, show toast and navigate back to details
+
+4) ProjectsScreen
+   - Tapping a project navigates to ProjectDetails({ id })
+   - Keep existing status badges:
+     draft (awaiting photo), preview_requested, preview_ready, plan_requested, plan_ready
+
+5) NewProjectForm
+   - No auto-actions. After image upload, buttons stay enabled based on entitlements.
+   - “Generate AI Preview” → POST /api/projects/:id/preview → toast → navigate to Projects list
+   - “Build Plan Without Preview” → POST /api/projects/:id/build-without-preview → toast → navigate to Projects
+   - Keep 10+ chars validation and budget/skill selects
+
+6) Entitlement gating
+   - Reuse GET /me/entitlements/:userId in useUser/useEntitlements
+   - If previewAllowed=false → disable preview button with the upgrade hint; build-without-preview still enabled if remaining>0
+   - Decrement remaining locally after a build to reflect quota until refreshed
+
+7) Styling/UX
+   - No HTML error pages
+   - All network errors → toast
+   - Replace any infinite spinner with quick feedback + navigation; details page can do a light inline loader
+
+8) App Testing
+   - Add a quick test flow:
+     • Create a project (description ≥10, budget, skill)
+     • Upload a room photo (use direct_url path in uploadRoomPhoto helper for tests)
+     • Tap Build Plan Without Preview
+     • In ~2s the Projects list shows “Plan ready”
+     • Tap the project → ProjectDetails → Open Plan → see stub content
+   - Confirm preview button gating matches entitlements
+
+Deliverables:
+   - New screens & navigation wiring
+   - Updated api.ts & hooks
+   - Zero hardcoded user IDs
+   - Short README blurb in replit.md about the new screens

@@ -1,0 +1,83 @@
+Goal: Enforce a single, up-front sign-in. Show AuthScreen until a Supabase session exists, then render the app. No other features in this step.
+
+Constraints:
+
+Do not change navigation structure beyond wrapping the root navigator.
+
+TypeScript-friendly; no breaking tsconfig.
+
+Keep existing theme and screens intact.
+
+If AuthGate.tsx already exists, replace its contents.
+
+Deliverables:
+
+app/providers/AuthGate.tsx implemented.
+
+app/navigation/AppNavigator.js wrapped with <AuthGate>.
+
+Edits:
+
+THEME
+
+// REPLACE FILE: app/providers/AuthGate.tsx
+import React, { useEffect, useState, PropsWithChildren } from 'react';
+import { View, ActivityIndicator } from 'react-native';
+import { supabase } from '../lib/supabase';
+import AuthScreen from '../screens/AuthScreen';
+
+export default function AuthGate({ children }: PropsWithChildren) {
+  const [loading, setLoading] = useState(true);
+  const [signedIn, setSignedIn] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const init = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
+      setSignedIn(!!data.session);
+      setLoading(false);
+    };
+    init();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      setSignedIn(!!session);
+    });
+
+    return () => {
+      mounted = false;
+      sub?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
+
+  if (!signedIn) return <AuthScreen />;
+
+  return <>{children}</>;
+}
+
+
+THEME
+
+// EDIT FILE: app/navigation/AppNavigator.js
+// 1) Add this import near top:
+import AuthGate from '../providers/AuthGate';
+
+// 2) Wrap the existing navigator tree in <AuthGate>...</AuthGate>
+// Example shape — keep your current content inside the wrapper:
+export default function AppNavigator() {
+  return (
+    <AuthGate>
+      {/* your existing NavigationContainer / tabs / stacks remain unchanged */}
+      {/* e.g. <NavigationContainer><RootTabs /></NavigationContainer> */}
+    </AuthGate>
+  );
+}

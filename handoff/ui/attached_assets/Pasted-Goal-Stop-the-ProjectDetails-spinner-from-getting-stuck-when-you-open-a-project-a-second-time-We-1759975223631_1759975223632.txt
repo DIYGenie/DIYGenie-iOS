@@ -1,0 +1,153 @@
+Goal: Stop the ProjectDetails spinner from getting “stuck” when you open a project a second time. We’ll make the project fetch abortable with a timeout, and cancel any in-flight request whenever you navigate or refocus.
+
+THEME
+// EDIT FILE: app/lib/api.ts
+// Make fetchProjectById abortable and add a timeout.
+
+const API_BASE =
+  process.env.EXPO_PUBLIC_WEBHOOKS_BASE_URL ||
+  'https://diy-genie-webhooks-tyekowalski.replit.app';
+
+type FetchProjOpts = { signal?: AbortSignal; timeoutMs?: number };
+
+export async function fetchProjectById(id: string, opts: FetchProjOpts = {}) {
+  const controller = opts.signal ? null : new AbortController();
+  const signal = opts.signal ?? controller!.signal;
+  const timeoutMs = opts.timeoutMs ?? 8000;
+
+  let to: any;
+  if (!opts.signal) {
+    to = setTimeout(() => controller?.abort(), timeoutMs);
+  }
+
+  try {
+    const res = await fetch(
+      `${API_BASE}/api/projects/${encodeURIComponent(id)}`,
+      { signal, headers: { accept: 'application/json' } }
+    );
+    if (!res.ok) throw new Error(`PROJECT_FETCH_FAILED:${res.status}`);
+    const json = await res.json();
+    return (json as any).item || (json as any).project || json;
+  } finally {
+    if (to) clearTimeout(to);
+  }
+}
+
+THEME
+// EDIT FILE: app/screens/ProjectDetails.tsx
+// Abort in-flight loads when leaving/re-opening, and apply a fetch timeout.
+
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Image, ActivityIndicator, Pressable, Text } from 'react-native';
+import { useRoute, useNavigation, RouteProp, useFocusEffect } from '@react-navigation/native';
+import { useSafeBack } from '../lib/useSafeBack';
+import T from '../components/T';
+import { fetchProjectById, fetchLatestScanForProject } from '../lib/api';
+
+type RouteParams = { id: string };
+type R = RouteProp<Record<'ProjectDetails', RouteParams>, 'ProjectDetails'>;
+
+export default function ProjectDetails() {
+  const route = useRoute<R>();
+  const navigation = useNavigation();
+  const safeBack = useSafeBack();
+  const projectId = route.params?.id;
+
+  const [loading, setLoading] = useState(true);
+  const [project, setProject] = useState<any>(null);
+  const [scan, setScan] = useState<{ scanId: string; imageUrl: string } | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const load = useCallback(async () => {
+    if (!projectId) return;
+
+    // Cancel any previous request
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setLoading(true);
+    try {
+      const [p, s] = await Promise.all([
+        fetchProjectById(projectId, { signal: controller.signal, timeoutMs: 8000 }),
+        fetchLatestScanForProject(projectId),
+      ]);
+      if (!controller.signal.aborted) {
+        setProject(p);
+        setScan(s);
+      }
+    } catch (e: any) {
+      // Ignore aborts; log other errors and still release spinner
+      if (e?.name !== 'AbortError') {
+        console.log('[ProjectDetails load error]', String(e));
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerBackVisible: false,
+      headerLeft: () => (
+        <Pressable onPress={safeBack} style={{ paddingHorizontal: 12, paddingVertical: 6 }}>
+          <Text style={{ fontWeight: '600' }}>Back</Text>
+        </Pressable>
+      ),
+      title: 'Project',
+    });
+  }, [navigation, safeBack]);
+
+  useEffect(() => {
+    load();
+    return () => {
+      // Abort when unmounting
+      abortRef.current?.abort();
+    };
+  }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+      return () => abortRef.current?.abort();
+    }, [load])
+  );
+
+  return (
+    <View style={{ flex: 1, padding: 16 }}>
+      <T.h2 style={{ marginBottom: 6 }}>
+        {project?.name || project?.title || 'Project'}
+      </T.h2>
+      <T.muted style={{ marginBottom: 16 }}>
+        Status: {project?.status || 'In progress'}
+      </T.muted>
+
+      {loading ? (
+        <View style={{ paddingTop: 40 }}>
+          <ActivityIndicator />
+        </View>
+      ) : scan?.imageUrl ? (
+        <Image
+          source={{ uri: scan.imageUrl }}
+          style={{ width: '100%', height: 220, borderRadius: 16, backgroundColor: '#EEE' }}
+          resizeMode="cover"
+        />
+      ) : (
+        <View
+          style={{
+            width: '100%',
+            height: 220,
+            borderRadius: 16,
+            backgroundColor: '#F2F2F2',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <T.muted>No scan image yet</T.muted>
+        </View>
+      )}
+    </View>
+  );
+}

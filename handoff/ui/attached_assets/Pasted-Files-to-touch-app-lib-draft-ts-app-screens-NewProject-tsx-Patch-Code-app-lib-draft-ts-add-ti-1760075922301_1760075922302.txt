@@ -1,0 +1,141 @@
+Files to touch
+
+app/lib/draft.ts
+
+app/screens/NewProject.tsx
+
+Patch / Code
+app/lib/draft.ts — add tiny AsyncStorage helpers (versioned key + debounce-safe API)
+@@
+-import { supabase } from './supabase';
++import { supabase } from './supabase';
++import AsyncStorage from '@react-native-async-storage/async-storage';
++
++// Version the key so future shape changes won’t break older drafts
++const DRAFT_KEY = 'newProjectDraft:v1';
++
++export type NewProjectDraft = {
++  projectId?: string | null;
++  name?: string;
++  description?: string;
++  budget?: number | null;
++  skill_level?: string | null;
++  // you can extend this over time (e.g., category, room type, etc.)
++};
++
++export async function loadNewProjectDraft(): Promise<NewProjectDraft | null> {
++  try {
++    const raw = await AsyncStorage.getItem(DRAFT_KEY);
++    if (!raw) return null;
++    return JSON.parse(raw);
++  } catch {
++    return null;
++  }
++}
++
++export async function saveNewProjectDraft(draft: NewProjectDraft): Promise<void> {
++  try {
++    await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(draft ?? {}));
++  } catch {
++    // ignore
++  }
++}
++
++export async function clearNewProjectDraft(): Promise<void> {
++  try {
++    await AsyncStorage.removeItem(DRAFT_KEY);
++  } catch {
++    // ignore
++  }
++}
+
+app/screens/NewProject.tsx — hydrate from storage on mount; persist on change; don’t wipe on Scan return
+@@
+-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
++import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+ import { View, ScrollView, Text, Pressable, Alert, Keyboard, TouchableWithoutFeedback } from 'react-native';
+ import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
+@@
+-import { ensureProjectForDraft } from '../lib/draft';
++import { ensureProjectForDraft } from '../lib/draft';
++import { loadNewProjectDraft, saveNewProjectDraft, clearNewProjectDraft, NewProjectDraft } from '../lib/draft';
+@@
+-const [draft, setDraft] = useState<any>({...initial});
++const [draft, setDraft] = useState<NewProjectDraft>({ ...initial });
++const hydratedRef = useRef(false);
++const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
++
++// 1) Hydrate once on mount (or first focus) — do NOT overwrite if we already have local edits
++useEffect(() => {
++  let alive = true;
++  (async () => {
++    if (hydratedRef.current) return;
++    const stored = await loadNewProjectDraft();
++    if (!alive) return;
++    if (stored && Object.keys(stored).length > 0) {
++      // Merge: keep any in-memory fields the user already typed (rare on first mount)
++      setDraft(prev => ({ ...stored, ...prev }));
++    }
++    hydratedRef.current = true;
++  })();
++  return () => { alive = false; };
++}, []);
++
++// 2) Persist on any draft change (debounced)
++useEffect(() => {
++  if (!hydratedRef.current) return; // avoid saving the empty default before hydration
++  if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
++  saveTimerRef.current = setTimeout(() => {
++    saveNewProjectDraft(draft);
++  }, 250);
++  return () => {
++    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
++  };
++}, [draft]);
+@@
+ // When Scan returns with a savedScan param, merge it into UI state without nuking the form
+ useFocusEffect(
+   useCallback(() => {
+-    const paramScan = route.params?.savedScan;
+-    if (paramScan) {
+-      setLastScan(paramScan);
+-      lastScanRef.current = paramScan;
+-      setLastScanEphemeral(paramScan);
+-      navigation.setParams({ savedScan: undefined });
+-    }
++    const paramScan = route.params?.savedScan;
++    if (paramScan) {
++      setLastScan(paramScan);
++      lastScanRef.current = paramScan;
++      setLastScanEphemeral(paramScan);
++      // IMPORTANT: do NOT reset draft here; just keep the values user entered
++      navigation.setParams({ savedScan: undefined });
++    }
+     return () => {};
+   }, [route.params?.savedScan, navigation])
+ );
+@@
+-const onClear = useCallback(() => {
+-  setDraft({ ...initial, projectId: null });
+-  setLastScan(null);
+-  lastScanRef.current = null;
+-}, []);
++const onClear = useCallback(() => {
++  setDraft({ ...initial, projectId: null });
++  setLastScan(null);
++  lastScanRef.current = null;
++  clearNewProjectDraft(); // also wipe persisted draft
++}, []);
+@@
+ // Wherever you finalize a project (e.g., after successful build), it’s safe to clear:
+-// await clearNewProjectDraft();
++// await clearNewProjectDraft();
+
+
+Notes:
+
+We hydrate once (so returning from Scan doesn’t blank the form).
+
+We debounce saves (fast typing won’t spam storage).
+
+We clear persisted draft only when the user taps “Clear form” or when you explicitly call clearNewProjectDraft() after a successful plan build, if you want.

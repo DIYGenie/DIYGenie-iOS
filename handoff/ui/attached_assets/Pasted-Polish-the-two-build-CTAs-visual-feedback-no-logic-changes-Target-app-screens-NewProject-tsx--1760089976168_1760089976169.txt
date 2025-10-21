@@ -1,0 +1,98 @@
+Polish the two build CTAs (visual + feedback, no logic changes)
+
+Target: app/screens/NewProject.tsx
+
+Styles: add these near other style objects.
+
+const CTA = {
+  wrap: { borderRadius: 16, paddingVertical: 18, paddingHorizontal: 20 },
+  title: { fontSize: 18, fontWeight: '700', letterSpacing: 0.2 },
+  sub: { fontSize: 13, opacity: 0.8, marginTop: 6, lineHeight: 18 },
+  primary: {
+    backgroundColor: '#6D28D9',
+    shadowColor: '#6D28D9',
+    shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  secondary: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1, borderColor: 'rgba(109,40,217,0.25)',
+  },
+  disabled: { opacity: 0.55 },
+  row: { flexDirection: 'column' as const },
+};
+
+
+Import haptics at top (keep if already present):
+
+import * as Haptics from 'expo-haptics';
+import { ActivityIndicator, Platform } from 'react-native';
+
+
+Replace ONLY the two CTA views with this (handlers unchanged):
+
+{/* Primary: Build with visual mockup */}
+<TouchableOpacity
+  activeOpacity={0.8}
+  accessibilityRole="button"
+  accessibilityLabel="Build with visual mockup"
+  disabled={!canBuild || isBuilding}
+  onPressIn={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+  onPress={handleBuildWithPreview}
+  style={[
+    CTA.wrap, CTA.primary,
+    (!canBuild || isBuilding) && CTA.disabled,
+    { borderRadius: 16 }
+  ]}
+>
+  <View style={CTA.row}>
+    <Text style={[CTA.title, { color: '#fff' }]}>
+      Build with visual mockup
+    </Text>
+    <Text style={[CTA.sub, { color: 'rgba(255,255,255,0.9)' }]} numberOfLines={2}>
+      Visual mockup of your space + complete build plan
+    </Text>
+    {isBuilding && (
+      <View style={{ marginTop: 10 }}>
+        <ActivityIndicator size="small" color="#fff" />
+      </View>
+    )}
+  </View>
+</TouchableOpacity>
+
+{/* Secondary: Build plan only */}
+<TouchableOpacity
+  activeOpacity={0.85}
+  accessibilityRole="button"
+  accessibilityLabel="Build plan only"
+  disabled={!canBuild || isBuilding}
+  onPressIn={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+  onPress={onBuildWithoutPreview}
+  style={[
+    CTA.wrap, CTA.secondary,
+    (!canBuild || isBuilding) && CTA.disabled,
+  ]}
+>
+  <View style={CTA.row}>
+    <Text style={[CTA.title, { color: '#111827' }]}>Build plan only</Text>
+    <Text style={[CTA.sub, { color: '#374151' }]} numberOfLines={2}>
+      Full DIY plan—steps, materials, tools, cuts, time & cost
+    </Text>
+  </View>
+</TouchableOpacity>
+
+
+Android ripple (optional): wrap both TouchableOpacity with
+
+{Platform.OS === 'android' && { android_ripple: { color: 'rgba(255,255,255,0.15)', borderless: false } }}
+
+
+(if you’re using Pressable, you can set android_ripple prop directly).
+
+Saved scan clears on reset (if not already):
+
+function resetForm() {
+  // existing clears...
+  setLastScan(null);
+  lastScanRef.current = null as any;
+}

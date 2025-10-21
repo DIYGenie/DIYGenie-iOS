@@ -1,0 +1,128 @@
+Goal
+
+Upgrade the Home screen with:
+
+A 3-slide hero carousel (“before → after” inspiration).
+
+A slim progress bar: “1 Describe • 2 Scan • 3 Preview • 4 Build”.
+
+An Empty-state section with 3 template cards: Shelf, Accent Wall, Mudroom Bench (these create prefilled projects and route to Project Details).
+
+Do not change pricing/gating or navigation names. Keep copy clean and short.
+Do not add new dependencies.
+
+Confirm file paths before editing
+
+Home screen file likely: app/screens/HomeScreen.tsx or app/screens/Home.tsx.
+
+If different, stop and ask me with the exact path before creating a new file.
+
+Implementation details
+1) Hero carousel (top of Home)
+
+Add a horizontally paging ScrollView (or FlatList horizontal) with 3 slides, full-width, height ~200, rounded corners (12), marginHorizontal 16, marginTop 8.
+
+Each slide shows:
+
+An image (use existing branded images if present; otherwise temporary placeholders):
+
+https://picsum.photos/seed/diygenie1/1200/800
+
+https://picsum.photos/seed/diygenie2/1200/800
+
+https://picsum.photos/seed/diygenie3/1200/800
+
+A dark gradient overlay (simple semi-transparent View) with a short caption in white:
+
+Slide 1: “See your space transform”
+
+Slide 2: “Measure with your iPhone”
+
+Slide 3: “Get a build plan in minutes”
+
+Add tiny pagination dots below the carousel (3 small Views that reflect the current index).
+
+2) Progress bar (below hero)
+
+Slim horizontal bar with 4 labeled steps, minimal styling; centered text:
+
+“1 Describe • 2 Scan • 3 Preview • 4 Build”
+
+Small muted gray text (#6B7280), fontSize 12, marginTop 8, marginHorizontal 16.
+
+3) Template cards (empty-state suggestions)
+
+Section header text: “Start with a template” (fontSize 18, weight 700, color #3A2EB0, margin: 16).
+
+Three cards in a 1-column list (stacked) or 2-up grid if trivial:
+
+Shelf
+
+Accent Wall
+
+Mudroom Bench
+
+Card style: white background, rounded 12, padding 12, subtle shadow (shadowOpacity 0.05, elevation 2), marginHorizontal 16, marginBottom 10.
+
+Each card shows:
+
+Title (bold)
+
+1-line blurb (e.g., “Clean, modern storage” / “Add depth and contrast” / “Entryway organization”)
+
+Small “Create” button on the right (Pressable with purple text)
+
+On press for each card:
+
+Call an existing “create project” helper (if you have one). Otherwise create a tiny local function in this screen that POSTs to your existing “new project” flow with prefilled minimal payload:
+
+{
+  name: 'Shelf' | 'Accent Wall' | 'Mudroom Bench',
+  category: 'template',
+  templateKey: 'shelf' | 'accent_wall' | 'mudroom_bench'
+}
+
+
+On success, navigate to Project Details for the created project (use the same navigation route you currently use after “New Project”).
+
+If API not available for template creation, fall back to navigating to “New Project” screen with prefilled params (keep it simple and safe).
+
+4) Keep sign-in & header logic intact
+
+Do not alter authentication banners or profile buttons.
+
+Remove any dev/debug prompts that appear on Home if they’re still present (but don’t affect other screens).
+
+5) Telemetry (optional, if util exists)
+
+Fire a small event when a template card is tapped:
+
+safeLogEvent('template_selected', { template: 'shelf' | 'accent_wall' | 'mudroom_bench' })
+
+If safeLogEvent doesn’t exist, no-op.
+
+Testing (App Testing = ON)
+
+Launch app → Home.
+
+Verify:
+
+Hero carousel scrolls horizontally, dots update.
+
+Progress bar text appears and is readable.
+
+Three template cards appear; tapping “Create” creates a project and routes to Project Details.
+
+No red screens, no console errors.
+
+Deliverables
+
+Updated Home screen with carousel, progress text, and template cards.
+
+Note in output: “Home hero + progress + templates added; template create → Project Details verified.”
+
+Stop conditions
+
+If Home file path differs, pause and ask me with the exact path before creating new files.
+
+If there’s no existing create-project endpoint, state the current creation flow and how you prefilled it.

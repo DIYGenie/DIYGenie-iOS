@@ -1,0 +1,116 @@
+Awesome—let’s do **Polish Pack v1 – Step 1** only: top summary card, Before/After toggle, and smaller Safety/Permits callouts. (No other sections touched.)
+
+---
+
+# Replit Agent Prompt — Step 1 (Summary + Toggle + Smaller Callouts)
+
+**Project:** `DIYGenieTheme`
+**Autonomy:** **Low**
+**App Testing:** **ON**
+
+**Goal**
+
+* Add a **Summary card** at the top (title + compact stats).
+* Replace the large header image with a **Before | After** toggle (only one image visible at a time).
+* Make **Safety** and **Permits** callouts smaller and tighter.
+* Keep all strings inside `<Text>`. No emojis.
+
+**File**
+
+* `app/screens/DetailedInstructions.tsx`
+
+---
+
+## Changes to apply
+
+### 1) Summary Card (top of screen, above Preview)
+
+* Insert a new `<View>` block after initial state/guards and **before** the Preview section.
+* Content:
+
+  * Title: `planData?.summary?.title ?? project?.name ?? 'DIY Project'`
+  * Subheadline: “Step-by-step builder’s guide” (plain text)
+  * Stats row (use existing helpers, **no emojis**):
+
+    * Time: `planData?.summary?.estTimeHours ?? plan?.time_estimate_hours` → “{n} hrs”
+    * Cost: `planData?.summary?.estCostUsd` via `fmtMoney`
+    * Steps: `steps?.length` → “{n} steps”
+* Styling (keep simple):
+
+  * Card: `backgroundColor: '#6F42F5'`, `padding: 16`, `borderRadius: 16`, `margin: 16`
+  * Title: white, `fontSize: 28`, `fontWeight: '800'`
+  * Sub: white, `opacity: 0.9`, `marginTop: 6`
+  * Stats: row with gap 12; each item white, `fontWeight: '600'`
+
+### 2) Before/After Toggle (replace hero image on this screen)
+
+* Ensure the **old hero/summary image remains disabled** here (`false && (...)` guard).
+* Add local state at top of component:
+
+  ```ts
+  const [previewTab, setPreviewTab] = React.useState<'before'|'after'>('after');
+  ```
+* In the Preview section:
+
+  * Add a segmented toggle bar:
+
+    ```tsx
+    <View style={{ flexDirection: 'row', backgroundColor: '#F1EEFF', borderRadius: 10, padding: 4, marginBottom: 12 }}>
+      {(['before','after'] as const).map(tab => (
+        <Pressable key={tab} onPress={() => setPreviewTab(tab)} style={{ flex: 1, paddingVertical: 10, borderRadius: 8, backgroundColor: previewTab === tab ? 'white' : 'transparent' }}>
+          <Text style={{ textAlign: 'center', fontWeight: previewTab === tab ? '700' : '500', color: '#3A2EB0' }}>
+            {tab === 'before' ? 'Before' : 'After'}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+    ```
+  * Render **only one** image:
+
+    ```tsx
+    const beforeUri = project?.before || planData?.preview?.before;
+    const afterUri  = project?.preview || planData?.preview?.after || plan?.preview_image_url;
+
+    const activeUri = previewTab === 'before' ? beforeUri : afterUri;
+    {activeUri ? (
+      <Image source={{ uri: activeUri }} style={{ width: '100%', height: 220, borderRadius: 16, backgroundColor: '#EEE' }} resizeMode="cover" />
+    ) : (
+      <Text style={{ color: '#777' }}>No {previewTab} image available.</Text>
+    )}
+    ```
+* Keep the existing “Preview” header; remove any duplicate images in that section so only the toggled one shows.
+
+### 3) Smaller Safety & Permits Callouts
+
+* Find the red/yellow callout blocks and **reduce their visual weight**:
+
+  * Card padding → from `16` to `12`
+  * Font sizes: title `18 → 16`, body `16 → 14`
+  * Border left width: `4 → 3`
+  * Margins: `16 → 12`
+* If a callout has **no items**, don’t render the section.
+
+### 4) Text safety
+
+* Ensure **all** new strings are inside `<Text>`.
+* Use `TextIf`, `fmtMoney`, and other helpers you added earlier.
+
+---
+
+## Testing (App Testing = ON)
+
+1. Reload Expo Go (kill & reopen to clear cache).
+2. Projects → pick a project → **Open Detailed Build Plan**.
+3. Verify:
+
+   * Summary card shows title + up to three stats (only those available).
+   * Preview shows **toggle**; only one image visible; both tabs work if URIs exist.
+   * Safety/Permits callouts are visually smaller.
+   * No red errors.
+
+**Deliverable note to include:**
+“Summary card added; Before/After toggle implemented; Safety/Permits compacted; hero remains disabled on this screen; verified no red screen.”
+
+**Stop if:**
+
+* A referenced prop/path is missing; report the exact missing variable and line.

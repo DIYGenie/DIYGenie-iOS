@@ -1,0 +1,122 @@
+Goal: When the user taps Scan room → takes a photo → taps Use Photo, the app should:
+
+Upload the image to the Supabase room-scans bucket.
+
+Insert a row in public.room_scans with the new image URL and basic metadata.
+
+Show a small “Saved scan” card with the thumbnail and scan id.
+
+Do this:
+
+Add helper: app/lib/uploadRoomScan.ts
+
+import * as Crypto from 'expo-crypto';
+import { supabase } from '../supabase';
+import { Platform } from 'react-native';
+
+type Args = {
+  uri: string;
+  userId: string;
+  projectId?: string | null;
+};
+
+export async function uploadRoomScan({ uri, userId, projectId = null }: Args) {
+  // 1) Make a stable id and storage path
+  const scanId = Crypto.randomUUID();
+  const path = `${userId}/${scanId}.jpg`;
+
+  // 2) Turn the local file into a Blob for supabase-js
+  const res = await fetch(uri);
+  const blob = await res.blob();
+
+  // 3) Upload to storage
+  const { error: upErr } = await supabase
+    .storage
+    .from('room-scans')
+    .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+
+  if (upErr) throw upErr;
+
+  // 4) Get a public URL (bucket policy already set)
+  const { data: pub } = supabase.storage.from('room-scans').getPublicUrl(path);
+  const imageUrl = pub?.publicUrl ?? null;
+
+  // 5) Basic dimensions if available (best-effort)
+  let width: number | null = null;
+  let height: number | null = null;
+  try {
+    // iOS/Android: Image.getSize needs a network URL; this may fail silently on some dev tunnels.
+    // That’s okay—dimensions are optional and can be filled later by a server job.
+    const sizeRes = await fetch(imageUrl!);
+    // If you want real dimensions later, we’ll add an Image.getSize step on-device once it’s in the cache.
+  } catch {}
+
+  // 6) Insert DB row
+  const { error: dbErr } = await supabase.from('room_scans').insert([{
+    id: scanId,
+    user_id: userId,
+    project_id: projectId,
+    image_url: imageUrl,
+    raw_scan_url: null,
+    dimensions: width && height ? { width, height } : null,
+    scale_px_per_in: null,
+    meta: {
+      source: 'camera',
+      platform: Platform.OS,
+    }
+  }]);
+
+  if (dbErr) throw dbErr;
+
+  return { scanId, imageUrl, path };
+}
+
+
+Make sure dependency exists: if expo-crypto isn’t in package.json, add it and import as above (expo install expo-crypto if needed).
+
+Wire it into New Project flow: modify app/screens/NewProject.tsx
+
+Where you currently handle the camera result (after “Use Photo”), do:
+
+Get the current user: const { data: userData } = await supabase.auth.getUser();
+
+If no user → alert “Please sign in to save scans.”
+
+Call uploadRoomScan({ uri: result.assets[0].uri, userId: userData.user.id, projectId })
+
+Store the returned { scanId, imageUrl } in local state (e.g., lastScan)
+
+Render a small card below the buttons:
+
+thumbnail (imageUrl)
+
+text “Saved scan: {scanId.slice(0,8)}…”
+
+Keep everything else unchanged.
+
+Type-check & format
+
+npm run typecheck --silent || npx tsc --noEmit
+npm run lint --silent || true
+npm run format --silent || true
+
+
+Acceptance criteria
+
+File app/lib/uploadRoomScan.ts created with the exact code above.
+
+NewProject.tsx uploads the photo, inserts a room_scans row, and shows a thumbnail card on success.
+
+If user isn’t signed in, the flow shows a friendly alert and does not upload.
+
+No TypeScript errors.
+
+Existing UI unaffected besides the new “Saved scan” card.
+
+Notes
+
+Do not change navigation or other screens.
+
+Don’t create new tables or buckets.
+
+Post the list of files changed and a short summary when done.

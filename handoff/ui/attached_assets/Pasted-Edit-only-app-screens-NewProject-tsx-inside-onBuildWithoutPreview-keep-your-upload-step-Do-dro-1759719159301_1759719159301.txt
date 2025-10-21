@@ -1,0 +1,70 @@
+Edit only app/screens/NewProject.tsx inside onBuildWithoutPreview(); keep your upload step.
+
+Do (drop-in block after upload and before toast/navigation):
+
+import { apiRaw } from '../lib/api'; // adjust path if needed
+
+async function tryBuildProbes(id: string) {
+  const attempts: Array<() => Promise<any>> = [
+    // A) raw POST with user_id in query, no headers/body
+    () => apiRaw(`/api/projects/${id}/build-without-preview?user_id=${encodeURIComponent(USER_ID)}`, { method: 'POST' }),
+
+    // B) raw POST with x-user-id header
+    () => apiRaw(`/api/projects/${id}/build-without-preview`, {
+      method: 'POST',
+      headers: { 'x-user-id': USER_ID },
+    }),
+
+    // C) JSON { projectId } camelCase
+    () => api(`/api/projects/${id}/build-without-preview`, {
+      method: 'POST',
+      body: JSON.stringify({ projectId: id }),
+    }),
+
+    // D) JSON { user_id, project_id } snake_case only
+    () => api(`/api/projects/${id}/build-without-preview`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id: USER_ID, project_id: id }),
+    }),
+
+    // E) application/x-www-form-urlencoded (no JSON)
+    () => apiRaw(`/api/projects/${id}/build-without-preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ user_id: USER_ID, project_id: id }).toString(),
+    }),
+  ];
+
+  for (let i = 0; i < attempts.length; i++) {
+    try {
+      const res = await attempts[i]();
+      console.log(`[build probe ${i+1}] success`, res);
+      return { ok: true, index: i+1, res };
+    } catch (e: any) {
+      console.log(`[build probe ${i+1}] failed`, e?.message || e);
+    }
+  }
+  return { ok: false };
+}
+
+// Replace your 3-step build section with:
+const buildRes = await tryBuildProbes(id);
+if (!buildRes.ok) {
+  showToast('Build request rejected (422). Check logs for which probes failed.', 'error');
+  setBusyBuild(false);
+  return;
+}
+console.log('[build] accepted via probe', buildRes.index);
+showToast('Plan requested', 'success');
+navigateToProject(id);
+setDraftId(null);
+setPhotoUri(null);
+
+
+Acceptance:
+
+Console shows which probe succeeded: [build probe N] success.
+
+Network shows the matching POST (watch query/header/body).
+
+If all probes fail, we’ll know it’s not a shape issue but a policy/entitlement block (entitlements GET is 500).

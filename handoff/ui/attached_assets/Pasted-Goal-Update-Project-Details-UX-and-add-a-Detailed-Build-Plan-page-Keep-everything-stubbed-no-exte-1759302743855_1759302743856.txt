@@ -1,0 +1,152 @@
+Goal: Update Project Details UX and add a Detailed Build Plan page. Keep everything stubbed (no external APIs). Prices (no links) live with Materials/Tools and we compute an Estimated Cost. If AR scan exists later, we’ll derive the cut list from it; for now, use defaults.
+
+Scope
+
+Repo: the Theme/Expo app (mobile/web).
+
+Don’t touch webhooks project or backend endpoints.
+
+Maintain existing entitlement gating and navigation.
+
+What to build
+
+ProjectDetailsScreen
+
+Keep the top Room Photo.
+
+Under photo, add a primary CTA button: “Get detailed build plan” → navigates to a new screen BuildPlanScreen with the current projectId.
+
+Below “Plan” header show three expandable cards (using our existing card style):
+
+Overview (aka plan outline – short bullets; show first 3, “+3 more…” expands).
+
+Materials & Tools (merged section):
+
+Show each material with name, quantity, unit, unitPrice (no links).
+
+Tools listed after materials as bullets.
+
+At the card bottom show Estimated total: $X.XX computed as Σ(qty × unitPrice) for materials only.
+
+Steps (first 3 visible; tap to expand).
+
+Cut List (optional fourth card if you prefer symmetry; OK to include. Use defaults now; later swap with AR).
+
+Ensure the page scrolls and the bottom tab bar remains visible.
+
+Remove the old summary box if present.
+
+BuildPlanScreen (new)
+
+Title: Detailed Build Plan (shows project title).
+
+Render the full, expanded content for Overview, Materials & Tools (with Estimated total), Steps, Cut List.
+
+Add a secondary button “Save to phone” (no PDF):
+
+Web: generate a .txt (or .md) via Blob and trigger download: plan-<projectId>.txt.
+
+Native: use expo-file-system + expo-sharing to write a temporary .txt file and call Sharing.shareAsync.
+
+No external links; prices are numbers from a local price book.
+
+Plan generator (stub, deterministic)
+
+Create app/lib/plan.ts (or update if exists) with:
+
+buildPlanFromProject(project) => { overview[], materials[], tools[], steps[], cutList[], estimatedTotal }
+
+Use a local PRICE_BOOK (example USD):
+
+const PRICE_BOOK = {
+  '2x4 lumber': 4.0,          // per piece
+  'Wood glue': 6.5,           // per bottle
+  '1 1/4 inch screws': 7.0,   // per box
+  'Primer': 12.0,             // per quart
+  'Wall anchors': 8.0
+};
+
+
+Materials example structure:
+
+{ name: '2x4 lumber', qty: 6, unit: 'pcs', unitPrice: PRICE_BOOK['2x4 lumber'] }
+
+
+Merge Tools into the same card display, but they don’t affect the Estimated total.
+
+Cut List: return default parts like
+
+{ part: 'Shelf board', qty: 3, length: '36"', width: '10"', thickness: '3/4"', notes: 'Edge sanded' }
+
+
+AR stub: If project.has_ar_scan === true and project.measurements exists, call deriveCutListFromAR(project). Otherwise use deriveCutListDefault(project). Stub both with fixed output for now.
+
+Provide serializePlanToText(plan) to produce a copy-paste friendly text/markdown string.
+
+Navigation
+
+Register BuildPlanScreen in the existing navigator (app/navigation/*), route name BuildPlan.
+
+From ProjectDetailsScreen, CTA navigates with { projectId }.
+
+UI/UX
+
+Implement a reusable ExpandableCard component if needed (props: title, countBadge, children, previewCount=3).
+
+Keep our current card visual: soft shadow, rounded, header with title + count chip on the right, body list with bullets, “+3 more…” footnote when collapsed.
+
+Ensure scroll performance on web & native (wrap with ScrollView and contentContainerStyle={{ paddingBottom: 96 }} so content doesn’t go under the tab bar).
+
+Testing checklist
+
+Create or open an existing project (no API changes).
+
+On Project Details:
+
+Page scrolls; bottom tab bar visible.
+
+Cards render; Overview/Materials&Tools/Steps (and optional Cut List) expand/collapse.
+
+Materials show unit prices & quantities; Estimated total shows correct sum.
+
+Tap Get detailed build plan → navigates to BuildPlanScreen.
+
+On BuildPlanScreen:
+
+Full plan visible (no collapsing).
+
+Tap Save to phone:
+
+Web: plan-<id>.txt downloads.
+
+Native: Share sheet opens (no PDF).
+
+No changes to entitlements or backend calls. No external HTTP requests for prices.
+
+Files likely touched
+
+app/screens/ProjectDetailsScreen.tsx (or .js)
+
+app/screens/BuildPlanScreen.tsx (new)
+
+app/components/ExpandableCard.tsx (new or reused)
+
+app/lib/plan.ts (new)
+
+app/navigation/* to add the new screen/route
+
+Acceptance Criteria
+
+✅ CTA “Get detailed build plan” present and navigates.
+
+✅ 3 (or 4) expandable cards render on Project Details and scroll works.
+
+✅ Materials show unit prices and quantities; Estimated total displays at the bottom of that card and on BuildPlanScreen.
+
+✅ “Save to phone” produces a .txt file (web download; native share).
+
+✅ All logic is stubbed (local price book, default cut list); no external APIs or links.
+
+✅ No regressions to New Project, Projects list, or entitlements.
+
+Please implement, run app tests, and post a short before/after GIF plus code pointers (files/lines) so I can review quickly.

@@ -1,0 +1,81 @@
+Fix NewProject so “Scan room” never shows “Server did not return a project id.”
+
+In app/lib/api.ts (or wherever the project-create call lives), add a helper that ALWAYS returns a project id, regardless of the server’s shape:
+
+// app/lib/api.ts
+export async function createProjectAndReturnId(payload: {
+  name: string; description: string; budget: string; skill_level: string;
+}) : Promise<string> {
+  const res = await fetch(`${base}/api/projects`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  let body: any = null;
+  try { body = await res.json(); } catch {}
+
+  console.log('[project create] status', res.status, 'body', body);
+
+  // Accept common shapes
+  const id =
+    body?.id ??
+    body?.project_id ??
+    body?.project?.id ??
+    body?.data?.id ??
+    body?.data?.project_id;
+
+  if (!res.ok) {
+    throw new Error(`[createProject] ${res.status} ${body?.error ?? 'unknown_error'}`);
+  }
+  if (!id) {
+    throw new Error(`[createProject] ok but no id in body`);
+  }
+  return String(id);
+}
+
+
+In app/screens/NewProject.tsx, update the function that ensures a project exists before scanning (likely ensureProjectForDraft or the scan handler):
+
+// Build sanitized payload you already have (uses your fallback-name logic)
+const payload = { name: cleanName, description, budget, skill_level: skillLevel };
+
+async function ensureProjectForDraft(): Promise<string> {
+  if (draftId) return draftId;
+
+  console.log('[project create] payload', payload);
+  const id = await createProjectAndReturnId(payload);
+  console.log('[project create] got id', id);
+
+  setDraftId(id);
+  await saveNewProjectDraft({
+    projectId: id,
+    name: title,
+    description,
+    budget,
+    skill_level: skillLevel,
+  });
+  return id;
+}
+
+
+In the Scan button handler (and Upload Photo handler if it also needs it), call ensureProjectForDraft() and replace any previous create calls. Keep the existing validation guards. Example:
+
+const onScanPress = guard(async () => {
+  await authPreflight();
+  // validation already present…
+  const projectId = await ensureProjectForDraft(); // <-- guarantees id or throws
+  navigation.navigate('Scan', { projectId });
+});
+
+
+Make the error actionable. Where we Alert.alert('Fix required', 'Server did not return a project id.'),
+replace the message with the actual error .message so we can see status/body:
+
+} catch (e:any) {
+  console.log('[project create] error', e);
+  Alert.alert('Fix required', String(e?.message ?? e));
+}
+
+
+Keep the existing fallback-name code. Do not remove it.

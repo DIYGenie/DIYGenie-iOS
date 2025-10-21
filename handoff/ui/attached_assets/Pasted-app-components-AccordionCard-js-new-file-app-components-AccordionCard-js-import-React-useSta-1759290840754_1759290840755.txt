@@ -1,0 +1,217 @@
+app/components/AccordionCard.js (new file)
+// app/components/AccordionCard.js
+import React, { useState, memo } from 'react';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+
+function AccordionCard({ title, count, items = [], renderItem }) {
+  const [open, setOpen] = useState(false);
+
+  const visible = open ? items : items.slice(0, 3);
+  const remaining = Math.max(0, items.length - visible.length);
+
+  return (
+    <View style={styles.card}>
+      <Pressable onPress={() => setOpen(v => !v)} style={styles.header}>
+        <Text style={styles.title}>{title}</Text>
+        <View style={styles.badge}><Text style={styles.badgeText}>{count ?? items.length}</Text></View>
+      </Pressable>
+
+      <View style={styles.body}>
+        {visible.map((it, idx) => (
+          <View key={idx} style={styles.row}>
+            {renderItem ? renderItem(it, idx) : <Text style={styles.rowText}>• {String(it)}</Text>}
+          </View>
+        ))}
+        {!open && remaining > 0 && (
+          <Text style={styles.more}>+{remaining} more…</Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
+export default memo(AccordionCard);
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  title: { fontSize: 18, fontWeight: '700', color: '#13151A' },
+  badge: {
+    backgroundColor: '#F0AD4E', // warm orange
+    paddingHorizontal: 10,
+    height: 26,
+    minWidth: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: { color: '#fff', fontWeight: '700' },
+  body: { paddingTop: 4, gap: 8 },
+  row: { flexDirection: 'row' },
+  rowText: { fontSize: 16, color: '#2B2F37' },
+  more: { marginTop: 6, color: '#6B7280' },
+});
+
+2) Replace app/screens/ProjectDetailsScreen.js (full file)
+// app/screens/ProjectDetailsScreen.js
+import React, { useMemo } from 'react';
+import { View, Text, Image, ScrollView, StyleSheet } from 'react-native';
+import AccordionCard from '../components/AccordionCard';
+
+export default function ProjectDetailsScreen({ route }) {
+  const project = route?.params?.project || {};
+
+  const plan = useMemo(() => normalizePlan(project), [project]);
+  const photoUri =
+    project?.input_image_url ||
+    project?.image_url ||
+    'https://images.unsplash.com/photo-1507089947368-19c1da9775ae?w=1200&q=60&auto=format&fit=crop';
+
+  const status = (project?.status || 'ready').replace('_', ' ');
+
+  return (
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* Title + status pill */}
+      <View style={styles.headerRow}>
+        <Text style={styles.title}>{project?.name || 'Project'}</Text>
+        <View style={styles.pill}><Text style={styles.pillText}>{status}</Text></View>
+      </View>
+
+      {/* Photo */}
+      <Text style={styles.sectionLabel}>Room Photo</Text>
+      <Image source={{ uri: photoUri }} style={styles.photo} resizeMode="cover" />
+
+      {/* Summary card */}
+      <View style={styles.summaryCard}>
+        <Text style={styles.summaryTitle}>Summary</Text>
+        <Text style={styles.summaryLine}><Text style={styles.bold}>Description:</Text> {project?.name || '—'}</Text>
+        <Text style={styles.summaryLine}><Text style={styles.bold}>Budget:</Text> {project?.budget || '—'}</Text>
+        <Text style={styles.summaryLine}><Text style={styles.bold}>Skill:</Text> {project?.skill || '—'}</Text>
+        <Text style={styles.summaryLine}><Text style={styles.bold}>Status:</Text> {status}</Text>
+        <Text style={styles.summaryLine}><Text style={styles.bold}>Photo:</Text> {project?.input_image_url || project?.image_url ? 'Attached' : '—'}</Text>
+      </View>
+
+      {/* Expandable sections */}
+      <Text style={styles.sectionLabel}>Plan</Text>
+
+      <AccordionCard title="Overview" items={plan.outline} />
+
+      <AccordionCard title="Materials" items={plan.materials} />
+
+      <AccordionCard
+        title="Steps"
+        items={plan.steps}
+      />
+
+      <AccordionCard
+        title="Shopping"
+        items={plan.shopping}
+        renderItem={(item) => (
+          <View style={styles.shopRow}>
+            <Text style={styles.rowText}>• {item.name}</Text>
+            {!!item.price && <Text style={styles.price}>{item.price}</Text>}
+          </View>
+        )}
+      />
+    </ScrollView>
+  );
+}
+
+/** Fallback/stub plan content while real plans are wired */
+function normalizePlan(p) {
+  const plan = p?.plan || {};
+
+  const outline =
+    Array.isArray(plan.outline) && plan.outline.length
+      ? plan.outline
+      : [
+          'Assemble the main frame using wood glue',
+          'Secure joints with screws or nails',
+          'Install hardware and finishing touches',
+          'Sand → prime → paint',
+          'Locate studs and mount safely',
+          'Final cleanup & styling',
+        ];
+
+  const materials =
+    Array.isArray(plan.materials) && plan.materials.length
+      ? plan.materials
+      : ['2×4 lumber', 'Wood glue', '1 1/4" screws', 'Primer', 'Paint', 'Stud anchors'];
+
+  const steps =
+    Array.isArray(plan.steps) && plan.steps.length
+      ? plan.steps
+      : [
+          'Measure and mark wall layout',
+          'Cut boards to length',
+          'Dry-fit and adjust',
+          'Glue and fasten the frame',
+          'Fill, sand, and finish',
+          'Locate studs and mount unit',
+        ];
+
+  const shopping =
+    Array.isArray(plan.shopping) && plan.shopping.length
+      ? plan.shopping
+      : [
+          { name: 'Anchor screws (pack of 10)', price: '$6.99' },
+          { name: 'Stud finder', price: '$19.99' },
+          { name: 'Painter’s caulk', price: '$4.59' },
+        ];
+
+  return { outline, materials, steps, shopping };
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#F6F7FB' },
+  content: { padding: 16, paddingBottom: 40 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  title: { fontSize: 24, fontWeight: '800', color: '#0F172A', flexShrink: 1, paddingRight: 8 },
+  pill: { backgroundColor: '#D1FAE5', paddingHorizontal: 10, height: 28, borderRadius: 14, justifyContent: 'center' },
+  pillText: { color: '#065F46', fontWeight: '700' },
+
+  sectionLabel: { marginTop: 8, marginBottom: 8, fontSize: 16, fontWeight: '700', color: '#111827' },
+
+  photo: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: 16,
+    backgroundColor: '#E5E7EB',
+    marginBottom: 12,
+  },
+
+  summaryCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  summaryTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8, color: '#13151A' },
+  summaryLine: { fontSize: 16, color: '#2B2F37', marginBottom: 4 },
+  bold: { fontWeight: '700' },
+
+  shopRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  rowText: { fontSize: 16, color: '#2B2F37' },
+  price: { fontSize: 16, fontWeight: '700', color: '#0F172A', marginLeft: 12 },
+});

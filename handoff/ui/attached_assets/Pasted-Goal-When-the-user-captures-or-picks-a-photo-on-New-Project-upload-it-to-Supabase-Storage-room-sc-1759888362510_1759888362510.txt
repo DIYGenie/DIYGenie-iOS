@@ -1,0 +1,73 @@
+Goal: When the user captures or picks a photo on New Project, upload it to Supabase Storage (room-scans) under ${userId}/<timestamp>-<rand>.jpg, create a 7-day signed URL, then insert a row in public.room_scans. Keep all existing flows.
+
+Tasks:
+
+Create src/lib/upload.ts:
+
+import { supabase } from './supabase';
+export async function uploadScanImage(localUri: string, userId: string) {
+  const res = await fetch(localUri);
+  const blob = await res.blob();
+  const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+  const path = `${userId}/${filename}`;
+  const { error: upErr } = await supabase.storage.from('room-scans').upload(path, blob, {
+    contentType: 'image/jpeg', upsert: false,
+  });
+  if (upErr) throw upErr;
+  const { data: signed, error: signErr } =
+    await supabase.storage.from('room-scans').createSignedUrl(path, 60 * 60 * 24 * 7);
+  if (signErr) throw signErr;
+  return { path, signedUrl: signed.signedUrl };
+}
+
+
+Create src/lib/scans.ts:
+
+import { supabase } from './supabase';
+import { uploadScanImage } from './upload';
+export async function saveRoomScan(params: { projectId?: string | null; localUri: string }) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Please sign in to save scans.');
+  const { path, signedUrl } = await uploadScanImage(params.localUri, user.id);
+  const { data, error } = await supabase.from('room_scans').insert({
+    user_id: user.id,
+    project_id: params.projectId ?? null,
+    image_url: signedUrl,
+    raw_scan_url: path,
+    meta: { source: 'mobile', flow: 'new_project', v: 1 },
+  }).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+
+In the New Project screen (where the photo gets set after Scan room or Upload Photo):
+
+Import: import { saveRoomScan } from '@/lib/scans';
+
+After you set roomPhotoUri (local file path), run:
+
+setSaving(true);
+try {
+  const row = await saveRoomScan({ projectId: currentProjectId ?? null, localUri: roomPhotoUri });
+  // Optional: keep row.image_url in state to show a server-backed thumbnail
+  showToast('Scan uploaded & saved', 'success');
+} catch (e:any) {
+  showToast(e?.message ?? 'Upload failed', 'error');
+  console.error('saveRoomScan error', e);
+} finally {
+  setSaving(false);
+}
+
+
+While saving, disable the Scan room / Upload Photo buttons and show a tiny spinner.
+
+Do not change navigation or other flows. Keep the local preview as-is.
+
+Acceptance:
+
+After picking/capturing a photo, you see a brief saving state and a “Scan uploaded & saved” toast.
+
+In Supabase Storage, a file appears under room-scans/<your uid>/...jpg.
+
+In public.room_scans, a new row appears with image_url (signed) and raw_scan_url (storage path).

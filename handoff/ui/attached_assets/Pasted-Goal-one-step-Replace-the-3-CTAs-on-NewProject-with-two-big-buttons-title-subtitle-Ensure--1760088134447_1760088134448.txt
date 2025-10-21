@@ -1,0 +1,180 @@
+Goal (one step):
+
+Replace the 3 CTAs on NewProject with two big buttons (title + subtitle).
+
+Ensure no code navigates to any “building/wait” screen anywhere (stay on NewProject with the purple banner, then auto-navigate to ProjectDetails).
+
+When the form is cleared (after success or when user taps “Clear form”), the Saved scan (AR) card also disappears.
+
+Files to touch
+
+app/screens/NewProject.tsx
+
+app/navigation/ProjectsNavigator.tsx (remove any wait/building screen route if present)
+
+(Optional) delete the file for the old waiting screen if it exists, e.g. app/screens/PlanWaitScreen.tsx
+
+Exact patch/code
+
+NewProject.tsx — add CTA button component + replace CTA section + ensure lastScan clears
+
+--- a/app/screens/NewProject.tsx
++++ b/app/screens/NewProject.tsx
+@@
+ import React, { useCallback, useEffect, useRef, useState } from 'react';
+ import { View, Text, ScrollView, Pressable, ActivityIndicator, Alert } from 'react-native';
+@@
+ // (keep your existing imports and state)
+ 
++// --- CTA button (inline, simple) ---
++function CTAButton({
++  title,
++  subtitle,
++  onPress,
++  variant = 'primary',
++  disabled = false,
++}: {
++  title: string;
++  subtitle: string;
++  onPress: () => void;
++  variant?: 'primary' | 'secondary';
++  disabled?: boolean;
++}) {
++  const base = {
++    height: 60,
++    borderRadius: 16,
++    paddingHorizontal: 16,
++    paddingVertical: 10,
++    alignItems: 'flex-start' as const,
++    justifyContent: 'center' as const,
++    marginTop: 10,
++    opacity: disabled ? 0.6 : 1,
++  };
++  const primary = { backgroundColor: '#6D28D9' };
++  const secondary = { borderWidth: 1, borderColor: '#6D28D9', backgroundColor: 'white' };
++  const titleStyle = { fontSize: 18, fontWeight: '600', color: variant === 'primary' ? 'white' : '#111827' };
++  const subStyle = { fontSize: 12, color: variant === 'primary' ? '#EDE9FE' : '#6B7280', marginTop: 2, maxWidth: '95%' as const };
++  return (
++    <Pressable onPress={disabled ? undefined : onPress} style={[base, variant === 'primary' ? primary : secondary]} disabled={disabled}>
++      <Text style={titleStyle}>{title}</Text>
++      <Text numberOfLines={2} style={subStyle}>{subtitle}</Text>
++    </Pressable>
++  );
++}
++
+@@
+ // ensure we do NOT navigate to any separate waiting screen; use in-place banner + polling only
+-const onBuildWithoutPreview = useCallback(async () => {
++const onBuildWithoutPreview = useCallback(async () => {
+   try {
+     setIsBuilding(true);
+     // ... your existing start build call (no navigate to wait)
+     // await pollProjectReady(projectId)
+     // on success:
+-    // navigation.navigate('Projects', { screen: 'ProjectDetails', params: { id: projectId }});
++    // Clear form before navigating
++    clearingRef.current = true;
++    setLastScan(null); // ensure AR card is cleared
++    await clearNewProjectDraft?.();
++    setDraftId(null); setTitle(''); setDescription(''); setBudget(''); setSkillLevel(''); setPhotoUri(null);
++    setTimeout(() => { clearingRef.current = false; }, 0);
++    navigation.navigate('Projects', { screen: 'ProjectDetails', params: { id: projectId }});
+   } catch (e) {
+     // ...
+   } finally {
+     setIsBuilding(false);
+   }
+ }, [/* keep deps */]);
+ 
+-const handleBuildWithPreview = useCallback(async () => {
++const handleBuildWithPreview = useCallback(async () => {
+   try {
+     setIsBuilding(true);
+     // ... your existing “build with preview” start (no navigate to wait)
+     // await pollProjectReady(projectId)
+     // on success:
++    clearingRef.current = true;
++    setLastScan(null); // ensure AR card is cleared
++    await clearNewProjectDraft?.();
++    setDraftId(null); setTitle(''); setDescription(''); setBudget(''); setSkillLevel(''); setPhotoUri(null);
++    setTimeout(() => { clearingRef.current = false; }, 0);
+     navigation.navigate('Projects', { screen: 'ProjectDetails', params: { id: projectId }});
+   } catch (e) {
+     // ...
+   } finally {
+     setIsBuilding(false);
+   }
+ }, [/* keep deps */]);
+ 
+@@
+ // When a savedScan param arrives from ScanScreen, DO NOT wipe form; just store lastScan and clear param
+ useFocusEffect(
+   React.useCallback(() => {
+     const paramScan = route.params?.savedScan;
+     if (paramScan) {
+       console.log('[newProject] savedScan arrived', paramScan);
+       setLastScan(paramScan);
+       lastScanRef.current = paramScan;
+       setLastScanEphemeral?.(paramScan);
+       navigation.setParams({ savedScan: undefined });
+     }
+     return () => {};
+   }, [route.params?.savedScan, navigation])
+ );
+ 
+@@
+ // --- CTA section: replace previous three buttons with EXACTLY two big CTAs ---
+-<View style={{ marginTop: 12 }}>
+-  {/* old buttons removed */}
+-</View>
++<View style={{ marginTop: 12, pointerEvents: isBuilding ? 'none' : 'auto', opacity: isBuilding ? 0.6 : 1 }}>
++  <CTAButton
++    title="Build with visual mockup"
++    subtitle="Visual mockup of your space + complete build plan"
++    onPress={handleBuildWithPreview}
++    variant="primary"
++    disabled={!isFormValid || isBuilding}
++  />
++  <CTAButton
++    title="Build plan only"
++    subtitle="Full DIY plan—steps, materials, tools, cuts, time & cost"
++    onPress={onBuildWithoutPreview}
++    variant="secondary"
++    disabled={!isFormValid || isBuilding}
++  />
++</View>
+ 
+@@
+ // Ensure reset/clear also removes AR card
+-function resetForm() {
++function resetForm() {
+   // Clear all state
+   setDraftId(null);
+   setTitle('');
+   setDescription('');
+   setBudget('');
+   setSkillLevel('');
+   setPhotoUri(null);
+-  setLastScan(lastScan); // (old line if present) 
++  setLastScan(null);     // make sure the saved-scan card disappears
+   clearDraft?.();
+   clearNewProjectDraft?.();
+ }
+
+
+If your file has slightly different function names for the two build handlers, apply the same clearing + navigation behavior to both.
+
+ProjectsNavigator.tsx — remove any “wait/building” screen route
+
+--- a/app/navigation/ProjectsNavigator.tsx
++++ b/app/navigation/ProjectsNavigator.tsx
+@@
+ // Remove any screen like PlanWait or BuildingPlan if present:
+-<Stack.Screen name="PlanWait" component={PlanWaitScreen} options={{ headerShown: false }} />
+-<Stack.Screen name="BuildingPlan" component={BuildingPlanScreen} options={{ headerShown: false }} />
++{/* wait/building screen removed: inline loading is used on NewProject */}
+
+
+(Optional) If a separate wait screen file exists, delete it:
+
+app/screens/PlanWaitScreen.tsx (or similarly named) — safe to remove for V1.

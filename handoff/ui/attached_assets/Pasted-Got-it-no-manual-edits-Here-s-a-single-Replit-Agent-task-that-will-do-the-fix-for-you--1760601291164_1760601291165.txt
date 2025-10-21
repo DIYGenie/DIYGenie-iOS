@@ -1,0 +1,87 @@
+Got it—no manual edits. Here’s a single **Replit Agent** task that will do the fix for you.
+
+---
+
+# Prompt: Fix Plan screen text crash (remove `Pill`, wrap text, keep Before/After only)
+
+**Project:** `DIYGenieTheme`
+**Autonomy:** **Low**
+**App Testing:** **ON**
+
+**Goal**
+
+* Stop “Text strings must be rendered within a `<Text>`” errors on the **Project Plan** screen.
+* Remove any `Pill` usage and ensure the “Quick stats” row uses only `<Text>`.
+* Keep **Before/After** preview only (no hero image on this screen).
+* No other styling changes.
+
+**Changes**
+
+1. **Edit** `app/screens/DetailedInstructions.tsx`
+
+   * **Remove** any import/usages of `Pill` (or similar label components).
+   * **Find** the block starting at the comment `/* Quick stats */` and **replace it** with:
+
+```tsx
+{/* Quick stats */}
+<View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+  {plan?.skill_level ? (
+    <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>
+      {String(plan.skill_level)}
+    </Text>
+  ) : null}
+
+  {(planData?.summary?.estTimeHours != null || plan?.time_estimate_hours != null) ? (
+    <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>
+      {(planData?.summary?.estTimeHours ?? plan?.time_estimate_hours)} hrs
+    </Text>
+  ) : null}
+
+  {planData?.summary?.estCostUsd != null ? (
+    <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>
+      ${planData.summary.estCostUsd}
+    </Text>
+  ) : null}
+
+  {totalSteps > 0 ? (
+    <Text style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>
+      {totalSteps} steps
+    </Text>
+  ) : null}
+</View>
+```
+
+* **Ensure** all other places where strings are built (materials rows, cut list headers/cells, step titles/descriptions) render **inside `<Text>`**. For list rows, prefer a single `<Text>` per row, e.g.:
+
+```tsx
+<Text>{`${item.qty ?? ''} ${item.unit ?? ''} · ${item.name}`.trim()}</Text>
+```
+
+* **Disable the hero/summary image** at the very top of this screen (leave **Before/After** Preview only). If there is a hero render block above Preview, wrap it with `false && (...)` or guard it via a local flag so it never renders here.
+
+2. **Delete leftover emojis** in this file if any remain (none should be kept).
+
+**Testing (App Testing = ON)**
+
+* Restart Metro, kill Expo Go app, reopen (to clear cache).
+* Navigate: Projects → pick a project → **Open Detailed Build Plan**.
+* Verify:
+
+  * No red error overlay.
+  * Quick stats row shows text values without crash.
+  * Only **Before/After** images at the top (no hero).
+  * Materials/Tools/Cut List/Steps render normally.
+
+**Deliverables**
+
+* Updated `app/screens/DetailedInstructions.tsx` with:
+
+  * `Pill` removed.
+  * “Quick stats” using `<Text>` only.
+  * Hero removed on this screen.
+  * All strings wrapped in `<Text>`.
+* Short note in output: “Crash resolved; hero hidden; text wrapping applied. Verified on device.”
+
+**Stop if**
+
+* Any other component file (outside this screen) must be edited—list it and pause.

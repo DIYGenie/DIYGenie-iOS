@@ -1,0 +1,74 @@
+Goal: Chips show full labels (“Describe”, “Room scan”, “AI preview”, “Build plan”) with no …, on a single row across iPhone SE → Pro Max.
+
+Files: app/screens/HomeScreen.*
+
+Tasks:
+
+Keep the container width measurement you added (howW). Tighten spacing a bit:
+
+const GAP = 6;          // was 8
+const ARROW_W = 10;     // was 12
+const ITEMS = 7;        // 4 chips + 3 arrows
+const gapsTotal = GAP * (ITEMS - 1);
+const arrowsTotal = ARROW_W * 3;
+const CHIP_W = howW > 0 ? Math.floor((howW - gapsTotal - arrowsTotal) / 4) : 90;
+
+
+Update the Chip to allow 2-line wrap and slightly smaller padding:
+
+const Chip = ({ icon, label }: { icon: React.ReactNode; label: string }) => (
+  <View
+    style={{
+      width: CHIP_W,
+      height: 64,
+      borderRadius: 14,
+      backgroundColor: 'rgba(138, 92, 255, 0.08)',
+      borderWidth: 1,
+      borderColor: 'rgba(138,92,255,0.15)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 8,           // tighter
+      marginHorizontal: GAP / 2,
+    }}
+  >
+    <View style={{ marginBottom: 4 }}>{icon}</View>
+    <Text
+      numberOfLines={2}               // allow 2 lines (prevents …)
+      allowFontScaling={false}
+      style={{
+        fontSize: 12,                 // slightly smaller
+        lineHeight: 14,
+        fontWeight: '600',
+        textAlign: 'center',
+      }}
+    >
+      {label}
+    </Text>
+  </View>
+);
+
+
+Keep arrows fixed-width and narrow:
+
+const Arrow = () => (
+  <Text style={{ width: ARROW_W, textAlign: 'center', opacity: 0.5, marginHorizontal: GAP/2 }}>›</Text>
+);
+
+
+Ensure no old styles fight this: remove any minWidth, maxWidth, or gap on the row itself; use explicit margins as above.
+
+Labels to use:
+
+“Describe”
+
+“Room scan”
+
+“AI preview”
+
+“Build plan”
+
+Acceptance:
+
+On iPhone SE, iPhone 16 Pro, Pixel 9 in Replit device picker: the four chips + 3 arrows sit on one row, centered; labels show fully (may wrap to two lines on smaller screens) with no ellipsis.
+
+The section spacing matches the current screenshot (comfortable gap above/below the row).

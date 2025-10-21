@@ -1,0 +1,71 @@
+In app/screens/NewProject.tsx:
+
+1) Ensure ensureDraft() still returns the draft project id (creating it if missing).
+
+2) Update fetchSuggestions() to match the backend shape and log errors:
+   async function fetchSuggestions() {
+     if (!draftId) draftId = await ensureDraft();
+     setSugsBusy(true);
+     try {
+       const body = {
+         user_id: USER_ID,
+         desc: desc.trim(),
+         budget,
+         skill_level: skillLevel
+       };
+       const r = await fetch(`${BASE}/api/projects/${draftId}/suggestions`, {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify(body)
+       });
+       const j = await r.json().catch(()=> ({}));
+       if (!r.ok || j.ok === false) {
+         console.warn('[suggestions]', r.status, j);
+         setSugsError(j?.error || `HTTP ${r.status}`);
+         setSugs([]); setTags([]);
+         return;
+       }
+       setSugsError(undefined);
+       setSugs(j.suggestions || []);
+       setTags(j.tags || []);
+     } catch (e:any) {
+       console.warn('[suggestions] error', e);
+       setSugsError(String(e?.message || e));
+     } finally {
+       setSugsBusy(false);
+     }
+   }
+
+   In the UI, if (sugsError) render a small caption under “Refresh suggestions” with the error string.
+
+3) Update onBuildNoPreview() to display server messages and still navigate on 200:
+   async function onBuildNoPreview() {
+     if (buildBusy) return;
+     setBuildBusy(true);
+     try {
+       const id = await ensureDraft();
+       const body = {
+         user_id: USER_ID,
+         prompt: (promptText?.trim() ||
+           `Build plan for: "${desc}". Budget: ${budget}. Skill: ${skillLevel}.`)
+       };
+       const r = await fetch(`${BASE}/api/projects/${id}/build-without-preview`, {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify(body),
+       });
+       const j = await r.json().catch(()=> ({}));
+       if (!r.ok || j.ok === false) {
+         // Show clear reasons like quota_exhausted
+         const msg = j?.error || `HTTP ${r.status}`;
+         Alert.alert('Cannot build', msg);
+         console.warn('[build-no-preview]', r.status, j);
+         return;
+       }
+       goToProject(id);
+     } catch (e:any) {
+       Alert.alert('Build failed', String(e?.message || e));
+     } finally {
+       setBuildBusy(false);
+     }
+   }

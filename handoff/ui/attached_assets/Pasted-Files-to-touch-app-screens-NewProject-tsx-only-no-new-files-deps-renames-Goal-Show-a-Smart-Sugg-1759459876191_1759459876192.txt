@@ -1,0 +1,93 @@
+Files to touch: app/screens/NewProject.tsx only (no new files/deps/renames)
+
+Goal
+Show a “Smart Suggestions (beta)” card on the New Project screen so users get helpful ideas before they ever request a visual preview. The card appears once the user has filled the form and added a photo; it auto-creates (or reuses) a draft project, uploads the image, then calls the existing endpoint POST /api/projects/:id/suggestions.
+
+Requirements & details
+
+Use EXPO_PUBLIC_BASE_URL (fallback http://localhost:5000 in dev).
+
+Current user id: globalThis.__DEV_USER_ID__ || '00000000-0000-0000-0000-000000000001'.
+
+Create a draft project when fields are ready (description ≥10 chars, budget, skill). Reuse an existing draftProjectId in state to avoid duplicates.
+
+After the user selects a photo, upload via POST /api/projects/:id/image using FormData with key image (or direct_url if you’re already using that path).
+
+Fetch suggestions via POST /api/projects/:id/suggestions with body { user_id }.
+
+Never block the form; suggestions are additive.
+
+Friendly toasts: errors should show a small toast/alert; loading is inline (no full-screen spinner).
+
+Add testIDs for easy QA.
+
+UI/UX changes (surgical)
+
+State (inside component)
+
+const [draftId, setDraftId] = useState<string | null>(null);
+
+const [sugs, setSugs] = useState<any|null>(null);
+
+const [sugsBusy, setSugsBusy] = useState(false);
+
+const [sugsErr, setSugsErr] = useState('');
+
+Helpers (inline in file)
+
+api(path: string, init?: RequestInit) → small fetch wrapper with 12s timeout + JSON validation (reuse if you already have).
+
+ensureDraftProject() → if draftId is null and required fields are valid, POST /api/projects with { user_id, name: description, budget, skill_level }; save id to draftId.
+
+uploadImage(projectId, uriOrUrl) → POST /api/projects/:id/image using FormData key image (or direct_url if the selected asset is a public URL).
+
+fetchSuggestions() → calls ensureDraftProject(), then POST /api/projects/:id/suggestions with { user_id }, sets sugs. Guards with sugsBusy.
+
+Auto-trigger
+
+When all required fields are valid and a photo is chosen:
+
+If draftId is missing, create draft → upload image → call fetchSuggestions().
+
+If draftId exists and sugs is null, call fetchSuggestions().
+
+Don’t loop: guard with sugsBusy and draftId checks.
+
+Suggestions card (under the photo block)
+
+Use your Card component styles.
+
+Header: Smart Suggestions (beta)
+
+Body:
+
+While loading: small inline spinner/text “Analyzing your photo…”
+
+On success: render sugs.bullets as a checkmark list and sugs.tags.join(' · ') as a caption.
+
+On error: muted text “Could not get suggestions. Try again.”
+
+Footer: a small “Refresh suggestions” secondary button → calls fetchSuggestions() (disabled while sugsBusy).
+
+Add testID="np-suggestions-card", testID="np-suggestions-refresh".
+
+Preview copy hint
+
+Above your “Request Preview” or next step CTA (if present on this screen), add a tiny caption:
+“You get 1 visual preview per project. Use suggestions to refine before you render.”
+
+No changes to navigation, other screens, or any plan gating.
+
+Acceptance criteria
+
+Filling Description (≥10 chars), selecting Budget & Skill, and adding a photo automatically creates a draft project, uploads the photo, and shows the Smart Suggestions card with 4–5 bullets.
+
+Tapping Refresh suggestions re-calls the endpoint (no duplicates, shows a brief loading state).
+
+Network or server error shows a friendly inline message; the rest of the form remains usable.
+
+A tiny caption informs users there’s 1 visual preview per project.
+
+The following testIDs exist: np-suggestions-card, np-suggestions-refresh.
+
+No full-screen spinners; no new files/dependencies.

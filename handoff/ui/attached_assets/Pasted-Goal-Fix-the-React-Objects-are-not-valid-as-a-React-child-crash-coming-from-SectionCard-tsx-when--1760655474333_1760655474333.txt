@@ -1,0 +1,87 @@
+Goal: Fix the React “Objects are not valid as a React child” crash coming from SectionCard.tsx when rendering icon or summary.
+The issue happens because icon is being passed as a plain object instead of a JSX element.
+
+Tasks:
+
+Open app/screens/ProjectDetails.tsx
+
+Make sure these imports exist at the top:
+
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { brand } from '../../theme/colors';
+
+
+Replace all SectionCard components so icon props use real JSX icons.
+Use the following mappings:
+
+<SectionCard
+  icon={<Ionicons name="information-circle-outline" size={16} color={brand.purple} />}
+  title="Overview"
+  summary="Project summary"
+/>
+
+<SectionCard
+  icon={<Ionicons name="cube-outline" size={16} color={brand.purple} />}
+  title="Materials"
+  summary="All required materials"
+/>
+
+<SectionCard
+  icon={<Ionicons name="construct-outline" size={16} color={brand.purple} />}
+  title="Tools"
+  summary="Required and optional tools"
+/>
+
+<SectionCard
+  icon={<MaterialCommunityIcons name="ruler" size={16} color={brand.purple} />}
+  title="Dimensions"
+  summary="Room and surface measurements"
+/>
+
+<SectionCard
+  icon={<MaterialCommunityIcons name="content-cut" size={16} color={brand.purple} />}
+  title="Cut List"
+  summary="Boards and dimensions"
+/>
+
+
+Open app/components/SectionCard.tsx
+
+At the top, ensure:
+
+import React from 'react';
+
+
+In props, make sure:
+
+icon?: React.ReactNode;
+summary?: string;
+
+
+Just before returning JSX, add guards:
+
+const safeIcon = React.isValidElement(icon) ? icon : null;
+const safeSummary = typeof summary === 'string' ? summary : '';
+
+
+Render them safely:
+
+{safeIcon ? <View style={styles.icon}>{safeIcon}</View> : null}
+{safeSummary ? <Text style={styles.summary}>{safeSummary}</Text> : null}
+
+
+Do not change layout or styles elsewhere.
+
+Validation:
+
+Run app → Go to Project Details screen.
+
+Confirm icons show up and no red error screen appears.
+
+Confirm “Try a Sample Project” still loads correctly.
+
+Settings:
+
+Autonomy: High
+
+App Testing: ON

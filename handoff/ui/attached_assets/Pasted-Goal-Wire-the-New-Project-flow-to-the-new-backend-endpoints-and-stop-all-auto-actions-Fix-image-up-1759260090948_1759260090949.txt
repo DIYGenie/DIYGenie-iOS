@@ -1,0 +1,123 @@
+Goal: Wire the New Project flow to the new backend endpoints and stop all auto-actions. Fix image upload, correct endpoint paths, and gate the preview button by entitlements.
+Base URL: use process.env.EXPO_PUBLIC_BASE_URL (currently https://api.diygenieapp.com).
+Important: Do not auto-start preview or build when the image finishes uploading. Only start after the user taps a button.
+
+What to implement / fix
+
+Create project (unchanged path)
+
+POST ${BASE_URL}/api/projects with JSON body { user_id, name, description, budget, skill_level }
+
+Store returned id in local state so subsequent calls use /api/projects/:id/....
+
+Image upload (accept both multipart OR direct_url)
+
+Endpoint: POST ${BASE_URL}/api/projects/:id/image
+
+If we have a local file, send FormData with key image. Example:
+
+const form = new FormData();
+form.append('image', {
+  uri,
+  name: 'room.jpeg',
+  type: 'image/jpeg',
+} as any);
+await fetch(`${BASE_URL}/api/projects/${id}/image`, { method: 'POST', body: form });
+
+
+If we already have a public URL (e.g. from Supabase), send JSON:
+
+await fetch(`${BASE_URL}/api/projects/${id}/image`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ direct_url: imageUrl }),
+});
+
+
+Do not trigger preview or build here; just show the image and enable the action buttons.
+
+Buttons & gating
+
+Fetch entitlements from: GET ${BASE_URL}/me/entitlements/:userId and use:
+
+tier (Free | Casual | Pro),
+
+remaining (plans left),
+
+previewAllowed (boolean).
+
+Enable rules:
+
+“Generate AI Preview” is enabled only if previewAllowed === true and an image is set.
+
+“Build Plan Without Preview” is enabled if required fields are valid (name ≥ 10 chars, budget picked, skill picked). Image optional unless you coded it otherwise.
+
+Show the small “Preview isn’t included…” tip and “Upgrade” link when previewAllowed === false.
+
+Fix the ‘Build Plan Without Preview’ 404
+
+The current call is missing the project id. Change it to:
+POST ${BASE_URL}/api/projects/:id/build-without-preview
+
+Expect { ok: true } immediately. Do not wait/spin; optimistically navigate back to Projects and let polling update status.
+
+Generate AI Preview
+
+On tap, call: POST ${BASE_URL}/api/projects/:id/preview → expect { ok: true } immediately.
+
+Navigate back to Projects list and show the “Preview requested” badge. No infinite spinner.
+
+Projects list & status polling
+
+List: GET ${BASE_URL}/api/projects?user_id=<USER_ID>
+
+Poll every ~2s while any item has status in ['preview_requested','plan_requested'].
+
+Show badges:
+
+preview_requested → “Preview requested”
+
+preview_ready → “Preview ready”
+
+plan_ready → “Plan ready”
+
+draft → nothing special
+
+Error handling (no HTML 404s/500s shown to users)
+
+Wrap every fetch in try/catch, parse JSON { ok:false, error } when possible, and show a toast:
+
+“Upload failed: <message>”
+
+“Couldn’t start build” / “Couldn’t start preview”
+
+Stop all auto-actions
+
+After image upload, do not call preview or build. Buttons should be idle until user taps.
+
+Files to touch (typical names)
+
+screens/NewProjectForm.tsx (or similarly named)
+
+any api.ts/lib/api.ts helper
+
+screens/ProjectsScreen.tsx for list & polling
+
+Quick self-test checklist (please run these in Preview):
+
+Fill fields, upload an image → no actions fire automatically.
+
+Tap Build Plan Without Preview → Network shows POST /api/projects/:id/build-without-preview (not /build-without-preview at root). Immediate {ok:true}; list item flips to “Plan ready” after ~1–2s.
+
+If on Free tier, Generate AI Preview is disabled and shows the “Upgrade” hint.
+On a tier with preview, tapping it calls POST /api/projects/:id/preview and the list shows “Preview requested” then “Preview ready”.
+
+No infinite spinners; buttons only spin while the specific request is in-flight.
+
+Notes
+
+Keep using process.env.EXPO_PUBLIC_BASE_URL for all requests.
+
+Ignore the React Native “useNativeDriver” warning (not related).
+
+Do not change the backend; it’s already green.

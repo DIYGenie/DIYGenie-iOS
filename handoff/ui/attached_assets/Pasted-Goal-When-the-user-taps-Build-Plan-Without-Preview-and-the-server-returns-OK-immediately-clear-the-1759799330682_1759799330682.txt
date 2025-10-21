@@ -1,0 +1,68 @@
+Goal: When the user taps Build Plan Without Preview and the server returns OK, immediately clear the New Project form (all fields, photo, suggestions, prompt state) so when they come back it’s fresh.
+
+Scope: One file only: app/screens/NewProject.tsx
+
+Steps:
+
+Add a form reset helper
+
+In NewProject.tsx, near other handlers/state, add:
+
+// --- helper to clear the form back to defaults
+function resetForm() {
+  try {
+    setDraftId(null);
+    setDescription('');            // project description text
+    setBudget('');                 // or null/'' depending on your select
+    setSkillLevel('');             // or null/'' depending on your select
+    setPhotoUri(null);             // clear local preview image
+    setSugs([]);                   // design suggestions list
+    setSugsBusy(false);
+    setPromptText('');             // build prompt editor, if present
+    setErrorMsg?.(null);           // if you have an error state
+  } catch {}
+}
+
+
+Use the existing state setters already defined in this file (e.g., setDescription, setBudget, setSkillLevel, setPhotoUri, setSugs, setSugsBusy, setPromptText, etc.). If any of these names differ, map to the actual ones you see.
+
+Call it on success (right before navigating)
+
+Find the handler used by the “Build Plan Without Preview” button (e.g., handleBuildWithoutPreview / generatePlan / similar).
+
+After you receive a successful response (r.ok === true or status 200), call resetForm() BEFORE navigation.navigate(...).
+
+Example patch inside the success branch:
+
+// success path after POST /api/projects/:id/build-without-preview
+showToast?.('Plan requested', 'success'); // keep existing toast if present
+resetForm();                               // <--- clear form
+navigation.navigate('ProjectDetail', { id: projectId }); // keep your actual route/params
+
+
+(Nice-to-have) also clear on tab leave
+
+Add this listener to ensure the form never lingers if the user backs away mid-flow:
+
+React.useEffect(() => {
+  const unsub = navigation.addListener('blur', () => {
+    // optional: only reset if we had a draft
+    if (draftId) resetForm();
+  });
+  return unsub;
+}, [navigation, draftId]);
+
+
+No other logic changes
+
+Don’t touch the API calls or navigation targets.
+
+Keep the Suggestions card/refresh logic as-is.
+
+Acceptance:
+
+Create a plan via Build Plan Without Preview → app navigates to Project Details.
+
+Return to New Project tab → all fields are empty, photo cleared, suggestions cleared.
+
+No regressions on preview flow or suggestions.

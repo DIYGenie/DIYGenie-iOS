@@ -1,0 +1,357 @@
+app/lib/events.ts (create)
+
+// app/lib/events.ts
+import { EventEmitter } from 'events';
+
+type BuildCompletedPayload = { projectId: string };
+
+class Bus extends EventEmitter {
+  emitBuildCompleted(payload: BuildCompletedPayload) {
+    this.emit('build:completed', payload);
+  }
+  onBuildCompleted(fn: (p: BuildCompletedPayload) => void) {
+    this.on('build:completed', fn);
+    return () => this.off('build:completed', fn);
+  }
+}
+
+export const bus = new Bus();
+
+
+app/lib/api.ts (update)
+
+// app/lib/api.ts
+// ...existing imports
+import { bus } from './events';
+
+const POLL_MS = 2000;
+const POLL_TIMEOUT_MS = 60000;
+
+export async function pollProjectReady(projectId: string) {
+  const start = Date.now();
+  console.log('[build] polling start projectId=', projectId);
+
+  while (Date.now() - start < POLL_TIMEOUT_MS) {
+    try {
+      const res = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/api/projects/${projectId}/plan`);
+      if (res.status === 200) {
+        console.log('[build] ready 200 projectId=', projectId);
+        bus.emitBuildCompleted({ projectId });
+        return await res.text(); // markdown
+      }
+      if (res.status === 409) {
+        // still building
+        await new Promise(r => setTimeout(r, POLL_MS));
+        continue;
+      }
+      console.log('[build] unexpected status', res.status);
+      await new Promise(r => setTimeout(r, POLL_MS));
+    } catch (e) {
+      console.log('[build] poll error', e);
+      await new Promise(r => setTimeout(r, POLL_MS));
+    }
+  }
+  throw new Error('Timeout waiting for plan');
+}
+
+
+app/screens/NewProject.tsx (update)
+
+// app/screens/NewProject.tsx
+import React from 'react';
+import { View, ScrollView, Pressable, Text } from 'react-native';
+// ...existing imports
+import { bus } from '../lib/events';
+import { clearNewProjectDraft } from '../lib/draft';
+
+export default function NewProjectScreen({ navigation }: any) {
+  // ...existing state
+  const [savedScan, setSavedScan] = React.useState<null | { scanId: string; source: 'ar' }>(null);
+
+  React.useEffect(() => {
+    // ensure AR Saved scan card hides when build completes (all code paths)
+    const off = bus.onBuildCompleted(async ({ projectId }) => {
+      console.log('[build] completed -> clearing draft & AR card for projectId=', projectId);
+      try {
+        await clearNewProjectDraft();
+      } catch (e) {
+        console.log('[build] clear draft error', e);
+      } finally {
+        setSavedScan(null);
+      }
+    });
+    return off;
+  }, []);
+
+  // ...where you currently set savedScan on AR save remains unchanged
+
+  // render
+  return (
+    <ScrollView contentContainerStyle={{ padding: 16 }}>
+      {/* ...existing form fields */}
+
+      {savedScan ? (
+        <View style={{ marginTop: 12, borderRadius: 16, padding: 12, backgroundColor: 'white', shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 2 }}>
+          <Text style={{ fontWeight: '600', marginBottom: 6 }}>Saved scan (AR)</Text>
+          <Text style={{ opacity: 0.7, marginBottom: 8 }}>ROI captured. Preview will be generated only if you choose the visual mockup flow.</Text>
+          <Pressable onPress={() => setSavedScan(null)} style={{ alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: '#F3F4F6' }}>
+            <Text>Remove</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {/* ...existing CTAs and in-place banner + polling */}
+    </ScrollView>
+  );
+}
+
+
+app/components/SectionCard.tsx (update)
+
+// app/components/SectionCard.tsx
+import React from 'react';
+import { View, Text, Pressable, LayoutAnimation } from 'react-native';
+import { ChevronDown, ChevronRight } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
+
+type PreviewBits = {
+  steps?: string[];
+  materials?: { name: string; qty?: string }[];
+  tools?: string[];
+  cuts?: { name?: string; size?: string }[];
+  safetyNotes?: string[];
+  timeEstimate?: string;
+  costEstimate?: string | number;
+};
+
+type Props = {
+  title: string;
+  section: string; // 'overview' | 'steps' | ...
+  defaultExpanded?: boolean;
+  preview?: PreviewBits;
+};
+
+export default function SectionCard({ title, section, defaultExpanded = false, preview }: Props) {
+  const navigation = useNavigation<any>();
+  const [expanded, setExpanded] = React.useState(defaultExpanded);
+
+  const toggle = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpanded(e => !e);
+    console.log('[details] toggle section=', section, 'expanded=', !expanded);
+  };
+
+  const goToDetails = () => {
+    console.log('[details] nav section=', section);
+    navigation.navigate('DetailedInstructions', { section });
+  };
+
+  const line = (label: string, value?: string) =>
+    value ? (
+      <View style={{ flexDirection: 'row', marginTop: 6 }}>
+        <Text style={{ fontWeight: '600', marginRight: 6 }}>{label}</Text>
+        <Text style={{ flex: 1, opacity: 0.8 }}>{value}</Text>
+      </View>
+    ) : null;
+
+  const counts = [
+    preview?.steps?.length ? `${preview?.steps?.length} steps` : null,
+    preview?.materials?.length ? `${preview?.materials?.length} materials` : null,
+    preview?.tools?.length ? `${preview?.tools?.length} tools` : null,
+    preview?.cuts?.length ? `${preview?.cuts?.length} cuts` : null,
+  ]
+    .filter(Boolean)
+    .join(' • ');
+
+  return (
+    <View style={{ marginVertical: 8, borderRadius: 16, backgroundColor: 'white', padding: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 3 }}>
+      <Pressable onPress={goToDetails} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}>
+        <Text style={{ fontSize: 16, fontWeight: '700', flex: 1 }}>{title}</Text>
+        <Pressable onPress={toggle} hitSlop={8} style={{ padding: 6 }}>
+          {expanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+        </Pressable>
+      </Pressable>
+
+      {counts ? <Text style={{ opacity: 0.6, marginBottom: expanded ? 8 : 0 }}>{counts}</Text> : null}
+
+      {expanded ? (
+        <View style={{ marginTop: 4 }}>
+          {/* Top 2 steps preview */}
+          {preview?.steps?.slice(0, 2).map((s, i) => (
+            <View key={i} style={{ flexDirection: 'row', marginTop: i === 0 ? 0 : 6 }}>
+              <Text style={{ width: 22, fontWeight: '700', color: '#6D28D9' }}>{i + 1}.</Text>
+              <Text style={{ flex: 1, opacity: 0.9 }}>{s}</Text>
+            </View>
+          ))}
+
+          {/* Safety + time/cost lines */}
+          {line('Safety', preview?.safetyNotes?.[0])}
+          {line('Time', preview?.timeEstimate)}
+          {line('Cost', typeof preview?.costEstimate === 'number' ? `$${preview?.costEstimate}` : preview?.costEstimate)}
+
+          {/* Materials/Tools compact pills */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 }}>
+            {preview?.materials?.slice(0, 3).map((m, i) => (
+              <View key={`m-${i}`} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: '#F3F4F6', marginRight: 6, marginBottom: 6 }}>
+                <Text>{m.qty ? `${m.qty} ${m.name}` : m.name}</Text>
+              </View>
+            ))}
+            {preview?.tools?.slice(0, 2).map((t, i) => (
+              <View key={`t-${i}`} style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: '#EEF2FF', marginRight: 6, marginBottom: 6 }}>
+                <Text>{t}</Text>
+              </View>
+            ))}
+          </View>
+
+          <Pressable onPress={goToDetails} style={{ alignSelf: 'flex-start', marginTop: 10, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#6D28D9' }}>
+            <Text style={{ color: 'white', fontWeight: '600' }}>Open full section</Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+
+app/components/PreviewImage.tsx (create)
+
+// app/components/PreviewImage.tsx
+import * as React from 'react';
+import { View, Image, Pressable, Text, Alert } from 'react-native';
+import * as FileSystem from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library';
+
+export default function PreviewImage({ uri }: { uri: string }) {
+  const [saving, setSaving] = React.useState(false);
+
+  const save = async () => {
+    try {
+      setSaving(true);
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Allow Photos access to save the preview.');
+        return;
+      }
+      const fileUri = FileSystem.cacheDirectory + 'preview.jpg';
+      const dl = await FileSystem.downloadAsync(uri, fileUri);
+      const asset = await MediaLibrary.createAssetAsync(dl.uri);
+      await MediaLibrary.createAlbumAsync('DIY Genie', asset, false);
+      Alert.alert('Saved', 'Preview saved to Photos.');
+      console.log('[details] saved preview to photos');
+    } catch (e) {
+      console.log('[details] save preview error', e);
+      Alert.alert('Error', 'Could not save preview.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <View style={{ marginBottom: 12 }}>
+      <Image source={{ uri }} style={{ width: '100%', height: 200, borderRadius: 16 }} resizeMode="cover" />
+      <Pressable
+        onPress={save}
+        disabled={saving}
+        style={{ position: 'absolute', right: 10, bottom: 10, backgroundColor: '#6D28D9', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 3 }}
+      >
+        <Text style={{ color: 'white', fontWeight: '700' }}>{saving ? 'Saving…' : 'Save to Photos'}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+
+app/screens/ProjectDetails.tsx (update)
+
+// app/screens/ProjectDetails.tsx
+import React from 'react';
+import { View, ScrollView, Text } from 'react-native';
+import PreviewImage from '../components/PreviewImage';
+import SectionCard from '../components/SectionCard';
+import { parsePlanMarkdown, Plan } from '../lib/plan';
+import { useRoute } from '@react-navigation/native';
+
+type RouteParams = { projectId: string; previewUrl?: string; markdown?: string };
+
+export default function ProjectDetails() {
+  const route = useRoute<any>();
+  const { projectId, previewUrl, markdown } = (route.params || {}) as RouteParams;
+
+  const [plan, setPlan] = React.useState<Plan | null>(null);
+
+  React.useEffect(() => {
+    (async () => {
+      try {
+        // prefer provided markdown; otherwise fetch via API already handled upstream
+        if (markdown) {
+          const p = parsePlanMarkdown(markdown);
+          setPlan(p);
+          console.log('[details] plan parsed from route');
+        }
+      } catch (e) {
+        console.log('[details] parse error', e);
+      }
+    })();
+  }, [markdown]);
+
+  const previewBitsFor = (section: string) => {
+    if (!plan) return {};
+    switch (section) {
+      case 'overview':
+        return {
+          timeEstimate: plan.time?.total,
+          costEstimate: plan.cost?.total,
+          safetyNotes: plan.safety?.notes?.slice(0, 1),
+        };
+      case 'steps':
+        return { steps: plan.steps?.map(s => s.text) };
+      case 'materials':
+        return { materials: plan.materials?.map(m => ({ name: m.name, qty: m.qty })) };
+      case 'tools':
+        return { tools: plan.tools?.map(t => t.name ?? t) };
+      case 'cuts':
+        return { cuts: plan.cuts?.map(c => ({ name: c.name, size: c.size })) };
+      case 'timecost':
+        return { timeEstimate: plan.time?.total, costEstimate: plan.cost?.total };
+      default:
+        return {};
+    }
+  };
+
+  return (
+    <ScrollView contentContainerStyle={{ padding: 16 }}>
+      {previewUrl ? <PreviewImage uri={previewUrl} /> : null}
+
+      <View style={{ marginBottom: 8, padding: 12, borderRadius: 16, backgroundColor: 'white', shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 3 }}>
+        <Text style={{ fontSize: 18, fontWeight: '800', marginBottom: 6 }}>Open Detailed Build Plan</Text>
+        <Text style={{ opacity: 0.7 }}>Tap any section below, or open from the header inside each card.</Text>
+      </View>
+
+      <SectionCard title="Overview" section="overview" defaultExpanded preview={previewBitsFor('overview')} />
+      <SectionCard title="Steps" section="steps" defaultExpanded preview={previewBitsFor('steps')} />
+      <SectionCard title="Materials" section="materials" preview={previewBitsFor('materials')} />
+      <SectionCard title="Tools" section="tools" preview={previewBitsFor('tools')} />
+      <SectionCard title="Cuts" section="cuts" preview={previewBitsFor('cuts')} />
+      <SectionCard title="Time & Cost" section="timecost" preview={previewBitsFor('timecost')} />
+
+      <View style={{ height: 24 }} />
+    </ScrollView>
+  );
+}
+
+
+app/navigation/index.tsx (update)
+
+// app/navigation/index.tsx
+// ...existing imports
+// Remove any legacy "waiting/building" route to enforce in-place banner flow.
+const RootNavigator = () => {
+  return (
+    <Stack.Navigator>
+      {/* ...existing screens */}
+      {/* Deleted: <Stack.Screen name="Building" component={BuildingScreen} /> */}
+    </Stack.Navigator>
+  );
+};
+
+export default RootNavigator;
