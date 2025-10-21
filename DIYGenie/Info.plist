@@ -18,6 +18,11 @@
 	<string>Camera is used for AR measurement.</string>
 	<key>NSUserTrackingUsageDescription</key>
 	<string>DIYGenie uses your device identifier to improve analytics and personalize content.</string>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>#FFFFFFFF</string>
+	</dict>
 	<key>UIRequiresFullScreen</key>
 	<true/>
 	<key>UIStatusBarStyle</key>
