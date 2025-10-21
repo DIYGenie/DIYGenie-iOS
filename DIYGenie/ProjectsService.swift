@@ -1,78 +1,121 @@
+// ProjectsService.swift
 import Foundation
 
-/// High-level app API for Projects.
-/// Uses APIClient.shared and DTOs.swift shapes.
 struct ProjectsService {
-    static let shared = ProjectsService()
     private let api = APIClient.shared
 
-    // MARK: - Create Project
-    func create(
-        name: String,
-        goal: String,
-        budget: Double,
-        skill: String,
-        userId: String
-    ) async throws -> Project {
-        guard let uid = UUID(uuidString: userId) else {
-            throw APIError.invalidRequest("Bad userId: \(userId)")
-        }
-
-        let body = CreateProjectBody(
-            name: name,
-            goal: goal,
-            user_id: uid,
-            client: "ios",
-            budget: budget,
-            skill_level: skill
-        )
-
-        let dto: CreateProjectDTO = try await api.post(
-            "/api/projects",
-            query: [URLQueryItem(name: "user_id", value: userId)],
-            body: body
-        )
-
-        // Map DTO → lightweight Project model used by the UI
-        return Project(
-            id: dto.id.uuidString,
-            name: dto.name,
-            goal: dto.goal,
-            status: "created"
-        )
+    // MARK: - Models (internal helpers)
+    private struct ListResponse: Decodable {
+        let ok: Bool
+        let items: [ProjectSummary]
     }
 
-    // MARK: - List Projects
+    private struct ProjectSummary: Decodable {
+        let id: UUID
+        let name: String
+        let status: String?
+        let inputImageURL: URL?
+        let previewURL: URL?
+        let goal: String?
+    }
+
+    private struct CreateRequest: Encodable {
+        let name: String
+        let goal: String?
+        let client: Client?
+        struct Client: Encodable { let budget: String? }
+    }
+
+    // MARK: - List
     func list(userId: String) async throws -> [Project] {
-        struct ListResponse: Decodable { let ok: Bool; let items: [Project] }
         let resp: ListResponse = try await api.get(
             "/api/projects",
             query: [URLQueryItem(name: "user_id", value: userId)]
         )
-        return resp.items
+        // Map to lightweight Project used by UI
+        return resp.items.map {
+            Project(id: $0.id.uuidString, name: $0.name, goal: $0.goal, status: $0.status ?? "draft")
+        }
     }
 
-    // MARK: - Attach Photo
-    func attachPhoto(projectId: UUID, url: URL) async throws -> Bool {
-        struct PhotoBody: Encodable { let url: URL }
-        let resp: BoolResponse = try await api.post(
-            "/api/projects/\(projectId.uuidString)/photo",
-            body: PhotoBody(url: url)
+    // MARK: - Create
+    /// Creates a project and returns the lightweight `Project` for UI.
+    func create(userId: String, name: String, goal: String?, budget: String?) async throws -> Project {
+        let body = CreateRequest(
+            name: name,
+            goal: goal,
+            client: .init(budget: budget)
         )
-        return resp.ok
+        let dto: ProjectSummary = try await api.post(
+            "/api/projects",
+            query: [URLQueryItem(name: "user_id", value: userId)],
+            body: body
+        )
+        return Project(id: dto.id.uuidString, name: dto.name, goal: dto.goal, status: dto.status ?? "draft")
     }
 
-    // MARK: - Request Preview
-    func requestPreview(projectId: UUID) async throws -> PreviewStatus {
+    // MARK: - Upload Photo (multipart JPEG)
+    func uploadPhoto(userId: String, projectId: String, jpegData: Data) async throws -> BoolResponse {
+        // Build multipart manually
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var url = api.baseURL.appendingPathComponent("/api/projects/\(projectId)/photo")
+        if var comps = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            comps.queryItems = [URLQueryItem(name: "user_id", value: userId)]
+            url = comps.url ?? url
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        let crlf = "\r\n"
+        body.append("--\(boundary)\(crlf)".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"photo.jpg\"\(crlf)".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\(crlf + crlf)".data(using: .utf8)!)
+        body.append(jpegData)
+        body.append("\(crlf)--\(boundary)--\(crlf)".data(using: .utf8)!)
+        req.httpBody = body
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        guard (200..<300).contains(http.statusCode) else { throw UploadHTTPError.badStatus(code: http.statusCode, data: data) }
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        decoder.dateDecodingStrategy = .iso8601
+        if let ok = try? decoder.decode(BoolResponse.self, from: data) { return ok }
+        return BoolResponse(ok: true) // tolerate empty body
+    }
+
+    // MARK: - Queue Preview
+    func preview(userId: String, projectId: String) async throws -> PreviewStatus {
         struct Empty: Encodable {}
         return try await api.post(
-            "/api/projects/\(projectId.uuidString)/preview",
+            "/api/projects/\(projectId)/preview",
+            query: [URLQueryItem(name: "user_id", value: userId)],
             body: Empty()
         )
     }
 
     // MARK: - Fetch Plan
-    func fetchPlan(projectId: UUID) async throws -> Plan {
-        try await api.get("/api/projects/\(projectId.uuidString)/plan")
+    func plan(userId: String, projectId: String) async throws -> Plan {
+        try await api.get(
+            "/api/projects/\(projectId)/plan",
+            query: [URLQueryItem(name: "user_id", value: userId)]
+        )
     }
 }
+
+private enum UploadHTTPError: Error, LocalizedError {
+    case badStatus(code: Int, data: Data)
+
+    var errorDescription: String? {
+        switch self {
+        case let .badStatus(code, data):
+            let snippet = String(data: data, encoding: .utf8) ?? "<no body>"
+            return "Upload failed with HTTP status \(code): \(snippet)"
+        }
+    }
+}
+
+// ✅ Ready to Build

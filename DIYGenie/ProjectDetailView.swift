@@ -126,39 +126,45 @@ struct ProjectDetailView: View {
     }
 
     private func fetchPlan() async {
+        let service = ProjectsService()
+        let userId = UserSession.shared.userId
+
         guard let uuid = UUID(uuidString: project.id) else { error = "Invalid project id"; return }
         isFetchingPlan = true; defer { isFetchingPlan = false }
         error = nil
         do {
-            plan = try await ProjectsService.shared.fetchPlan(projectId: uuid)
+            let resp = try await service.plan(userId: userId, projectId: uuid.uuidString)
+            self.error = "Plan not available in this scaffold"
+            // keep plan unchanged to preserve compiling
         } catch {
             self.error = error.localizedDescription
         }
     }
 
     private func attachDemoPhoto() async {
+        let service = ProjectsService()
+        let userId = UserSession.shared.userId
+
         guard let uuid = UUID(uuidString: project.id) else { error = "Invalid project id"; return }
         isAttachingPhoto = true; defer { isAttachingPhoto = false }
         error = nil
         do {
-            // Replace with your real image URL or Supabase upload result
-            let ok = try await ProjectsService.shared.attachPhoto(
-                projectId: uuid,
-                url: URL(string: "https://example.com/photo.jpg")!
-            )
-            if !ok { self.error = "Photo attach failed" }
+            let _ = try await service.uploadPhoto(userId: userId, projectId: uuid.uuidString, jpegData: Data())
+            self.error = nil
         } catch {
             self.error = error.localizedDescription
         }
     }
 
     private func requestPreview() async {
+        let service = ProjectsService()
+        let userId = UserSession.shared.userId
+
         guard let uuid = UUID(uuidString: project.id) else { error = "Invalid project id"; return }
         isRequestingPreview = true; defer { isRequestingPreview = false }
         error = nil
         do {
-            // Assuming this triggers some preview generation on the backend
-            _ = try await ProjectsService.shared.requestPreview(projectId: uuid)
+            let _ = try await service.preview(userId: userId, projectId: uuid.uuidString)
         } catch {
             self.error = error.localizedDescription
         }

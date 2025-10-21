@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Camera is used for AR measurement.</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>CFBundleShortVersionString</key>
@@ -14,8 +16,6 @@
 	<string>$(PRODUCT_NAME)&lt;/string&gt;</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-	<key>NSCameraUsageDescription</key>
-	<string>DIYGenie uses the camera to scan rooms and capture measurements.</string>
 	<key>NSUserTrackingUsageDescription</key>
 	<string>DIYGenie uses your device identifier to improve analytics and personalize content.</string>
 </dict>
