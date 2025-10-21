@@ -133,7 +133,7 @@ struct ProjectDetailView: View {
         isFetchingPlan = true; defer { isFetchingPlan = false }
         error = nil
         do {
-            let resp = try await service.plan(userId: userId, projectId: uuid.uuidString)
+            _ = try await service.plan(userId: userId, projectId: uuid.uuidString)
             self.error = "Plan not available in this scaffold"
             // keep plan unchanged to preserve compiling
         } catch {
