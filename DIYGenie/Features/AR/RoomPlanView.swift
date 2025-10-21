@@ -3,15 +3,14 @@
 import SwiftUI
 import ARKit
 
-// MARK: - Shared Summary Model (used by RoomPlan and fallback)
+// MARK: - Shared Summary
 public struct RoomPlanSummary: Codable, Equatable {
-    public var totalArea: Double?      // m² (approx; nil for now)
+    public var totalArea: Double?      // m² (approx from floors)
     public var wallCount: Int?
     public var openingsCount: Int?
-    public var segments: [Double] = [] // meters (used by fallback MeasureView)
+    public var segments: [Double] = [] // used by fallback MeasureView
 }
 
-// MARK: - SwiftUI Wrapper
 @MainActor
 struct RoomPlanView: View {
     let onComplete: (RoomPlanSummary?) -> Void
@@ -22,10 +21,8 @@ struct RoomPlanView: View {
                 .ignoresSafeArea()
         } else {
             VStack(spacing: 16) {
-                Image(systemName: "arkit")
-                    .font(.system(size: 48, weight: .semibold))
-                Text("RoomPlan not available")
-                    .font(.title3).bold()
+                Image(systemName: "arkit").font(.system(size: 48, weight: .semibold))
+                Text("RoomPlan not available").font(.title3).bold()
                 Text("This device doesn’t support LiDAR RoomPlan. Use the fallback Measure tool instead.")
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
@@ -40,7 +37,6 @@ struct RoomPlanView: View {
 #if canImport(RoomPlan)
 import RoomPlan
 
-// MARK: - UIViewControllerRepresentable wrapper
 @available(iOS 16.0, *)
 private struct _RoomPlanCapture: UIViewControllerRepresentable {
     let onComplete: (RoomPlanSummary?) -> Void
@@ -54,17 +50,12 @@ private struct _RoomPlanCapture: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: RPViewController, context: Context) {}
 }
 
-// MARK: - Controller hosting RoomCaptureView + delegate
+// MARK: - Controller hosting RoomCaptureView
 @available(iOS 16.0, *)
 final class RPViewController: UIViewController, RoomCaptureViewDelegate {
-    // Session & view
-    let captureSession = RoomCaptureSession()
     let captureView = RoomCaptureView(frame: .zero)
 
-    // Output
     var onComplete: ((RoomPlanSummary?) -> Void)?
-
-    // State
     private var latestRoom: CapturedRoom?
     private var isRunning = false
 
@@ -72,7 +63,6 @@ final class RPViewController: UIViewController, RoomCaptureViewDelegate {
         super.viewDidLoad()
         view.backgroundColor = .black
 
-        // Add and constrain captureView
         captureView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(captureView)
         NSLayoutConstraint.activate([
@@ -82,8 +72,6 @@ final class RPViewController: UIViewController, RoomCaptureViewDelegate {
             captureView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
 
-        // Wire session + delegate
-        captureView.captureSession = captureSession
         captureView.delegate = self
 
         // Finish button overlay
@@ -106,29 +94,22 @@ final class RPViewController: UIViewController, RoomCaptureViewDelegate {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         guard !isRunning else { return }
-        captureSession.run(configuration: RoomCaptureSession.Configuration())
+        // Use the view's built-in session (get-only) and run it
+        captureView.captureSession.run(configuration: RoomCaptureSession.Configuration())
         isRunning = true
     }
 
     // MARK: - Finish
     @objc private func finishTapped() {
-        let summary = latestRoom.map(summarize(scene:))
+        let summary = latestRoom.map { summarize(scene: $0) }
         onComplete?(summary)
         dismiss(animated: true)
     }
 
     // MARK: - RoomCaptureViewDelegate
-    /// Called frequently with incremental room updates.
+    /// Incremental room updates
     func captureView(_ captureView: RoomCaptureView, didUpdate room: CapturedRoom) {
         latestRoom = room
-    }
-
-    /// Called on state changes; keep final snapshot.
-    func captureView(_ captureView: RoomCaptureView,
-                     didUpdate captureState: RoomCaptureSession.CaptureState) {
-        if case .final(let room) = captureState {
-            latestRoom = room
-        }
     }
 
     func captureView(_ captureView: RoomCaptureView, didPresent error: Error) {
@@ -138,27 +119,40 @@ final class RPViewController: UIViewController, RoomCaptureViewDelegate {
 
     // MARK: - Summarize a captured room
     private func summarize(scene: CapturedRoom) -> RoomPlanSummary {
-        let walls = scene.walls.count
-        let openings = scene.doors.count + scene.openings.count + scene.windows.count
+        // Floors-based area (sum of x * z for each floor surface, iOS 17+)
+        var areaFromFloors: Double? = nil
+        if #available(iOS 17.0, *) {
+            let floors = scene.floors
+            if !floors.isEmpty {
+                areaFromFloors = floors.reduce(0.0) { sum, f in
+                    sum + Double(f.dimensions.x * f.dimensions.z)
+                }
+            }
+        }
 
-        // Area: not all SDK versions expose floor polygons reliably.
-        // We keep nil for now; can compute from wall footprint later if needed.
+        // Fallback counts for walls and openings if available
+        var wallCount: Int? = nil
+        var openingsCount: Int? = nil
+        if #available(iOS 17.0, *) {
+            wallCount = scene.walls.count
+            openingsCount = scene.openings.count
+        }
+
+        // Build the summary; segments left empty for now (used by fallback MeasureView)
         return RoomPlanSummary(
-            totalArea: nil,
-            wallCount: walls,
-            openingsCount: openings,
+            totalArea: areaFromFloors,
+            wallCount: wallCount,
+            openingsCount: openingsCount,
             segments: []
         )
     }
 }
 #endif
-
 // MARK: - Capability Check
 @available(iOS 16.0, *)
 enum RoomPlanAvailability {
     static var isSupported: Bool {
-        // RoomPlan requires sceneDepth (LiDAR) support.
-        ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
+        ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) && ARWorldTrackingConfiguration.isSupported
     }
 }
 
