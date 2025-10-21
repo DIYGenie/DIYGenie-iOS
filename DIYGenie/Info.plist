@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key></key>
+	<string></string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +17,7 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Camera is used for AR measurement.</string>
+	<string>DIY Genie needs access to your camera for AR room scanning.</string>
 	<key>NSUserTrackingUsageDescription</key>
 	<string>DIYGenie uses your device identifier to improve analytics and personalize content.</string>
 	<key>UILaunchScreen</key>
