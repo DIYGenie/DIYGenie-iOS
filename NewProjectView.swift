@@ -7,6 +7,7 @@ struct NewProjectView: View {
     @Environment(\.dismiss) private var dismiss
 
     // Form state
+    @State private var showCreate = false
     @State private var name: String = ""
     @State private var goal: String = ""
     @State private var budget: Double = 1500         // dollars; we map to $, $$, $$$
@@ -57,6 +58,16 @@ struct NewProjectView: View {
                     .pickerStyle(.segmented)
                 }
 
+                if isRoomPlanSupported {
+                    Section("AR Measure") {
+                        Button {
+                            showMeasure = true
+                        } label: {
+                            Label("Measure Room", systemImage: "ruler")
+                        }
+                    }
+                }
+
                 if let capturedSummary {
                     Section("Measured (AR)") {
                         VStack(alignment: .leading, spacing: 6) {
@@ -87,20 +98,14 @@ struct NewProjectView: View {
             }
             .navigationTitle("New Project")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showMeasure = true
-                    } label: {
-                        Label("Measure with AR", systemImage: "arkit")
-                    }
-                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Create") { Task { await create() } }
-                        .disabled(isWorking || name.count < 10)
-                }
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .disabled(isWorking)
+                    Button {
+                        if name.trimmingCharacters(in: .whitespacesAndNewlines).count < 10 {
+                            errorMessage = "Name must be at least 10 characters."
+                        } else {
+                            showCreate = true
+                        }
+                    } label: { Image(systemName: "plus") }
                 }
             }
             .overlay {
@@ -109,17 +114,26 @@ struct NewProjectView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
+            .sheet(isPresented: $showCreate) {
+                NavigationStack {
+                    VStack(spacing: 16) {
+                        Text("Create this project?")
+                            .font(.headline)
+                        Button("Create") {
+                            Task { await create() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Button("Cancel") { showCreate = false }
+                    }
+                    .padding()
+                    .navigationTitle("Confirm")
+                    .navigationBarTitleDisplayMode(.inline)
+                }
+            }
             .sheet(isPresented: $showMeasure) {
-                if isRoomPlanSupported {
-                    RoomPlanView { summary in
-                        capturedSummary = summary
-                        showMeasure = false
-                    }
-                } else {
-                    MeasureView { summary in
-                        capturedSummary = summary
-                        showMeasure = false
-                    }
+                MeasureView { summary in
+                    capturedSummary = summary
+                    showMeasure = false
                 }
             }
         }
