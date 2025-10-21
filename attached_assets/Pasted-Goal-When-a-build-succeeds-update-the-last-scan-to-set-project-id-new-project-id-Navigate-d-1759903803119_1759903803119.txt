@@ -1,0 +1,183 @@
+Goal:
+
+When a build succeeds, update the last scan to set project_id = <new project id>.
+
+Navigate directly to a top-level ProjectDetails screen that shows real data + back button.
+
+Display the project’s latest scan image on details (if available), or the passed image URL as a fallback.
+
+Tasks
+
+Add helper to attach scan to project
+Create/extend app/lib/scans.ts (do not break existing exports); add:
+
+// app/lib/scans.ts
+import { supabase } from '../supabase';
+
+export async function attachScanToProject(scanId: string, projectId: string) {
+  const { error } = await supabase
+    .from('room_scans')
+    .update({ project_id: projectId })
+    .eq('id', scanId);
+  if (error) throw error;
+  return true;
+}
+
+
+Ensure a top-level ProjectDetails route with header/back
+Find your root stack navigator (e.g., app/navigation/index.tsx or App.tsx where createNativeStackNavigator is used).
+Register (or update) this screen with a header:
+
+<Stack.Screen
+  name="ProjectDetails"
+  component={require('../screens/ProjectDetails').default}
+  options={{ title: 'Project', headerShown: true }}
+/>
+
+
+Do not add nested stacks or rename tabs here.
+
+Implement/replace app/screens/ProjectDetails.tsx
+Use a minimal but real data view (fetch from your webhooks and Supabase). Overwrite file if it exists:
+
+// app/screens/ProjectDetails.tsx
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Image, ScrollView, Text, View, Pressable } from 'react-native';
+import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
+import { supabase } from '../supabase';
+
+type RouteParams = { id: string; imageUrl?: string | null };
+type R = RouteProp<Record<'ProjectDetails', RouteParams>, 'ProjectDetails'>;
+
+const BASE = process.env.EXPO_PUBLIC_BASE_URL || 'http://localhost:5000';
+
+export default function ProjectDetails() {
+  const route = useRoute<R>();
+  const nav = useNavigation();
+  const { id, imageUrl: fallbackImg } = route.params || ({} as any);
+  const [loading, setLoading] = useState(true);
+  const [project, setProject] = useState<any>(null);
+  const [scanUrl, setScanUrl] = useState<string | null>(fallbackImg ?? null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setLoading(true);
+        // 1) Fetch project from your backend
+        const r = await fetch(`${BASE}/api/projects/${id}`);
+        const pj = await r.json();
+        if (!alive) return;
+        setProject(pj?.item ?? pj ?? null);
+
+        // 2) Try to load latest scan for this project from Supabase
+        const { data, error } = await supabase
+          .from('room_scans')
+          .select('image_url')
+          .eq('project_id', id)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        if (!alive) return;
+        if (!error && data && data.length > 0) {
+          setScanUrl(data[0].image_url ?? null);
+        } else if (fallbackImg) {
+          setScanUrl(fallbackImg);
+        }
+      } catch (e: any) {
+        if (alive) setErr(e?.message ?? 'Failed to load project');
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [id]);
+
+  return (
+    <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+      {loading ? <ActivityIndicator /> : null}
+      {err ? <Text style={{ color: 'red' }}>{err}</Text> : null}
+
+      <Text style={{ fontSize: 20, fontWeight: '700' }}>Project</Text>
+      <Text selectable>ID: {id}</Text>
+
+      {scanUrl ? (
+        <Image source={{ uri: scanUrl }} style={{ width: '100%', aspectRatio: 1, borderRadius: 12 }} />
+      ) : (
+        <View style={{ width: '100%', aspectRatio: 1, borderRadius: 12, backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center' }}>
+          <Text>No scan image yet</Text>
+        </View>
+      )}
+
+      {/* Overview / Materials / Steps / Cut List — show stub values if present */}
+      {project?.overview ? (
+        <View style={{ gap: 6 }}>
+          <Text style={{ fontWeight: '600' }}>Overview</Text>
+          <Text>{project.overview}</Text>
+        </View>
+      ) : null}
+
+      {project?.materials ? (
+        <View style={{ gap: 6 }}>
+          <Text style={{ fontWeight: '600' }}>Materials & Tools</Text>
+          <Text>{Array.isArray(project.materials) ? project.materials.join(', ') : String(project.materials)}</Text>
+        </View>
+      ) : null}
+
+      {project?.steps ? (
+        <View style={{ gap: 6 }}>
+          <Text style={{ fontWeight: '600' }}>Steps</Text>
+          <Text>{Array.isArray(project.steps) ? project.steps.join('\n') : String(project.steps)}</Text>
+        </View>
+      ) : null}
+
+      {/* Footer actions */}
+      <View style={{ height: 12 }} />
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => nav.goBack()}
+        style={{ backgroundColor: '#6d28d9', paddingVertical: 12, borderRadius: 10, alignItems: 'center' }}
+      >
+        <Text style={{ color: 'white', fontWeight: '700' }}>Back</Text>
+      </Pressable>
+    </ScrollView>
+  );
+}
+
+
+Link the last scan to the project & pass fallback image on navigate
+Open app/screens/NewProject.tsx and in your build success path (where you currently do navigation.navigate('ProjectDetails', { id })), do this:
+
+Import:
+
+import { attachScanToProject } from '../lib/scans';
+
+
+After you receive project_id from the build webhook:
+
+// If you kept the last saved scan in state (e.g., lastScan)
+try {
+  if (lastScan?.scanId) {
+    await attachScanToProject(lastScan.scanId, project_id);
+  }
+} catch (e) {
+  console.warn('[link scan]', e);
+}
+
+// Navigate and pass the image URL as a fallback for immediate display
+navigation.navigate('ProjectDetails', { id: project_id, imageUrl: lastScan?.imageUrl ?? null });
+
+
+Do not remove any other logic. Keep your toasts and existing flows.
+
+Acceptance Criteria
+
+After tapping Build without preview, you navigate to ProjectDetails (with a header back arrow).
+
+The screen fetches the project data from your backend and shows it.
+
+The latest scan image for that project shows; if none is found yet, it shows the image you just took (fallback).
+
+The back button returns you to the previous screen (no dead-ends).
+
+No nested-navigator warnings.

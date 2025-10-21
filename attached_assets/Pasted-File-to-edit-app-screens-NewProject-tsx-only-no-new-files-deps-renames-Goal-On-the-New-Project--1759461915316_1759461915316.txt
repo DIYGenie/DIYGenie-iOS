@@ -1,0 +1,193 @@
+File to edit: app/screens/NewProject.tsx only (no new files/deps/renames)
+
+Goal
+
+On the New Project screen, guide users through:
+
+Enter details → select photo
+
+Smart Suggestions (beta) (cheap stub, no image upload)
+
+Edit build prompt
+
+Generate Plan (calls POST /api/projects/:id/build-without-preview)
+
+Hard rules
+
+Do NOT upload the photo in this screen. No POST /api/projects/:id/image calls. Photo stays local for preview.
+
+Use process.env.EXPO_PUBLIC_BASE_URL || 'http://localhost:5000'.
+
+Current user id: globalThis.__DEV_USER_ID__ || '00000000-0000-0000-0000-000000000001'.
+
+Keep existing visual style (Manrope/Inter, cards, spacing). No new components or deps.
+
+Changes (surgical, in NewProject.tsx)
+1) Local state
+
+Add (or consolidate) inside the component:
+
+const BASE = process.env.EXPO_PUBLIC_BASE_URL || 'http://localhost:5000';
+const USER_ID = (globalThis as any).__DEV_USER_ID__ || '00000000-0000-0000-0000-000000000001';
+
+const [description, setDescription] = React.useState<string>('');   // already present? reuse
+const [budget, setBudget] = React.useState<string>('');            // reuse if present
+const [skill, setSkill] = React.useState<string>('');              // reuse if present
+const [photoUri, setPhotoUri] = React.useState<string>('');        // reuse if present
+
+const [draftId, setDraftId] = React.useState<string|null>(null);
+const [busy, setBusy] = React.useState(false);
+
+const [sugs, setSugs] = React.useState<{bullets:string[]; tags?:string[]} | null>(null);
+const [sugsBusy, setSugsBusy] = React.useState(false);
+const [sugsErr, setSugsErr] = React.useState('');
+
+const [promptText, setPromptText] = React.useState<string>('');    // editable prompt before plan
+
+2) Small fetch helper (inline)
+async function api(path: string, init?: RequestInit) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 12000);
+  try {
+    const res = await fetch(`${BASE}${path}`, { ...init, signal: ctl.signal, headers:{ 'Content-Type':'application/json', ...(init?.headers||{}) }});
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json?.ok === false) throw new Error(json?.error || `HTTP ${res.status}`);
+    return json;
+  } finally { clearTimeout(t); }
+}
+
+3) Create (or reuse) draft project — no image upload
+async function ensureDraft(): Promise<string> {
+  if (draftId) return draftId;
+  if ((description?.trim().length || 0) < 10 || !budget || !skill) throw new Error('form_incomplete');
+
+  const body = { user_id: USER_ID, name: description.trim(), budget, skill_level: skill };
+  const json = await api('/api/projects', { method:'POST', body: JSON.stringify(body) });
+  const id = json?.item?.id || json?.id || json?.project?.id;
+  if (!id) throw new Error('no_project_id');
+  setDraftId(id);
+  // Pre-fill prompt once
+  if (!promptText) setPromptText(`Build plan for: ${description.trim()}. Budget: ${budget}. Skill: ${skill}. Focus on clean steps and accurate cut list.`);
+  return id;
+}
+
+
+Important: Make sure there is no call to /api/projects/:id/image anywhere in this file. If one exists, comment it out with a // TEMP: skip image upload in New Project flow.
+
+4) Suggestions (uses stub, no photo upload)
+async function fetchSuggestions() {
+  if (sugsBusy) return;
+  setSugsBusy(true); setSugsErr('');
+  try {
+    const id = await ensureDraft();
+    const json = await api(`/api/projects/${id}/suggestions`, { method:'POST', body: JSON.stringify({ user_id: USER_ID }) });
+    const data = json?.data;
+    setSugs(data ? { bullets: data.bullets || [], tags: data.tags || [] } : { bullets: [] });
+  } catch (e:any) {
+    setSugsErr('Could not get suggestions. You can still edit the prompt below.');
+  } finally {
+    setSugsBusy(false);
+  }
+}
+
+5) Auto-trigger suggestions when form is ready
+const formReady = (description?.trim().length || 0) >= 10 && !!budget && !!skill && !!photoUri;
+
+React.useEffect(() => {
+  if (formReady && !sugs && !sugsBusy) { fetchSuggestions(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [formReady, draftId]);
+
+6) Generate Plan (no preview)
+async function generatePlan() {
+  if (busy) return;
+  try {
+    setBusy(true);
+    const id = await ensureDraft();
+    const body = { user_id: USER_ID, prompt: promptText?.trim() || description?.trim() || 'Build plan' };
+    const json = await api(`/api/projects/${id}/build-without-preview`, { method:'POST', body: JSON.stringify(body) });
+    // Option: navigate to BuildPlan screen or Project Details (reuse your existing nav)
+    // e.g., navigation.navigate('BuildPlan', { id });
+  } catch (e:any) {
+    Alert.alert('Could not generate plan', e?.message || 'Please try again.');
+  } finally {
+    setBusy(false);
+  }
+}
+
+7) UI additions (under the photo picker block)
+
+Insert a Card with suggestions, then an Editable Prompt card and CTA. Keep your existing components (Card, ButtonPrimary, etc.). Minimal example:
+
+{/* Smart Suggestions (beta) */}
+{formReady && (
+  <Card testID="np-suggestions-card">
+    <Text style={{ fontWeight:'700', fontSize:16, marginBottom:6 }}>Smart Suggestions (beta)</Text>
+    {sugsBusy ? (
+      <Text>Analyzing your details…</Text>
+    ) : sugsErr ? (
+      <Text style={{ opacity:0.8 }}>{sugsErr}</Text>
+    ) : (
+      <>
+        {(sugs?.bullets || []).slice(0,5).map((b, i) => (
+          <Text key={i} style={{ marginVertical:2 }}>{'• '}{b}</Text>
+        ))}
+        {sugs?.tags?.length ? (
+          <Text style={{ marginTop:6, opacity:0.7 }}>{sugs.tags.join(' · ')}</Text>
+        ) : null}
+      </>
+    )}
+    <Pressable
+      onPress={fetchSuggestions}
+      disabled={sugsBusy}
+      testID="np-suggestions-refresh"
+      style={{ marginTop:8 }}
+      accessibilityRole="button"
+    >
+      <Text style={{ color:'#6F4BFF', fontWeight:'600' }}>{sugsBusy ? 'Refreshing…' : 'Refresh suggestions'}</Text>
+    </Pressable>
+  </Card>
+)}
+
+{/* Editable Prompt */}
+{formReady && (
+  <Card>
+    <Text style={{ fontWeight:'700', fontSize:16, marginBottom:6 }}>Edit build prompt</Text>
+    <TextInput
+      value={promptText}
+      onChangeText={setPromptText}
+      multiline
+      numberOfLines={4}
+      placeholder="Describe your ideal result, constraints, materials on hand, etc."
+      style={{ padding:12, backgroundColor:'#fff', borderRadius:12, borderWidth:1, borderColor:'#E5E7EB' }}
+    />
+    <Text style={{ fontSize:12, opacity:0.7, marginTop:6 }}>
+      You get <Text style={{ fontWeight:'700' }}>1 visual preview per project</Text>. Refine with suggestions before generating your plan.
+    </Text>
+    <ButtonPrimary
+      title={busy ? 'Generating…' : 'Generate Plan'}
+      onPress={generatePlan}
+      disabled={busy || !promptText?.trim()}
+      testID="np-generate-plan"
+      style={{ marginTop:12 }}
+    />
+  </Card>
+)}
+
+
+Keep your existing photo component as-is, but add a tiny caption under it:
+“We’ll upload your photo later if you request a visual preview.”
+
+Acceptance Criteria
+
+Selecting details (≥10 char description, budget, skill) and a photo shows the Smart Suggestions card automatically.
+
+No network call goes to /api/projects/:id/image from this screen. (Check Network tab.)
+
+Suggestions render bullets (or a friendly inline error), and “Refresh suggestions” works.
+
+Users can edit the prompt and tap Generate Plan, which calls POST /api/projects/:id/build-without-preview successfully.
+
+Buttons show proper loading states; no full-screen spinners; errors show friendly alerts.
+
+TestIDs present: np-suggestions-card, np-suggestions-refresh, np-generate-plan.

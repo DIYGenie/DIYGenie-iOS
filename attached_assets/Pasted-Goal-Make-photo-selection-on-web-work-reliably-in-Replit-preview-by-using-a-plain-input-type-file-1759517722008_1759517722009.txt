@@ -1,0 +1,133 @@
+Goal: Make photo selection on web work reliably in Replit preview by using a plain <input type="file"> and FileReader.readAsDataURL() (safe in sandbox). Keep native flow via expo-image-picker with no permission requests. Trigger Smart Suggestions after photo pick. No backend calls for the image.
+
+Scope & Files to touch (no new files):
+
+app/screens/NewProject.tsx (edit)
+
+Guard scan (edit if found): any calls to ImagePicker.requestMediaLibraryPermissionsAsync in app/screens/NewProjectMedia.js, app/screens/ProjectDetailsScreen.js, or anywhere in app/screens/* — wrap with if (Platform.OS !== 'web') { … } or remove if unused.
+
+Exact changes:
+
+NewProject.tsx
+
+Add imports:
+
+import { Platform, Alert } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+
+
+Ensure component state includes:
+
+const [photoUri, setPhotoUri] = useState<string | null>(null);
+const [sugsBusy, setSugsBusy] = useState(false);
+
+
+Add a web-only picker that never asks for permissions and produces a data URL:
+
+function pickPhotoWeb(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    try {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) return reject(new Error('No file selected'));
+        if (!file.type?.startsWith?.('image/')) return reject(new Error('Please select an image'));
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.onload = () => resolve(String(reader.result)); // data URL
+        reader.readAsDataURL(file);
+      };
+      input.click();
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+
+Add a native picker (no explicit permission calls; let OS prompt):
+
+async function pickPhotoNative(): Promise<string> {
+  const res = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    quality: 0.85,
+    allowsEditing: false,
+    base64: false,
+  });
+  // Expo returns { canceled: boolean, assets?: [{ uri }] }
+  if ((res as any).canceled) throw new Error('Selection canceled');
+  const uri = (res as any).assets?.[0]?.uri;
+  if (!uri) throw new Error('No image URI');
+  return uri;
+}
+
+
+Unified handler:
+
+const onUploadPhoto = async () => {
+  try {
+    const uri = Platform.OS === 'web' ? await pickPhotoWeb() : await pickPhotoNative();
+    setPhotoUri(uri);
+    // Optional: immediately fetch suggestions once the image is chosen
+    if (fetchSuggestions) {
+      setSugsBusy(true);
+      try { await fetchSuggestions(); } finally { setSugsBusy(false); }
+    }
+  } catch (err: any) {
+    Alert.alert('Photo picker', err?.message || 'Could not select photo');
+  }
+};
+
+
+Wire the existing “Upload Photo” button to onUploadPhoto and add a visible preview:
+
+<ButtonPrimary testID="btn-upload-photo" onPress={onUploadPhoto} title={photoUri ? 'Change Photo' : 'Upload Photo'} />
+
+{photoUri ? (
+  <View style={{ marginTop: 12 }}>
+    <Image
+      testID="np-photo-preview"
+      source={{ uri: photoUri }}
+      style={{ width: '100%', height: 200, borderRadius: 12 }}
+      resizeMode="cover"
+    />
+  </View>
+) : null}
+
+
+Ensure no ImagePicker.requestMediaLibraryPermissionsAsync() is called in this file.
+
+Guard scan (no structural changes):
+
+If any file in app/screens/* calls ImagePicker.requestMediaLibraryPermissionsAsync or getMediaLibraryPermissionsAsync, either remove the call or wrap it:
+
+if (Platform.OS !== 'web') {
+  await ImagePicker.requestMediaLibraryPermissionsAsync();
+}
+
+
+Do not delete files; just guard. (Common spots: NewProjectMedia.js, ProjectDetailsScreen.js.)
+
+Acceptance Criteria:
+
+On web (Replit preview):
+
+Tapping Upload Photo opens OS file picker immediately.
+
+Selecting an image does not show “could not grant permissions”.
+
+A preview image renders (testID="np-photo-preview").
+
+Smart Suggestions auto-refresh once (spinner via sugsBusy is fine).
+
+No network call is made to /api/projects/:id/image on this screen.
+
+On native:
+
+Tapping Upload Photo opens the OS library; preview shows after selection.
+
+No explicit permission API is called in code (OS handles it).
+
+No new files, no dependency changes.

@@ -1,0 +1,79 @@
+Goal: Replace the current “How it works” 2×2 tiles on HomeScreen with one compact row of 4 chips (small icon + label). No inner boxes. Fits on one line on common iPhone widths.
+
+File: app/screens/HomeScreen.* (tsx/js)
+
+Keep item labels like this:
+
+const items = [
+  { id: 1, icon: 'create-outline',   label: 'Describe' },
+  { id: 2, icon: 'image-outline',    label: 'Add photo / scan' },
+  { id: 3, icon: 'sparkles-outline', label: 'AI preview' },
+  { id: 4, icon: 'list-outline',     label: 'Build plan' },
+];
+
+
+Replace the existing “How it works” grid JSX with this block:
+
+<View style={chipStyles.wrap}>
+  <Text style={chipStyles.title}>How it works</Text>
+
+  <View style={chipStyles.row}>
+    {items.map((item) => (
+      <TouchableOpacity key={item.id} style={chipStyles.chip} activeOpacity={0.85}>
+        <Ionicons name={item.icon as any} size={20} color={colors.brand} />
+        <Text style={chipStyles.chipLabel} numberOfLines={1}>{item.label}</Text>
+      </TouchableOpacity>
+    ))}
+  </View>
+</View>
+
+
+Add these styles (and delete the old grid/iconWrap styles):
+
+const chipWidth = 82; // fits 4 across on 390–414 widths with gaps
+
+const chipStyles = StyleSheet.create({
+  wrap: { marginTop: 16 },
+  title: { fontSize: 16, fontWeight: '700', color: colors.ink900, marginBottom: 10 },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'stretch',
+  },
+  chip: {
+    width: chipWidth,
+    height: 76,
+    backgroundColor: colors.brand50,          // soft purple tint
+    borderColor: 'rgba(110,64,255,0.12)',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6, // RN 0.72+; if not supported, use marginBottom on label
+  },
+  chipLabel: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '600',
+    color: colors.ink700,
+    textAlign: 'center',
+    maxWidth: chipWidth - 12,
+  },
+});
+
+
+Cleanup
+
+Remove the previous gridStyles.* definitions and any <View style={iconWrap}>…</View> usage.
+
+Ensure there’s only this one “How it works” section on the page.
+
+Acceptance
+
+Exactly 4 compact chips in a single row, no inner white boxes.
+
+Icons ~20px, labels single-line; whole row looks airy, not intrusive.
+
+No TS/ESLint errors; Home loads normally.

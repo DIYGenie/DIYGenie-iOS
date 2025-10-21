@@ -1,0 +1,93 @@
+Goal: always send a valid user_id, unblock build-without-preview, call suggestions with the fields the API wants, and remove the RN-web stray text error.
+
+You are working in the Theme app repo. Make the following exact changes:
+
+1) app/screens/NewProject.tsx
+- Add at top (near other constants):
+  const BASE = process.env.EXPO_PUBLIC_BASE_URL || 'https://api.diygenieapp.com';
+  const USER_ID = (globalThis as any).__DEV_USER_ID__ || process.env.EXPO_PUBLIC_TEST_USER_ID || 'e4cb3591-7272-46dd-b1f6-d7cc4e2f3d24';
+
+- Ensure we ALWAYS create a draft before suggestions/build:
+  - Keep a local state: const [draftId, setDraftId] = useState<string | null>(null);
+  - Implement:
+    async function ensureDraft() {
+      if (draftId) return draftId;
+      const body = { user_id: USER_ID, name: desc.trim(), budget, skill: skillLevel };
+      const r = await fetch(`${BASE}/api/projects`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      const j = await r.json();
+      if (!r.ok || !j?.item?.id) throw new Error(j?.error || 'create_failed');
+      setDraftId(j.item.id);
+      return j.item.id;
+    }
+
+- Suggestions fetch (rename to fetchDesignSuggestions). Replace your current call with:
+  async function fetchDesignSuggestions() {
+    try {
+      setSugsBusy(true);
+      const id = await ensureDraft();
+      const body = {
+        user_id: USER_ID,
+        name: desc.trim(),
+        budget,
+        skill_level: skillLevel,
+        photo_uri: photoUri || null
+      };
+      const r = await fetch(`${BASE}/api/projects/${id}/suggestions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error || 'suggestions_failed');
+      setSugs(j?.items || []);
+      setTags(j?.tags || []);
+    } catch (e:any) {
+      setSugs([]);
+      setTags([]);
+    } finally {
+      setSugsBusy(false);
+    }
+  }
+
+- Build without preview handler (replace existing one):
+  async function onBuildNoPreview() {
+    try {
+      const id = await ensureDraft();
+      const body = { user_id: USER_ID, prompt: promptText?.trim() || `Build plan for: "${desc}". Budget: ${budget}. Skill: ${skillLevel}.` };
+      const r = await fetch(`${BASE}/api/projects/${id}/build-without-preview`, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify(body)
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error || 'build_denied');
+      // Navigate to the project details and clear local state
+      navigation.navigate('ProjectDetail', { id });
+      setDraftId(null); setSugs([]); setTags([]); setPromptText('');
+    } catch (e:any) {
+      Alert.alert('Build failed', String(e.message || e));
+    }
+  }
+
+- Wire the “Build Plan Without Preview” button to onBuildNoPreview and give it a testID="np-build-no-preview".
+
+- Fix the RN-web stray text error:
+  In the Suggestions card, ensure EVERY string is inside <Text>. NO bare strings under <View>. Example list renderer:
+    {sugs.map((line, i) => (
+      <View key={i} style={styles.sugRow}>
+        <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+        <Text style={styles.sugText}>{line}</Text>
+      </View>
+    ))}
+  Also remove any lone "." or " • " that might be directly under a <View>.
+
+2) app/screens/NewProjectForm.js
+- Ensure this screen is NOT used anywhere. If it is imported in navigation, remove its route so its old toasts don’t fire. Do not delete the file, just ensure the app uses NewProject.tsx flow.
+
+3) app/screens/ProjectDetailScreen.js
+- If you still render a Suggestions card here, hide it (we’re keeping suggestions on NewProject only). You can guard it with: if (!__DEV__) return null; or remove the card block entirely.
+
+Build and run. Verify:
+- POST /api/projects → 200 then POST /suggestions → 200
+- “Build Plan Without Preview” → 200 and navigates to detail.
+- No “Unexpected text node” errors in console.

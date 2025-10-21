@@ -1,0 +1,156 @@
+// app/screens/ProjectDetailsScreen.tsx (or .js)
+import React, { useMemo, useState, useEffect } from "react";
+import { View, Text, Image, ScrollView, Pressable } from "react-native";
+// import your UI primitives / theme helpers if you have them
+// import useProject or your data hook:
+import { useProjectById } from "../lib/useProject"; // <-- whatever your hook is called
+import { useRoute } from "@react-navigation/native";
+
+function SummaryRow({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return (
+    <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 8 }}>
+      <Text style={{ opacity: 0.7 }}>{icon} {label}</Text>
+      <Text style={{ fontWeight: "600" }}>{value}</Text>
+    </View>
+  );
+}
+
+export default function ProjectDetailsScreen() {
+  const route = useRoute<any>();
+  const projectId = route?.params?.id;
+
+  // ✅ ALL HOOKS AT TOP — ALWAYS CALLED IN THE SAME ORDER
+  const { project, loading } = useProjectById(projectId); // should handle undefined safely
+  const [activeTab, setActiveTab] = useState<"overview" | "materials" | "steps" | "cost">("overview");
+
+  // (optional) side-effects — still safe here
+  useEffect(() => { setActiveTab("overview"); }, [projectId]);
+
+  // Derived values (no hooks below)
+  const summary = useMemo(() => {
+    return [
+      { icon: "📝", label: "Description", value: project?.name || "—" },
+      { icon: "💵", label: "Budget", value: project?.budget || "—" },
+      { icon: "⭐", label: "Skill", value: project?.skill || "—" },
+      { icon: "🪚", label: "Est. steps", value: String(project?.plan?.steps?.length ?? 0) },
+    ];
+  }, [project]);
+
+  if (!project) {
+    // ✅ early return AFTER hooks are declared — safe
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+        <Text>{loading ? "Loading project…" : "Project not found"}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView style={{ flex: 1, backgroundColor: "white" }} contentContainerStyle={{ padding: 20 }}>
+      <Text style={{ fontSize: 22, fontWeight: "800", marginBottom: 8 }}>{project.name}</Text>
+
+      <Text style={{
+        alignSelf: "flex-start",
+        paddingHorizontal: 12, paddingVertical: 6,
+        backgroundColor: "#E8F6EE", color: "#2E7D32", borderRadius: 999, marginBottom: 12
+      }}>
+        {project.status === "plan_ready" ? "Plan ready" : project.status || "In progress"}
+      </Text>
+
+      {project.preview_url ? (
+        <Image
+          source={{ uri: project.preview_url }}
+          style={{ width: "100%", height: 220, borderRadius: 14, marginBottom: 16 }}
+          resizeMode="cover"
+        />
+      ) : null}
+
+      <Pressable
+        onPress={() => setActiveTab("overview")}
+        style={{
+          backgroundColor: "#E39A33",
+          borderRadius: 14, paddingVertical: 16, alignItems: "center", marginBottom: 16
+        }}
+      >
+        <Text style={{ color: "white", fontWeight: "700", fontSize: 16 }}>📄 Open Plan</Text>
+      </Pressable>
+
+      {/* Summary under the button */}
+      <View style={{ backgroundColor: "#F7F8FA", borderRadius: 12, padding: 14 }}>
+        <Text style={{ fontWeight: "700", marginBottom: 8 }}>Project Summary</Text>
+        {summary.map((row, i) => (
+          <SummaryRow key={i} icon={row.icon} label={row.label} value={row.value} />
+        ))}
+      </View>
+
+      {/* Tab content (simple + safe) */}
+      <View style={{ marginTop: 20 }}>
+        <TabBar active={activeTab} onChange={setActiveTab} />
+        <TabBody tab={activeTab} project={project} />
+      </View>
+    </ScrollView>
+  );
+}
+
+function TabBar({ active, onChange }: { active: string; onChange: (t: any) => void }) {
+  const tabs = [
+    { k: "overview", label: "Overview" },
+    { k: "materials", label: "Materials" },
+    { k: "steps", label: "Steps" },
+    { k: "cost", label: "Cost" },
+  ];
+  return (
+    <View style={{ flexDirection: "row", gap: 8 }}>
+      {tabs.map(t => (
+        <Pressable key={t.k}
+          onPress={() => onChange(t.k as any)}
+          style={{
+            paddingVertical: 8, paddingHorizontal: 12, borderRadius: 999,
+            backgroundColor: active === t.k ? "#111827" : "#E5E7EB"
+          }}
+        >
+          <Text style={{ color: active === t.k ? "white" : "#111827", fontWeight: "600" }}>{t.label}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+function TabBody({ tab, project }: { tab: string; project: any }) {
+  if (tab === "materials") {
+    const items: any[] = project?.plan?.materials ?? [];
+    return (
+      <View style={{ marginTop: 12 }}>
+        {items.length === 0 ? <Text>No materials yet.</Text> : items.map((m, i) => (
+          <Text key={i} style={{ paddingVertical: 6 }}>• {m.name} — {m.qty}</Text>
+        ))}
+      </View>
+    );
+  }
+  if (tab === "steps") {
+    const steps: any[] = project?.plan?.steps ?? [];
+    return (
+      <View style={{ marginTop: 12 }}>
+        {steps.length === 0 ? <Text>No steps yet.</Text> : steps.map((s, i) => (
+          <Text key={i} style={{ paddingVertical: 6 }}>{i + 1}. {s.title || s}</Text>
+        ))}
+      </View>
+    );
+  }
+  if (tab === "cost") {
+    const cost = project?.plan?.cost ?? {};
+    return (
+      <View style={{ marginTop: 12 }}>
+        <SummaryRow icon="🧾" label="Materials" value={`$${cost.materials ?? 0}`} />
+        <SummaryRow icon="🛠️" label="Tools" value={`$${cost.tools ?? 0}`} />
+        <SummaryRow icon="Σ" label="Total" value={`$${cost.total ?? 0}`} />
+      </View>
+    );
+  }
+  // overview (default)
+  return (
+    <View style={{ marginTop: 12 }}>
+      <Text>{project?.plan?.overview || "No overview yet."}</Text>
+    </View>
+  );
+}

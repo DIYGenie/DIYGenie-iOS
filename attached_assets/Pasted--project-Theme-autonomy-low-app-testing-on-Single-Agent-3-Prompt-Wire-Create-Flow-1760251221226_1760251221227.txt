@@ -1,0 +1,78 @@
+**project:** Theme
+**autonomy:** low
+**app testing:** on
+
+**Single Agent-3 Prompt — Wire Create Flow → `/preview/decor8` (submit) + status poll → ProjectDetails (no extra buttons):**
+
+* **Scope:** Expo/TS app only. Do not touch server. Keep “Generate AI Preview” button **only** on **NewProject** screen. Do not add preview triggers anywhere else.
+* **Files to edit (typical paths, discover if different):**
+
+  * `app/screens/NewProject.tsx`
+  * `app/lib/api.ts` (or create `app/lib/api.preview.ts` if no API helper exists)
+  * `app/navigation/ProjectsNavigator.tsx` (navigation only if needed)
+  * **Do not** modify `ProjectDetails.tsx` aside from reading updated project state.
+
+**Requirements**
+
+1. **API helpers** (new or extend existing):
+
+   * `submitPreview(projectId: string): Promise<{ ok: boolean; jobId?: string; mode?: 'stub'|'live' }>`
+
+     * `POST /preview/decor8` with `{ projectId }`.
+   * `getPreviewStatus(projectId: string): Promise<{ ok: boolean; status: string; preview_url?: string | null }>`
+
+     * `GET /preview/status/:projectId`.
+   * Use the existing base URL/env mechanism the app already uses (no hardcoded URLs; no token swaps).
+
+2. **NewProject.tsx** — **“Build with visual mockup”** handler:
+
+   * After the project is created and the image upload completes, call `submitPreview(projectId)`.
+   * Show a non-blocking status chip/inline message: “Preview: queued…” when `ok && jobId`.
+   * Start a **poller**:
+
+     * Interval **2500ms**, **max 24 attempts** (~60s).
+     * On each tick, call `getPreviewStatus(projectId)`.
+     * Stop when `status === 'ready'` **and** `preview_url` present.
+     * On ready:
+
+       * Optimistically update local cache/state for that project with `preview_url` and `preview_status='ready'`.
+       * Navigate to **Projects → ProjectDetails** seeded with `{ id: projectId }` (use your existing stack seeding reset, same as plan-only flow).
+     * On timeout:
+
+       * Navigate to **ProjectDetails** anyway (it will show scan/upload hero first). Keep an inline toast: “Preview is still processing, it will appear shortly.”
+
+3. **Plan-only** button:
+
+   * No calls to preview endpoints. Keep current behavior. Ensure it still navigates to **ProjectDetails**.
+
+4. **UI affordances (lightweight):**
+
+   * While polling, show a small loading indicator next to the “Build with visual mockup” CTA label or under it (no modal).
+   * If `submitPreview` fails (network/server), show a minimal error toast and **fall back** to the normal navigation to ProjectDetails (scan/upload hero).
+
+5. **Logging (concise, unique tags):**
+
+   * On submit: `console.log('[preview ui] submit', { projectId })`
+   * On poll tick: `console.log('[preview ui] poll', { projectId, attempt, status })`
+   * On ready: `console.log('[preview ui] ready', { projectId, hasUrl: !!preview_url })`
+   * On timeout/error: `console.warn('[preview ui] timeout|error', { projectId, err })`
+
+6. **Do NOT:**
+
+   * Add any preview triggers to ProjectDetails.
+   * Block the UI during polling.
+   * Introduce new deps.
+
+**Acceptance**
+
+* Creating a project → tapping **Build with visual mockup**:
+
+  * Logs show: `[preview ui] submit` → a sequence of `[preview ui] poll …` → eventually `[preview ui] ready …` (stub finishes quickly; live may take longer).
+  * App navigates to **ProjectDetails** with `{ id }`. If ready, hero is the Decor8 preview; otherwise scan/upload appears and later refresh shows preview.
+* Plan-only path unchanged.
+
+**Stop after changes.** Report:
+
+* Files touched
+* Whether stub or live mode was detected in logs
+* A short snippet of the three log lines (`submit`, `poll`, `ready` or `timeout`).

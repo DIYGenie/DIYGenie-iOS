@@ -1,0 +1,81 @@
+Plan screen polish + crash fix
+
+Repo: DIYGenieTheme
+Target screen: app/screens/DetailedInstructions.tsx
+Autonomy: Low
+App Testing: ON
+
+Goals
+
+Crash fix: resolve “Text strings must be rendered within a <Text> component” (origin ~line 168 in the “Quick stats” row).
+
+Images: on the Plan page, show Before and After only; remove/disable the hero/summary image at the top.
+
+Section visibility: ensure Materials / Tools / Cut List / Steps render consistently. If a section is empty, show a small “No items yet” placeholder (do not hide the section). Keep existing Safety/Permits cards.
+
+No changes to Project Details page.
+
+Tasks
+
+Wrap all raw text in Quick Stats row
+
+In DetailedInstructions.tsx, any string inside a <View> must be inside <Text>.
+
+Common culprits: “hrs”, “steps”, separators (·, —, spaces as ' '), or conditional fragments.
+
+Ensure the stats row uses <Text> for every visible character and any number labels.
+
+Remove hero/summary image from the Plan page
+
+In DetailedInstructions.tsx, if a top “hero”/summary image is rendered above “Preview,” disable it (comment or guard it out).
+
+Keep the Preview section with Before and After only.
+
+Relax render guards + placeholders
+
+Materials: render the header always. If materials?.length is 0, show “No materials yet.”
+
+Tools: show Required/Optional headers; if an array is empty, render “None listed.”
+
+Cut List: render table headers; if cutList?.items?.length is 0, show “No cuts listed.”
+
+Steps: render the section even if empty; if no steps, show “No build steps yet.”
+
+Do not change data fetching—only presentation.
+
+Keep Preview on Project Details untouched
+
+Confirm there are no edits to app/screens/ProjectDetails.tsx.
+
+Testing (App Testing = ON)
+
+Navigate: Home → Projects → a project → Open Detailed Build Plan.
+
+Verify:
+
+No red error overlay.
+
+Only Before/After images at top (no hero).
+
+Materials/Tools/Cut List/Steps appear with content or a “No … yet” placeholder.
+
+Take a screenshot of the top of the Plan page and the “Steps” section.
+
+Deliverables
+
+Updated app/screens/DetailedInstructions.tsx with:
+
+Quick stats crash fixed (all text wrapped).
+
+Hero image removed; Before/After remain.
+
+Stable rendering + placeholders for empty sections.
+
+PR description with 2 screenshots (top area, steps area) and a one-liner:
+“Fix: wrapped text in stats row; removed hero image; added placeholders for empty sections.”
+
+Stop conditions (ask me before proceeding)
+
+If DetailedInstructions.tsx is not the only consumer of the preview images, or if removing the hero affects another route.
+
+If you see any unexpected dependencies on the hero image elsewhere.

@@ -1,0 +1,73 @@
+Goal: Shrink the “How it works” tiles and remove the inner white icon box. Final look = two compact tiles per row, single purple icon + label.
+
+File: app/screens/HomeScreen.* (tsx/js)
+
+Keep these items (already renamed):
+
+const items = [
+  { id: 1, icon: 'create-outline',   label: 'Describe' },
+  { id: 2, icon: 'image-outline',    label: 'Add photo / scan' },
+  { id: 3, icon: 'sparkles-outline', label: 'AI preview' },
+  { id: 4, icon: 'list-outline',     label: 'Build plan' },
+];
+
+
+Update styles (replace the existing grid styles):
+
+const gridStyles = StyleSheet.create({
+  wrap: { marginTop: 20 },
+  title: { fontSize: 16, fontWeight: '700', color: colors.ink900, marginBottom: 12 },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  card: {
+    width: '48%',
+    height: 92,                         // smaller tile
+    backgroundColor: colors.brand50,    // soft purple tint
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(110,64,255,0.10)',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    marginBottom: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // removed iconWrap entirely
+  cardLabel: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+    color: colors.ink700,
+    textAlign: 'center',
+    marginTop: 6,
+    paddingHorizontal: 6,
+  },
+});
+
+
+Update JSX (remove inner icon container):
+
+Find the tile render inside the items.map(...).
+
+Replace the icon block with a single Ionicon (no <View style={iconWrap}>).
+
+<TouchableOpacity style={gridStyles.card} onPress={() => {/* keep existing handlers or noop */}}>
+  <Ionicons name={item.icon as any} size={26} color={colors.brand} style={{ marginBottom: 0 }} />
+  <Text style={gridStyles.cardLabel}>{item.label}</Text>
+</TouchableOpacity>
+
+
+Delete the old iconWrap style and any references to it.
+
+Acceptance
+
+Two tiles per row; each ~92px tall, no inner white box.
+
+Single purple icon + short label.
+
+Tap area remains ≥44×44.
+
+No layout/TS errors; Home renders the tighter grid.

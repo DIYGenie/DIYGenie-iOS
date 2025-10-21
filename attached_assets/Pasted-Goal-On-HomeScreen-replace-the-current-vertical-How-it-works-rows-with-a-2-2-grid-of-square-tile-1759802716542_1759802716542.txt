@@ -1,0 +1,118 @@
+Goal: On HomeScreen, replace the current vertical “How it works” rows with a 2×2 grid of square tiles (“cubes”), icon-forward, concise labels. Keep navigation/logic unchanged.
+
+Changes
+
+Colors (only if not present already) – ensure these exist in app/theme/colors.ts:
+
+export const colors = {
+  // …existing
+  brand: '#6E40FF',
+  brand700: '#5A2EE8',
+  brand50: '#F2ECFF',
+  onBrand: '#FFFFFF',
+  ink900: '#111111',
+  ink600: '#4B5563',
+};
+
+
+HomeScreen grid
+Edit app/screens/HomeScreen.*:
+
+Remove the current “How it works” list rows.
+
+Insert a grid right below the purple CTA.
+
+import { Ionicons } from '@expo/vector-icons';
+import { colors } from '../theme/colors'; // adjust path if needed
+
+function HowItWorksGrid() {
+  const items = [
+    { id: 1, icon: 'create-outline', label: 'Describe' },
+    { id: 2, icon: 'image-outline',  label: 'Add photo / scan' },
+    { id: 3, icon: 'sparkles-outline', label: 'Suggestions' },
+    { id: 4, icon: 'list-circle-outline', label: 'Build plan' },
+  ];
+
+  return (
+    <View style={gridStyles.wrap}>
+      <Text style={gridStyles.title}>How it works</Text>
+      <View style={gridStyles.grid}>
+        {items.map(({ id, icon, label }) => (
+          <View
+            key={id}
+            testID={`how-card-${id}`}
+            accessibilityRole="summary"
+            style={gridStyles.card}
+          >
+            <View style={gridStyles.iconWrap}>
+              <Ionicons name={icon as any} size={28} color={colors.brand700} />
+            </View>
+            <Text style={gridStyles.cardLabel} numberOfLines={2}>
+              {label}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const gridStyles = StyleSheet.create({
+  wrap: { marginTop: 20 },
+  title: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.ink900,
+    marginBottom: 12,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  card: {
+    width: '48%',
+    aspectRatio: 1,                // square
+    backgroundColor: colors.brand50,
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+    shadowColor: colors.brand,
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  cardLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.ink600,
+    textAlign: 'center',
+  },
+});
+
+
+Render <HowItWorksGrid /> under the CTA.
+
+Do not add onPress; these are informational only.
+
+Acceptance
+
+Purple filled CTA remains unchanged.
+
+A 2×2 grid of square tiles appears under the CTA, with prominent icons and short labels.
+
+Old vertical “How it works” rows are removed.
+
+Builds with no TypeScript/ESLint errors.

@@ -1,0 +1,143 @@
+Goal:
+Create a tiny API helper and update NewProject.tsx so that “Build Plan Without Preview” creates/ensures a draft, calls the backend with { user_id }, and navigates to the project details on success. Add solid error handling and testIDs.
+
+Do this:
+
+Add file app/lib/api.ts
+
+export const BASE =
+  (process.env.EXPO_PUBLIC_BASE_URL as string) || 'http://localhost:5000';
+
+export async function api(path: string, init: RequestInit = {}) {
+  const url = `${BASE}${path}`;
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json', ...(init.headers || {}) },
+    ...init,
+  });
+  const text = await res.text();
+  let data: any = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+  return { ok: res.ok, status: res.status, data };
+}
+
+
+Edit app/screens/NewProject.tsx
+
+Import api and add a dev-safe USER_ID.
+
+Add draftId, busyBuild, sugsBusy, photoUri states (don’t remove existing).
+
+Implement ensureDraft() and onBuildWithoutPreview().
+
+Wire the “Build Plan Without Preview” button to onBuildWithoutPreview.
+
+Add testIDs.
+
+// imports (keep existing)
+import { Platform, Alert, Text } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { api } from '../lib/api';
+
+// Dev-safe user id (keep your __DEV_USER_ID__ if present)
+const USER_ID =
+  (globalThis as any).__DEV_USER_ID__ ||
+  '00000000-0000-0000-0000-000000000001';
+
+// ---- state (add if missing; keep your existing state) ----
+const [draftId, setDraftId] = useState<string | null>(null);
+const [busyBuild, setBusyBuild] = useState(false);
+const [sugsBusy, setSugsBusy] = useState(false);
+const [photoUri, setPhotoUri] = useState<string | null>(null);
+
+// ---- helper: create draft if missing ----
+async function ensureDraft() {
+  if (draftId) return draftId;
+
+  const name = (desc || '').trim(); // use your description state
+  if (name.length < 10 || !budget || !skill) {
+    showToast('Please complete all fields (10+ char description, budget, skill)', 'error');
+    return null;
+  }
+
+  const r = await api('/api/projects', {
+    method: 'POST',
+    body: JSON.stringify({ user_id: USER_ID, name, budget, skill }),
+  });
+
+  if (!r.ok) {
+    const msg = r?.data?.error || r?.data?.message || 'Failed to create project';
+    showToast(msg, 'error');
+    return null;
+  }
+
+  const id = r.data?.item?.id || r.data?.id;
+  if (!id) { showToast('Project not created', 'error'); return null; }
+  setDraftId(id);
+  return id;
+}
+
+// ---- navigate helper (uses first existing route, else Projects) ----
+function navigateToProject(id: string) {
+  const tryRoutes = ['ProjectDetail', 'ProjectDetailScreen', 'ProjectDetails', 'ProjectDetailsScreen'];
+  for (const r of tryRoutes) {
+    try { navigation.navigate(r as any, { id }); return; } catch {}
+  }
+  navigation.navigate('Projects' as any);
+}
+
+// ---- main action: build plan WITHOUT preview ----
+async function onBuildWithoutPreview() {
+  if (busyBuild) return;
+  setBusyBuild(true);
+  try {
+    const id = await ensureDraft();
+    if (!id) return;
+
+    const r = await api(`/api/projects/${id}/build-without-preview`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id: USER_ID }),
+    });
+
+    if (!r.ok) {
+      if (r.status === 403) {
+        showToast('You are out of quota. Upgrade from Profile.', 'error');
+      } else if (r.status === 422) {
+        showToast(r.data?.error || 'Invalid request', 'error');
+      } else {
+        showToast('Could not request build. Try again.', 'error');
+      }
+      return;
+    }
+
+    showToast('Plan requested', 'success');
+    navigateToProject(id);
+    // light reset
+    setDraftId(null);
+    setPhotoUri(null);
+  } finally {
+    setBusyBuild(false);
+  }
+}
+
+
+Hook up the button (find your “Build Plan Without Preview” button and attach the handler + testID):
+
+<TouchableOpacity testID="np-build-without-preview" onPress={onBuildWithoutPreview}>
+  <Text>Build Plan Without Preview</Text>
+</TouchableOpacity>
+
+
+Wrap any stray text (fix the “Unexpected text node” warning):
+Search this file for any bare strings inside <View> and wrap them in <Text>.
+
+Acceptance:
+
+Pressing Build Plan Without Preview performs:
+
+POST /api/projects (200)
+
+POST /api/projects/:id/build-without-preview (200)
+
+You’re navigated to the project detail (or Projects tab fallback).
+
+Errors show clear toasts; no page is stuck.

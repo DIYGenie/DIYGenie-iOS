@@ -1,0 +1,71 @@
+1) Kill the old Preview screen path
+
+Delete the Preview route from your stack (or guard with __DEV__).
+
+Remove any nav.push('Preview', …) usages.
+
+2) Make the primary button start both jobs
+
+In NewProject.tsx, your primary CTA (“Build with visual mockup”) should:
+
+Create project (you’re already doing this)
+
+Start plan build
+
+Start preview (Decor8)
+
+Show the in-place “Building your plan…” banner
+
+Poll plan status (not the preview)
+
+When plan is ready → navigate to ProjectDetails(projectId)
+
+Let the hero image swap to the preview when its poll finishes (already working per logs)
+
+// Pseudocode you can paste inline where handleBuildWithPreview is:
+async function handleBuildWithPreview() {
+  if (isBuilding) return;
+  setIsBuilding(true);
+
+  // 1) ensure we have a projectId (create if needed)
+  const { projectId } = await ensureProjectFromDraft(); // you already have this helper
+
+  // 2) start plan build (server enqueues the job)
+  await api.startBuild(projectId);           // emits [build] accepted in logs
+
+  // 3) start preview in parallel (don’t await to avoid blocking)
+  api.startPreview(projectId).catch(()=>{}); // emits [preview] start in logs
+
+  // 4) show banner locally (already in place)
+
+  // 5) poll plan status (you already have pollProjectReady)
+  const ok = await pollProjectReady(projectId);
+
+  // 6) on success → navigate to details
+  if (ok) {
+    // clear draft/media then go
+    await clearNewProjectDraft?.();
+    resetDraftState(); // setTitle(''), setDescription(''), setPhotoUri(null), setLastScan(null) …
+    nav.replace('ProjectDetails', { id: projectId });
+  } else {
+    Alert.alert('Timeout', 'Still generating your plan. Check your Projects list shortly.');
+  }
+
+  setIsBuilding(false);
+}
+
+3) Make the secondary button “Build plan only”
+
+Same as above, but skip api.startPreview(projectId).
+
+4) ProjectDetails hero priority (you already have this)
+
+project.preview.url
+
+last AR scan image
+
+uploaded photo
+
+placeholder
+
+This matches your logs (hero = preview once the URL arrives).

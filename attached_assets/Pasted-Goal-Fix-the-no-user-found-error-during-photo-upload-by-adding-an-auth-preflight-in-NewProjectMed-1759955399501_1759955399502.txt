@@ -1,0 +1,102 @@
+Goal: Fix the “no user found” error during photo upload by adding an auth preflight in NewProjectMedia.js. If the session/user is missing (expired token, etc.), show a toast and sign out to trigger the AuthGate, instead of proceeding and throwing.
+
+Constraints:
+
+No UI redesign.
+
+Do not modify upload helpers or navigation.
+
+Keep existing button visuals; just harden handlers.
+
+THEME
+// EDIT FILE: app/screens/NewProjectMedia.js
+// Changes:
+// 1) Import supabase and add an authPreflight() that checks for a user.
+// 2) Wrap existing upload/scan handlers to call authPreflight() first.
+// 3) If no user, show toast and sign out to trigger AuthGate.
+
+import React from 'react';
+import { View, Pressable, Text } from 'react-native';
+import Toast from '../components/Toast';
+import { supabase } from '../lib/supabase'; // ⬅️ ADD THIS
+
+export default function NewProjectMedia(props) {
+  const { isFormValid, onBlocked } = props;
+
+  async function authPreflight() {
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) throw error;
+      const user = data?.session?.user;
+      if (!user) {
+        Toast.show('Session expired. Please sign in again.');
+        // Force AuthGate to show AuthScreen
+        await supabase.auth.signOut();
+        throw new Error('AUTH_REQUIRED');
+      }
+      return user;
+    } catch (e) {
+      // Bubble up so guarded handlers can stop
+      throw e;
+    }
+  }
+
+  const guard = (fn) => () => {
+    if (!isFormValid) {
+      if (onBlocked) onBlocked();
+      else Toast.show('Complete name, budget, and skill level to continue.');
+      return;
+    }
+    fn && fn();
+  };
+
+  const handleScan = guard(async () => {
+    // ✅ Ensure user exists before navigating to scan flow
+    try {
+      await authPreflight();
+      // ... existing scan navigation logic (unchanged)
+    } catch (_) {
+      // already handled in authPreflight (toast + signOut)
+    }
+  });
+
+  const handleUpload = guard(async () => {
+    // ✅ Ensure user exists before picking/uploading image
+    try {
+      await authPreflight();
+      // ... existing image picker + uploadRoomScan.ts flow (unchanged)
+    } catch (_) {
+      // already handled in authPreflight (toast + signOut)
+    }
+  });
+
+  return (
+    <View style={{ gap: 12, marginTop: 8 }}>
+      <Pressable
+        onPress={handleScan}
+        style={{
+          backgroundColor: isFormValid ? '#7C3AED' : '#C7C7C7',
+          padding: 14,
+          borderRadius: 14,
+          alignItems: 'center',
+          opacity: isFormValid ? 1 : 0.7,
+        }}
+      >
+        <Text style={{ color: 'white', fontWeight: '600' }}>Scan Room</Text>
+      </Pressable>
+
+      <Pressable
+        onPress={handleUpload}
+        style={{
+          backgroundColor: isFormValid ? '#7C3AED' : '#C7C7C7',
+          padding: 14,
+          borderRadius: 14,
+          alignItems: 'center',
+          opacity: isFormValid ? 1 : 0.7,
+        }}
+      >
+        <Text style={{ color: 'white', fontWeight: '600' }}>Upload Photo</Text>
+      </Pressable>
+    </View>
+  );
+}

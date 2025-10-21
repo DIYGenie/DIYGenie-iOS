@@ -1,0 +1,31 @@
+ LOG  [plan fetch] GET /api/projects/:id/plan status 409
+ LOG  [detailed instructions fetch error] [Error: PLAN_409]
+ ERROR  API_ERROR {"bodySent": undefined, "headers": {"alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000", "content-length": "197", "content-security-policy": "default-src 'none'", "content-type": "text/html; charset=utf-8", "date": "Fri, 10 Oct 2025 16:12:05 GMT", "server": "Google Frontend", "strict-transport-security": "max-age=63072000; includeSubDomains", "vary": "Origin", "via": "1.1 google", "x-cloud-trace-context": "aafd6859b202e44d99e8626853b6ca58", "x-content-type-options": "nosniff", "x-powered-by": "Express"}, "method": "GET", "payloadText": "<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+<meta charset=\"utf-8\">
+<title>Error</title>
+</head>
+<body>
+<pre>Cannot GET /api/projects/04e8c7e2-8e48-417c-8878-5f4caeea65a4/progress</pre>
+</body>
+</html>
+", "status": 404, "statusText": "", "url": "https://api.diygenieapp.com/api/projects/04e8c7e2-8e48-417c-8878-5f4caeea65a4/progress"}
+ LOG  [details] loaded from cache
+ LOG  [details] plan ready {"sections": {"cuts": 3, "materials": 4, "steps": 5, "tools": 5}}
+ LOG  [details] nav to full
+ LOG  [plan fetch] GET /api/projects/:id/plan status 409
+ LOG  [detailed instructions fetch error] [Error: PLAN_409]
+ ERROR  API_ERROR {"bodySent": undefined, "headers": {"alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000", "content-length": "197", "content-security-policy": "default-src 'none'", "content-type": "text/html; charset=utf-8", "date": "Fri, 10 Oct 2025 16:12:09 GMT", "server": "Google Frontend", "strict-transport-security": "max-age=63072000; includeSubDomains", "vary": "Origin", "via": "1.1 google", "x-cloud-trace-context": "2d583cb4daea4d61f1cebdc7cdae46bd", "x-content-type-options": "nosniff", "x-powered-by": "Express"}, "method": "GET", "payloadText": "<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+<meta charset=\"utf-8\">
+<title>Error</title>
+</head>
+<body>
+<pre>Cannot GET /api/projects/04e8c7e2-8e48-417c-8878-5f4caeea65a4/progress</pre>
+</body>
+</html>
+", "status": 404, "statusText": "", "url": "https://api.diygenieapp.com/api/projects/04e8c7e2-8e48-417c-8878-5f4caeea65a4/progress"}
+ LOG  [details] loaded from cache
+ LOG  [details] plan ready {"sections": {"cuts": 3, "materials": 4, "steps": 5, "tools": 5}}

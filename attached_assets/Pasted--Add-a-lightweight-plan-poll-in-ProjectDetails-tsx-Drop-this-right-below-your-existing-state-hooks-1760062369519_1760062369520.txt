@@ -1,0 +1,77 @@
+) Add a lightweight plan poll in ProjectDetails.tsx
+
+Drop this right below your existing state hooks (where planObj lives):
+
+// Auto-fetch plan markdown once the project says it's ready
+useEffect(() => {
+  if (!projectId) return;
+  const status = String(project?.plan_status || project?.status || '').toLowerCase();
+  if (!/ready/.test(status) || planObj) return;
+
+  let cancelled = false;
+  let tries = 0;
+  let t: any;
+
+  const tick = async () => {
+    tries += 1;
+    try {
+      console.log('[plan] poll try', tries);
+      const md = await fetchProjectPlanMarkdown(projectId);
+      if (!cancelled && md) {
+        setPlanMd(md);
+        setPlanObj(parsePlanMarkdown(md));
+        console.log('[plan] loaded markdown');
+        return; // stop polling
+      }
+    } catch (e) {
+      // ignore (409 or brief network issue)
+      console.log('[plan] poll error', String(e));
+    }
+    if (!cancelled && tries < 10) {
+      t = setTimeout(tick, 2000); // try up to ~20s total
+    }
+  };
+
+  tick();
+  return () => { cancelled = true; if (t) clearTimeout(t); };
+}, [projectId, project?.plan_status, project?.status, planObj]);
+
+2) Make the UI message match reality while fetching
+
+In the Plan section JSX, replace the “building” message with a ready-but-fetching message when the status is ready but planObj hasn’t landed yet:
+
+const statusReady = /ready/.test(String(project?.plan_status || project?.status || '').toLowerCase());
+
+{statusReady ? (
+  planObj ? (
+    <>
+      {/* Plan card header */}
+      <View style={{ marginTop: 16, backgroundColor: '#F6F5FF', borderRadius: 16, padding: 16 }}>
+        <Text style={{ fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Plan</Text>
+        <Text style={{ color: '#4B5563' }}>Plan is ready. Browse tabs below or open the full, linear guide.</Text>
+      </View>
+      <View style={{ height: 8 }} />
+      {/** @ts-ignore */}
+      <(require('../components/PlanTabs').default) plan={planObj} />
+      <View style={{ height: 12 }} />
+      <Pressable
+        onPress={() => navigation.navigate('DetailedInstructions' as never, { id: projectId } as never)}
+        style={{ backgroundColor: '#6D28D9', padding: 14, borderRadius: 14, alignItems: 'center' }}
+      >
+        <Text style={{ color: 'white', fontWeight: '700' }}>Get detailed instructions</Text>
+      </Pressable>
+    </>
+  ) : (
+    <View style={{ marginTop: 16, backgroundColor: '#F6F5FF', borderRadius: 16, padding: 16 }}>
+      <Text style={{ fontWeight: '700', marginBottom: 6 }}>Plan</Text>
+      <Text style={{ color: '#4B5563' }}>Plan is ready — loading details…</Text>
+    </View>
+  )
+) : (
+  <View style={{ marginTop: 16, backgroundColor: '#F6F5FF', borderRadius: 16, padding: 16 }}>
+    <Text style={{ fontWeight: '700', marginBottom: 6 }}>Plan</Text>
+    <Text style={{ color: '#4B5563' }}>
+      Your plan is building. This screen will update automatically; you can also pull to refresh.
+    </Text>
+  </View>
+)}

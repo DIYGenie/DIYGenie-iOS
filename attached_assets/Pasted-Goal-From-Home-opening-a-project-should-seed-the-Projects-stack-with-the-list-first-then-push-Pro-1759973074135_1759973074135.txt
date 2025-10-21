@@ -1,0 +1,70 @@
+Goal: From Home, opening a project should seed the Projects stack with the list first, then push ProjectDetails. This guarantees the Back button returns to the list (not stuck on details).
+
+THEME
+// EDIT FILE: app/screens/HomeScreen.js
+// Ensure navigation seeds the Projects stack with "ProjectsList" before pushing "ProjectDetails".
+
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Pressable, InteractionManager } from 'react-native'; // ⬅️ ADD InteractionManager
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import T from '../components/T';
+import { fetchProjectsForCurrentUser } from '../lib/api';
+
+export default function HomeScreen() {
+  const [recent, setRecent] = useState([]);
+  const navigation = useNavigation();
+
+  const load = useCallback(async () => {
+    const data = await fetchProjectsForCurrentUser();
+    setRecent(data.slice(0, 3));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const openProject = useCallback((project) => {
+    const id = project?.id || project?.project_id;
+    if (!id) return;
+
+    // Prefer parent tabs (id="root-tabs" if present)
+    // @ts-ignore
+    const parent = navigation.getParent?.('root-tabs') || navigation.getParent?.();
+
+    if (parent?.navigate) {
+      // 1) Jump to Projects tab with its LIST as the active child
+      parent.navigate('Projects', { screen: 'ProjectsList' });
+
+      // 2) After nav settles, push ProjectDetails on that stack
+      InteractionManager.runAfterInteractions(() => {
+        parent.navigate('Projects', { screen: 'ProjectDetails', params: { id } });
+      });
+      return;
+    }
+
+    // Fallback if no parent available (harmless if ignored)
+    // @ts-ignore
+    navigation.navigate('Projects', { screen: 'ProjectsList' });
+    InteractionManager.runAfterInteractions(() => {
+      // @ts-ignore
+      navigation.navigate('Projects', { screen: 'ProjectDetails', params: { id } });
+    });
+  }, [navigation]);
+
+  return (
+    <View style={{ flex: 1, padding: 16 }}>
+      <T.h2>Welcome back, Tye</T.h2>
+
+      <T.h3 style={{ marginTop: 16 }}>Recent Projects</T.h3>
+      {recent.map((p, i) => (
+        <Pressable
+          key={p.id || p.project_id || i}
+          onPress={() => openProject(p)}
+          style={{ paddingVertical: 10 }}
+        >
+          <T.p>{p.name || p.title || 'Untitled project'}</T.p>
+          <T.muted>In progress</T.muted>
+        </Pressable>
+      ))}
+    </View>
+  );
+}

@@ -1,0 +1,157 @@
+New Project – guide user to first missing field + polish scroll
+
+1) Add a small shake hook app/hooks/useShake.ts:
+
+import { useRef } from 'react';
+import { Animated } from 'react-native';
+
+export function useShake() {
+  const x = useRef(new Animated.Value(0)).current;
+  const shake = () => {
+    x.setValue(0);
+    Animated.sequence([
+      Animated.timing(x, { toValue: 8, duration: 60, useNativeDriver: true }),
+      Animated.timing(x, { toValue: -8, duration: 60, useNativeDriver: true }),
+      Animated.timing(x, { toValue: 6, duration: 50, useNativeDriver: true }),
+      Animated.timing(x, { toValue: -6, duration: 50, useNativeDriver: true }),
+      Animated.timing(x, { toValue: 0, duration: 50, useNativeDriver: true }),
+    ]).start();
+  };
+  const style = { transform: [{ translateX: x }] };
+  return { shake, style };
+}
+
+
+2) Update app/screens/NewProject.tsx:
+
+Track the first missing field and its Y position
+
+Shake + outline + scroll + message when blocked
+
+Add keyboardShouldPersistTaps="handled" on the ScrollView
+
+// imports (add)
+import { Alert, Animated, ScrollView } from 'react-native';
+import { useShake } from '../hooks/useShake';
+
+// inside component state (add)
+type MissingKey = 'title' | 'description' | 'budget' | 'skill' | null;
+const [missing, setMissing] = useState<MissingKey>(null);
+const posRef = useRef<Record<string, number>>({});
+const scrollRef = useRef<ScrollView>(null);
+
+// shakes per field
+const titleShake = useShake();
+const descShake  = useShake();
+const budgetShake= useShake();
+const skillShake = useShake();
+
+const labelFor: Record<Exclude<MissingKey, null>, string> = {
+  title: 'Project Title',
+  description: 'Project Description',
+  budget: 'Budget',
+  skill: 'Skill Level',
+};
+
+// your existing validity logic; add a helper that returns the first missing key
+const firstMissing = (): MissingKey => {
+  if (!draft?.name?.trim?.()) return 'title';
+  if (!draft?.description || draft.description.trim().length < 10) return 'description';
+  if (!draft?.budget) return 'budget';
+  if (!draft?.skill_level) return 'skill';
+  return null;
+};
+
+// handler used by media guard
+const handleBlocked = () => {
+  const miss = firstMissing();
+  if (!miss) return;
+  setMissing(miss);
+  // shake
+  ({ title: titleShake, description: descShake, budget: budgetShake, skill: skillShake } as any)[miss].shake();
+  // scroll into view
+  const y = posRef.current[miss] ?? 0;
+  scrollRef.current?.scrollTo({ y: Math.max(y - 24, 0), animated: true });
+  // message
+  Alert.alert('Almost there', `Please fill in ${labelFor[miss]} to continue.`);
+  // clear outline after a short delay
+  setTimeout(() => setMissing(null), 1400);
+};
+
+// in your JSX:
+// 1) make the ScrollView keyboard-friendly
+// <ScrollView ... ref={scrollRef} keyboardShouldPersistTaps="handled">
+
+// 2) wrap each field container with Animated.View,
+// capture layout y, apply red outline when missing === 'field'
+
+// Title
+<Animated.View
+  onLayout={(e) => { posRef.current.title = e.nativeEvent.layout.y; }}
+  style={[
+    titleShake.style,
+    missing === 'title' && { borderWidth: 2, borderColor: '#EF4444', borderRadius: 12, padding: 2 },
+  ]}
+>
+  {/* existing Title input */}
+</Animated.View>
+
+// Description
+<Animated.View
+  onLayout={(e) => { posRef.current.description = e.nativeEvent.layout.y; }}
+  style={[
+    descShake.style,
+    missing === 'description' && { borderWidth: 2, borderColor: '#EF4444', borderRadius: 12, padding: 2 },
+  ]}
+>
+  {/* existing Description input */}
+</Animated.View>
+
+// Budget
+<Animated.View
+  onLayout={(e) => { posRef.current.budget = e.nativeEvent.layout.y; }}
+  style={[
+    budgetShake.style,
+    missing === 'budget' && { borderWidth: 2, borderColor: '#EF4444', borderRadius: 12, padding: 2 },
+  ]}
+>
+  {/* existing Budget picker */}
+</Animated.View>
+
+// Skill
+<Animated.View
+  onLayout={(e) => { posRef.current.skill = e.nativeEvent.layout.y; }}
+  style={[
+    skillShake.style,
+    missing === 'skill' && { borderWidth: 2, borderColor: '#EF4444', borderRadius: 12, padding: 2 },
+  ]}
+>
+  {/* existing Skill picker */}
+</Animated.View>
+
+// When rendering NewProjectMedia, pass the onBlocked handler:
+<NewProjectMedia
+  draft={draft}
+  onDraftChange={setDraft}
+  isFormValid={firstMissing() === null}
+  onBlocked={handleBlocked}
+/>
+
+
+3) Copy tweak: rename “Saved scan” → “Saved photo” in app/screens/NewProjectMedia.js:
+
+// find the render of the saved card title
+<Text style={{ marginTop: 8, fontWeight: '600' }}>
+  Saved photo
+</Text>
+
+
+Verify
+
+Tap Upload/Scan with empty fields → screen scrolls to the first missing field, shakes, shows red outline, and pops a friendly alert.
+
+Fill that field, try again → if another field is missing, it guides to the next one.
+
+When all fields are valid, the buttons work normally.
+
+Scroll feels smoother when tapping through inputs thanks to keyboardShouldPersistTaps="handled".

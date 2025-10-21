@@ -1,0 +1,160 @@
+(a) What to change
+
+Add a preview image hero to ProjectDetails that prefers project.plan.preview_url, falls back to latest scan image, and includes “Save preview to Photos” when a preview exists.
+
+(b) Files to touch
+
+app/lib/preview.ts (new)
+
+app/screens/ProjectDetails.tsx (edit)
+
+(c) Exact patch/code
+
+Create: app/lib/preview.ts
+
+// app/lib/preview.ts
+import { Alert, Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library';
+
+export async function saveRemoteImageToPhotos(url: string) {
+  try {
+    if (!url) throw new Error('missing_url');
+
+    const perm = await MediaLibrary.requestPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission needed', 'Please allow Photos/Media access to save the preview.');
+      return;
+    }
+
+    const ext = url.split('?')[0].split('.').pop()?.toLowerCase();
+    const filename = `preview-${Date.now()}.${ext && ext.length <= 4 ? ext : 'jpg'}`;
+    const tmpPath = FileSystem.cacheDirectory + filename;
+
+    const dl = await FileSystem.downloadAsync(url, tmpPath);
+    if (dl.status !== 200) throw new Error(`download_status_${dl.status}`);
+
+    const asset = await MediaLibrary.createAssetAsync(dl.uri);
+
+    // Try to add to a "DIY Genie" album (best-effort)
+    let album = await MediaLibrary.getAlbumAsync('DIY Genie');
+    if (!album) {
+      album = await MediaLibrary.createAlbumAsync('DIY Genie', asset, false);
+    } else {
+      await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+    }
+
+    Alert.alert('Saved', Platform.OS === 'ios'
+      ? 'Preview saved to your Photos.'
+      : 'Preview saved to your device gallery.');
+  } catch (e: any) {
+    console.log('[preview save error]', e?.message || String(e));
+    Alert.alert('Save failed', 'Could not save the preview. Please try again.');
+  }
+}
+
+
+Edit: app/screens/ProjectDetails.tsx
+Add imports and hero block with save button.
+
+--- a/app/screens/ProjectDetails.tsx
++++ b/app/screens/ProjectDetails.tsx
+@@ -1,10 +1,12 @@
+-import React, { useCallback, useEffect, useRef, useState } from 'react';
+-import { View, Image, ActivityIndicator, Pressable, Text } from 'react-native';
++import React, { useCallback, useEffect, useRef, useState } from 'react';
++import { View, Image, ActivityIndicator, Pressable, Text } from 'react-native';
+ import { useRoute, useNavigation, RouteProp, useFocusEffect } from '@react-navigation/native';
+ import { useSafeBack } from '../lib/useSafeBack';
+ import { fetchProjectById, fetchLatestScanForProject } from '../lib/api';
++import { saveRemoteImageToPhotos } from '../lib/preview';
+ 
+ type RouteParams = { id: string };
+ type R = RouteProp<Record<'ProjectDetails', RouteParams>, 'ProjectDetails'>;
+ 
+ export default function ProjectDetails() {
+@@ -23,6 +25,8 @@ export default function ProjectDetails() {
+   const [project, setProject] = useState<any>(null);
+   const [scan, setScan] = useState<{ scanId: string; imageUrl: string } | null>(null);
+   const abortRef = useRef<AbortController | null>(null);
++  // prefer preview image when available
++  const previewUrl = project?.plan?.preview_url ?? null;
+ 
+   const load = useCallback(async () => {
+     if (!projectId) return;
+@@ -77,21 +81,66 @@ export default function ProjectDetails() {
+   );
+ 
+   return (
+-    <View style={{ flex: 1, padding: 16 }}>
++    <View style={{ flex: 1, padding: 16 }}>
+       <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
+         {project?.name || project?.title || 'Project'}
+       </Text>
+       <Text style={{ fontSize: 14, color: '#6B7280', marginBottom: 16 }}>
+         Status: {project?.status || 'In progress'}
+       </Text>
+ 
+-      {loading ? (
++      {/* HERO IMAGE + SAVE (preview preferred, else latest scan) */}
++      {loading ? (
+         <View style={{ paddingTop: 40 }}>
+           <ActivityIndicator />
+         </View>
+-      ) : scan?.imageUrl ? (
+-        <Image
+-          source={{ uri: scan.imageUrl }}
+-          style={{ width: '100%', height: 220, borderRadius: 16, backgroundColor: '#EEE' }}
+-          resizeMode="cover"
+-        />
++      ) : (
++        <>
++          { (previewUrl || scan?.imageUrl) ? (
++            <>
++              <Image
++                source={{ uri: previewUrl || (scan?.imageUrl as string) }}
++                style={{ width: '100%', height: 240, borderRadius: 16, backgroundColor: '#EEE' }}
++                resizeMode="cover"
++              />
++              {previewUrl ? (
++                <View style={{ marginTop: 10, width: '100%', alignItems: 'flex-start' }}>
++                  <Pressable
++                    onPress={() => saveRemoteImageToPhotos(previewUrl)}
++                    style={{
++                      paddingVertical: 10,
++                      paddingHorizontal: 14,
++                      borderRadius: 14,
++                      borderWidth: 1,
++                      borderColor: '#6D28D9',
++                      backgroundColor: 'white',
++                    }}
++                  >
++                    <Text style={{ color: '#6D28D9', fontWeight: '700' }}>
++                      Save preview to Photos
++                    </Text>
++                  </Pressable>
++                </View>
++              ) : null}
++            </>
++          ) : (
++            <View
++              style={{
++                width: '100%',
++                height: 240,
++                borderRadius: 16,
++                backgroundColor: '#F2F2F2',
++                alignItems: 'center',
++                justifyContent: 'center',
++              }}
++            >
++              <Text style={{ color: '#6B7280' }}>No image yet</Text>
++            </View>
++          )}
++        </>
+       )}
++
++      {/* keep the rest of the existing content below (tabs, status, etc.) */}
++      {/* ...existing sections remain unchanged... */}
+     </View>
+   );
+ }

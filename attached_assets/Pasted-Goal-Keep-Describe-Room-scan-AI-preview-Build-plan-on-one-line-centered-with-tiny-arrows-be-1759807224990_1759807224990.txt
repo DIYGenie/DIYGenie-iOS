@@ -1,0 +1,82 @@
+Goal: Keep Describe • Room scan • AI preview • Build plan on one line, centered, with tiny arrows between—no truncation, no clipping—across iPhone SE → Pro Max.
+
+Files: app/screens/HomeScreen.*
+
+Tasks:
+
+At top of HomeScreen, add state to measure the row:
+
+const [howW, setHowW] = React.useState(0);
+
+
+Wrap the “How it works” row in a container that captures layout:
+
+<View
+  onLayout={(e) => setHowW(e.nativeEvent.layout.width)}
+  style={{ paddingHorizontal: 16, marginTop: 8 }}
+>
+  {/* ROW goes here */}
+</View>
+
+
+Compute chip width from measured width, not window size:
+
+const GAP = 8;          // space between every item (chip or arrow)
+const ARROW_W = 12;     // fixed arrow box width
+const ITEMS = 7;        // 4 chips + 3 arrows
+const gapsTotal = GAP * (ITEMS - 1);
+const arrowsTotal = ARROW_W * 3;
+const CHIP_W = howW > 0
+  ? Math.floor((howW - gapsTotal - arrowsTotal) / 4)
+  : 84; // initial safe value
+
+
+Render the row using explicit margins (avoid CSS gap differences on web):
+
+const Arrow = () => (
+  <Text style={{ width: ARROW_W, textAlign: 'center', opacity: 0.5, marginHorizontal: GAP/2 }}>›</Text>
+);
+
+const Chip = ({ icon, label }: { icon: React.ReactNode; label: string }) => (
+  <View
+    style={{
+      width: CHIP_W, height: 64, borderRadius: 14,
+      backgroundColor: 'rgba(138, 92, 255, 0.08)',
+      borderWidth: 1, borderColor: 'rgba(138,92,255,0.15)',
+      alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10,
+      marginHorizontal: GAP/2
+    }}
+  >
+    <View style={{ marginBottom: 6 }}>{icon}</View>
+    <Text
+      numberOfLines={1}
+      ellipsizeMode="clip"
+      allowFontScaling={false}
+      style={{ fontSize: 12, fontWeight: '600' }}
+    >
+      {label}
+    </Text>
+  </View>
+);
+
+
+Build the row in order; remove any previous minWidth on chips so the calc wins:
+
+<View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+  <Chip icon={<Feather name="edit-3" size={18} />} label="Describe" />
+  <Arrow />
+  <Chip icon={<Feather name="image" size={18} />} label="Room scan" />
+  <Arrow />
+  <Chip icon={<Feather name="sparkles" size={18} />} label="AI preview" />
+  <Arrow />
+  <Chip icon={<Feather name="list" size={18} />} label="Build plan" />
+</View>
+
+
+Ensure any old styles for this row (previous gap, justifyContent: 'space-between', or hardcoded widths) are deleted.
+
+Acceptance:
+
+On iPhone SE, iPhone 16 Pro, Pixel 7/9 in Replit device picker, the four chips + 3 arrows sit on one line with even spacing, no horizontal scroll, no truncation—“Room scan” fully visible.
+
+Top section no longer looks cramped; there’s ~8–12px above the row and ~12–16px before the purple CTA.

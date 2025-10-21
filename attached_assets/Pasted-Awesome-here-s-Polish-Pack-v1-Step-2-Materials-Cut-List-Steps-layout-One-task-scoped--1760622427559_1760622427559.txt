@@ -1,0 +1,101 @@
+Awesome — here’s **Polish Pack v1: Step 2** (Materials + Cut List + Steps layout). One task, scoped, safe.
+
+---
+
+# Replit Agent Prompt — Step 2 (Materials, Cut List, Steps layout)
+
+**Project:** `DIYGenieTheme`
+**File:** `app/screens/DetailedInstructions.tsx`
+**Autonomy:** **Low**
+**App Testing:** **ON**
+
+**Goal**
+Upgrade **Materials**, **Cut List**, and **Steps** sections for readability and “builder’s guide” feel. **No backend changes.**
+
+---
+
+## Changes to apply
+
+### 1) Materials — receipt/table style
+
+* Wrap section in a soft card:
+
+  ```tsx
+  <View style={{ backgroundColor:'#FFFFFF', borderRadius:12, padding:12, marginHorizontal:12, marginTop:12, shadowColor:'#000', shadowOpacity:0.05, shadowRadius:4, elevation:2 }}>
+  ```
+* Header:
+
+  ```tsx
+  <Text style={{ fontSize:18, fontWeight:'700', color:'#3A2EB0', marginBottom:8 }}>Materials</Text>
+  ```
+* List rows (FlatList if easy; otherwise map):
+
+  * Left text = **`qty unit · name`** (use `joinText(fmtQtyUnit(qty, unit), name)` inside one `<Text>`).
+  * Right text = **price** via `fmtMoney(m.price)` right-aligned.
+  * Row container: `flexDirection:'row', justifyContent:'space-between', alignItems:'center', paddingVertical:8, borderBottomWidth:0.5, borderColor:'#EEE'`.
+* Subtotal row (bold green):
+
+  ```tsx
+  <View style={{ flexDirection:'row', justifyContent:'space-between', paddingTop:8 }}>
+    <Text style={{ fontWeight:'700' }}>Subtotal</Text>
+    <Text style={{ fontWeight:'700', color:'#0a8f5b' }}>{fmtMoney(materialsTotal)}</Text>
+  </View>
+  ```
+* If empty → show:
+  `<Text style={{ color:'#777' }}>No materials yet.</Text>`
+
+### 2) Cut List — 3-column table
+
+* Card wrapper like Materials, with header **“Cut List”**.
+* Column headers row (Text only): **Part**, **Dimensions**, **Qty** (fontSize 13, color #666).
+* Each row:
+
+  * Left: `cut.part || cut.board || 'Part'`
+  * Middle: `fmtDim(cut.width, cut.height) ?? cut.size ?? '—'`
+  * Right: `cut.qty ?? '1'` (right-aligned, fixed width ~40)
+  * Layout: `flexDirection:'row'`, columns via `flex:1 / flex:1 / width:40`.
+  * Zebra effect: even rows `backgroundColor:'#FAFAFF'`.
+* If `cutList.layoutSvgUrl` exists, render a small “View layout” link (opens in browser).
+* If empty → “No cuts listed.”
+
+### 3) Steps — numbered cards
+
+* Header: **“Build Steps”** (18 / 700 / #3A2EB0).
+* Progress microcopy on right: `{steps.length ? `0/${steps.length}` : ''}` (we’ll wire real progress later).
+* For each step:
+
+  * Card: `backgroundColor:'#FFFFFF', borderRadius:12, padding:12, marginVertical:6, shadowOpacity:0.05, shadowRadius:4, elevation:2`.
+  * Title line:
+
+    ```tsx
+    <Text style={{ fontSize:16, fontWeight:'700' }}>{`${step.n ?? index+1}. ${step.title ?? 'Step'}`}</Text>
+    ```
+  * Body/description (Text, marginTop:4, lineHeight ~20).
+  * Optional diagram image if `diagramUrl` present: full-width, height ~160, borderRadius:10, marginTop:8.
+* If empty → “No build steps yet.”
+
+### 4) Text safety & consistency
+
+* All visible strings inside `<Text>`.
+* Use helpers: `TextIf`, `fmtMoney`, `fmtDim`, `fmtQtyUnit`, `joinText`.
+* No emojis.
+
+---
+
+## Testing (App Testing = ON)
+
+1. Reload app → Projects → open a project → **Open Detailed Build Plan**.
+2. Verify:
+
+   * Materials rows align; subtotal bold green.
+   * Cut List shows 3 clean columns with zebra rows; “View layout” link appears when provided.
+   * Steps render as numbered cards; diagrams show when available.
+   * No red errors; no “undefined” in UI.
+
+**Deliverable note to include:**
+“Materials receipt layout with subtotal; Cut List 3-column table w/ zebra rows; Steps as numbered cards; all text safe; verified on device.”
+
+**Stop if:**
+
+* Any section key is missing (tell me exact path/line).
+* You need to edit shared components or styles outside this screen.

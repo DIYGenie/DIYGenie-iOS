@@ -1,0 +1,117 @@
+Goal: Ensure the app re-renders when auth changes, and that creating an account signs the user in (when allowed). If email confirmation is required, show a clear toast. Guard New Project scan/save behind login.
+
+Tasks
+
+Replace src/hooks/useAuth.ts with this:
+
+// src/hooks/useAuth.ts
+import { useEffect, useState, useCallback } from 'react';
+import { supabase } from '@/lib/supabase';
+
+type User = import('@supabase/supabase-js').User | null;
+
+export function useAuth() {
+  const [user, setUser] = useState<User>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      if (mounted) {
+        setUser(data.user ?? null);
+        setLoading(false);
+      }
+    })();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      sub?.subscription?.unsubscribe?.();
+      mounted = false;
+    };
+  }, []);
+
+  const signIn = useCallback(async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    setUser(data.user ?? null);
+    return data.user;
+  }, []);
+
+  const signUp = useCallback(async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) throw error;
+
+    // If your project requires email confirmation, data.session will be null.
+    if (!data.session) {
+      // Try to sign in immediately; if email not confirmed, Supabase will error with a clear message.
+      const tryLogin = await supabase.auth.signInWithPassword({ email, password });
+      if (tryLogin.error) throw tryLogin.error; // e.g., "Email not confirmed"
+      setUser(tryLogin.data.user ?? null);
+      return tryLogin.data.user;
+    }
+
+    setUser(data.user ?? null);
+    return data.user;
+  }, []);
+
+  const signOut = useCallback(async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  }, []);
+
+  return { user, loading, signIn, signUp, signOut };
+}
+
+
+Update src/screens/AuthScreen.tsx to use the hook and show proper toasts:
+
+On Sign In:
+
+await signIn(email, password)
+
+toast: “Signed in”, then navigation.goBack()
+
+On Create Account:
+
+await signUp(email, password)
+
+if it throws with a message like “Email not confirmed”, show toast: “Check your inbox to confirm your email”, keep on screen
+
+else toast “Signed in” and navigation.goBack()
+
+Update src/screens/ProfileScreen.*:
+
+const { user, loading, signOut } = useAuth();
+
+If loading, show a small spinner.
+
+If !user: show your existing “Sign in” card/button that navigates to Auth.
+
+If user: show user.email and a Sign out button that calls signOut() and toasts “Signed out”.
+
+Guard New Project actions (where you call saveRoomScan and where you navigate to Scan or Upload):
+
+const { user } = useAuth();
+
+Before starting those actions:
+
+if (!user) {
+  showToast('Please sign in to save scans', 'error');
+  navigation.navigate('Auth');
+  return;
+}
+
+
+Do not change any other flow.
+
+Acceptance
+
+Creating an account signs you in immediately if confirmations are off; otherwise you get a clear “Check your inbox to confirm” toast.
+
+After sign-in, the Profile screen updates from “Sign in” to showing the user’s email and Sign out.
+
+On New Project, tapping Scan room or Upload Photo when logged out routes to Auth with a toast; when logged in, it proceeds and saving scans works.

@@ -1,0 +1,65 @@
+Ensure the gesture container matches the image drawable area, not the whole screen. Measure the image with onLayout and clamp to that.
+
+// Inside ScanScreen.tsx (or your ROI component)
+const [box, setBox] = useState({ x: 0, y: 0, w: 140, h: 140 });
+const [bounds, setBounds] = useState({ w: 0, h: 0, x: 0, y: 0 });
+
+<View
+  onLayout={e => {
+    const { x, y, width, height } = e.nativeEvent.layout;
+    setBounds({ x, y, w: width, h: height });
+    // Optionally recenter ROI when the layout arrives:
+    setBox(b => ({
+      ...b,
+      x: Math.max(0, (width - b.w) / 2),
+      y: Math.max(0, (height - b.h) / 2),
+    }));
+  }}
+  style={{ position: 'relative' }}
+>
+  {/* Your dark image / preview */}
+  <Image ... style={{ width: '100%', aspectRatio: imageAR, resizeMode: 'contain' }} />
+  {/* Absolutely position overlay inside THIS measured view */}
+  <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+    {/* ROI draggable uses bounds.w/h for clamping */}
+  </View>
+</View>
+
+
+Clamp with the measured bounds, not screen size:
+
+function clamp(val: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, val));
+}
+
+// when dragging:
+const nextX = clamp(gestureX, 0, bounds.w - box.w);
+const nextY = clamp(gestureY, 0, bounds.h - box.h);
+
+
+While ROI is open: stop the parent ScrollView from intercepting.
+
+<ScrollView scrollEnabled={!roiOpen} /* already mostly done on your side */ />
+
+
+Prevent off-screen clipping / touch blocking around the overlay:
+
+// On containers around ROI overlay
+style={{ overflow: 'visible' }}
+pointerEvents="box-none"
+// On the ROI itself so it *does* receive touches:
+pointerEvents="auto"
+
+
+If you’re using react-native-gesture-handler, wrap the app with GestureHandlerRootView (top level) and, for the ROI PanGesture, set:
+
+<PanGestureHandler
+  enabled={roiOpen}
+  shouldCancelWhenOutside={false}
+  // optionally: simultaneousHandlers={scrollRef}
+>
+
+
+Add one-time debug logs to confirm you’re clamping to the correct area:
+
+console.log('[roi bounds]', bounds, '[box]', box);

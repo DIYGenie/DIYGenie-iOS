@@ -1,0 +1,83 @@
+Goal: On HomeScreen, remove the search bar, move “How it works” above the CTA, and tighten vertical spacing. Keep the purple CTA and chip deep-links exactly as they are.
+
+Files: app/screens/HomeScreen.*
+
+Changes
+
+Remove the search UI
+
+Delete/hide the search bar container at the top (any <TextInput>/SearchBar wrapper).
+
+Remove related state/handlers if they’re only used by the search.
+
+Reorder sections
+
+New order inside the scroll view:
+
+Welcome heading + subheading
+
+How it works chips row (with chevron separators)
+
+Purple Start a New Project button
+
+Recent Projects list (unchanged)
+
+Keep all existing deep-link handlers on the chips.
+
+Tighten spacing + responsive header
+
+Reduce vertical gaps to feel lighter:
+
+mt between heading → chips: ~12–16
+
+chips → CTA: ~16
+
+CTA → Recent header: ~20–24
+
+Heading size: 28 on normal screens, 26 if screen width < 360.
+
+Subheading color stays subdued (same as current), marginBottom ~6–8.
+
+No visual regressions
+
+Keep the purple CTA style as used elsewhere (filled, white text, full width with rounded corners and soft shadow).
+
+Chips remain pill cards; same width logic you just added.
+
+Acceptance
+
+Search bar is gone.
+
+Order = Welcome → Chips → CTA → Recent Projects.
+
+Chips still navigate to the correct New Project sections.
+
+No new warnings in console.
+
+If helpful (example layout skeleton):
+
+// Inside HomeScreen render (pseudo-diff)
+<ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
+  <Text style={styles.h1}>Welcome back, {firstName}</Text>
+  <Text style={styles.h2}>Ready to start your next DIY project?</Text>
+
+  <HowItWorksChips /> {/* existing chips row with arrows */}
+
+  <PrimaryCTA title="Start a New Project" onPress={() => nav.navigate('NewProject')} />
+
+  <SectionHeader title="Recent Projects" />
+  <RecentProjectsList />
+</ScrollView>
+
+
+Styles (guide, reuse your theme vars):
+
+h1: fontSize 28 (26 on narrow), fontWeight 700, color #0F172A, marginTop 4, marginBottom 4.
+
+h2: fontSize 16, color rgba(15,23,42,0.6), marginBottom 12–16.
+
+CTA marginTop ~16.
+
+Recent header marginTop ~20–24.
+
+Please implement and keep all existing imports/types clean.

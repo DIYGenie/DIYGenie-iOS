@@ -1,0 +1,159 @@
+Goal (single step): Add a “Generate AI Preview” CTA on ProjectDetails that POSTs to Webhooks, shows feedback, and refreshes project status. Button only shows when: user is signed in, project exists, and preview isn’t already ready.
+
+Automation: medium
+App Testing: on
+
+(a) Project: [THEME] (Expo)
+
+(b) Files to touch:
+
+app/lib/api.ts
+
+app/screens/ProjectDetails.tsx
+
+(optional tiny import) app/components/Toast.js (already exists, just used)
+
+(c) Exact patches/code:
+
+*** app/lib/api.ts
+@@
+ export const base = __DEV__ ? (process.env.EXPO_PUBLIC_WEBHOOKS_DEV ?? 'https://diy-genie-webhooks-tyekowalski.replit.app') : (process.env.EXPO_PUBLIC_WEBHOOKS_PROD ?? 'https://api.diygenieapp.com');
+ 
++export async function requestProjectPreview(projectId: string) {
++  const url = `${base}/api/projects/${projectId}/preview`;
++  try {
++    const res = await fetch(url, { method: 'POST' });
++    const body = await res.json().catch(() => ({}));
++    return { ok: !!body?.ok, status: res.status, body };
++  } catch (e:any) {
++    return { ok: false, status: 0, body: { error: String(e?.message || e) } };
++  }
++}
++
++export async function fetchProjectPlanMarkdown(projectId: string) {
++  const url = `${base}/api/projects/${projectId}/plan`;
++  const res = await fetch(url);
++  return { status: res.status, text: await res.text() };
++}
+
+*** app/screens/ProjectDetails.tsx
+@@
+-import { View, Image, ActivityIndicator, Pressable, Text } from 'react-native';
++import { View, Image, ActivityIndicator, Pressable, Text } from 'react-native';
+ import { useRoute, useNavigation, RouteProp, useFocusEffect } from '@react-navigation/native';
+ import { useSafeBack } from '../lib/useSafeBack';
+-import { fetchProjectById, fetchLatestScanForProject } from '../lib/api';
++import { fetchProjectById, fetchLatestScanForProject, requestProjectPreview, fetchProjectPlanMarkdown } from '../lib/api';
++import Toast from '../components/Toast';
+@@
+   const [loading, setLoading] = useState(true);
+   const [project, setProject] = useState<any>(null);
+   const [scan, setScan] = useState<{ scanId: string; imageUrl: string } | null>(null);
++  const [previewLoading, setPreviewLoading] = useState(false);
++  const [planLoading, setPlanLoading] = useState(false);
+   const abortRef = useRef<AbortController | null>(null);
+@@
+   }, [load]);
+ 
++  // Lightweight plan poll if server marks ready later (no infinite loop)
++  useEffect(() => {
++    let stop = false;
++    async function maybePoll() {
++      if (!projectId || !project) return;
++      if (project?.status !== 'ready') return;
++      setPlanLoading(true);
++      for (let i = 0; i < 5 && !stop; i++) {
++        const r = await fetchProjectPlanMarkdown(projectId);
++        if (r.status === 200 && (r.text || '').length > 0) break;
++        await new Promise(r => setTimeout(r, 1500));
++      }
++      setPlanLoading(false);
++    }
++    maybePoll();
++    return () => { stop = true; };
++  }, [projectId, project]);
++
++  const onGeneratePreview = async () => {
++    if (!projectId) return;
++    setPreviewLoading(true);
++    const r = await requestProjectPreview(projectId);
++    setPreviewLoading(false);
++    if (r.ok) {
++      Toast.show('Preview requested. This may take a moment.');
++      // Refresh project to reflect “preview requested/plan requested” state
++      load();
++    } else {
++      Toast.show('Could not request preview. Try again.');
++      console.log('[preview error]', r.status, r.body);
++    }
++  };
++
+   useFocusEffect(
+     useCallback(() => {
+       load();
+       return () => abortRef.current?.abort();
+     }, [load])
+   );
+@@
+   return (
+     <View style={{ flex: 1, padding: 16 }}>
+       <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
+         {project?.name || project?.title || 'Project'}
+       </Text>
+-      <Text style={{ fontSize: 14, color: '#6B7280', marginBottom: 16 }}>
+-        Status: {project?.status || 'In progress'}
+-      </Text>
++      <Text style={{ fontSize: 14, color: '#6B7280', marginBottom: 8 }}>
++        Status: {project?.status || 'In progress'}{planLoading ? ' · checking plan…' : ''}
++      </Text>
+ 
+       {loading ? (
+         <View style={{ paddingTop: 40 }}>
+           <ActivityIndicator />
+         </View>
+       ) : scan?.imageUrl ? (
+         <Image
+           source={{ uri: scan.imageUrl }}
+           style={{ width: '100%', height: 220, borderRadius: 16, backgroundColor: '#EEE' }}
+           resizeMode="cover"
+         />
+       ) : (
+         <View
+           style={{
+             width: '100%',
+             height: 220,
+             borderRadius: 16,
+             backgroundColor: '#F2F2F2',
+             alignItems: 'center',
+             justifyContent: 'center',
+           }}
+         >
+           <Text style={{ color: '#6B7280' }}>No scan image yet</Text>
+         </View>
+       )}
++
++      {/* Generate AI Preview CTA */}
++      {!!projectId && (
++        <View style={{ marginTop: 16 }}>
++          {project?.status !== 'ready' && (
++            <Pressable
++              onPress={onGeneratePreview}
++              disabled={previewLoading}
++              style={{
++                backgroundColor: '#7C3AED',
++                paddingVertical: 12,
++                borderRadius: 12,
++                alignItems: 'center',
++                opacity: previewLoading ? 0.7 : 1,
++              }}
++            >
++              <Text style={{ color: 'white', fontWeight: '700' }}>
++                {previewLoading ? 'Requesting…' : 'Generate AI Preview'}
++              </Text>
++            </Pressable>
++          )}
++        </View>
++      )}
+     </View>
+   );
+ }

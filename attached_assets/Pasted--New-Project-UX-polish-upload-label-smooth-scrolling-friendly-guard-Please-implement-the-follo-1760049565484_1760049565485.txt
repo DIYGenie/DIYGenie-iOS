@@ -1,0 +1,97 @@
+: New-Project UX polish (upload label, smooth scrolling, friendly guard)
+
+Please implement the following changes.
+
+1) NewProjectMedia.js — rename the card for uploads
+
+In app/screens/NewProjectMedia.js, when rendering the saved image card, change the title text to be conditional:
+
+const title = savedScan?.source === 'upload' ? 'Uploaded photo' : 'Saved scan';
+...
+<Text style={{ marginTop: 8, fontWeight: '600' }}>{title}</Text>
+<Text style={{ marginTop: 8, color: '#6B7280', fontSize: 13, textAlign: 'center' }}>
+  {savedScan?.source === 'upload'
+    ? 'AR tools appear after Scan room (coming soon).'
+    : 'Tools appear when you use Scan room.'}
+</Text>
+
+
+2) NewProject.tsx — smooth scrolling + keyboard behavior
+
+Wrap the screen content in a single ScrollView (no nested scroll views), with:
+
+<ScrollView
+  ref={scrollRef}
+  keyboardShouldPersistTaps="handled"
+  keyboardDismissMode="on-drag"
+  contentContainerStyle={{ paddingBottom: 40 }}
+>
+
+
+Ensure the outer KeyboardAvoidingView remains, but there should only be one ScrollView on the page.
+
+3) NewProject.tsx — friendly guard that guides the user
+
+Add a small validator and anchors so we can scroll to the first missing field.
+
+// at top of component
+const scrollRef = useRef<ScrollView>(null);
+const anchors = useRef<{title:number; desc:number; budget:number; skill:number}>({
+  title: 0, desc: 0, budget: 0, skill: 0,
+});
+
+const validateDraft = (d:any) => {
+  if (!d?.name?.trim()) return 'title';
+  if (!d?.description?.trim() || d?.description?.trim().length < 10) return 'desc';
+  if (!d?.budget) return 'budget';
+  if (!d?.skill_level) return 'skill';
+  return null;
+};
+
+const handleBlocked = () => {
+  const miss = validateDraft(draft);
+  if (!miss) return;
+  const messages:any = {
+    title: 'Please add a project title.',
+    desc: 'Please add a brief project description (10+ characters).',
+    budget: 'Please pick a budget range.',
+    skill: 'Please select your skill level.',
+  };
+  Alert.alert('Almost there', messages[miss]);
+  const y = Math.max((anchors.current as any)[miss] - 24, 0);
+  requestAnimationFrame(() => scrollRef.current?.scrollTo({ y, animated: true }));
+};
+
+
+Capture anchor positions for each section wrapper:
+
+<View onLayout={(e)=> anchors.current.title = e.nativeEvent.layout.y}>
+  {/* Project Title input */}
+</View>
+<View onLayout={(e)=> anchors.current.desc = e.nativeEvent.layout.y}>
+  {/* Description input */}
+</View>
+<View onLayout={(e)=> anchors.current.budget = e.nativeEvent.layout.y}>
+  {/* Budget selector */}
+</View>
+<View onLayout={(e)=> anchors.current.skill = e.nativeEvent.layout.y}>
+  {/* Skill selector */}
+</View>
+
+
+Compute isFormValid using the same validateDraft (valid when it returns null).
+
+const isFormValid = !validateDraft(draft);
+
+
+Pass the guard callback into NewProjectMedia:
+
+<NewProjectMedia
+  draft={draft}
+  onDraftChange={setDraft}
+  isFormValid={isFormValid}
+  onBlocked={handleBlocked}
+/>
+
+
+Optional (tiny polish): add onPressOut={() => Keyboard.dismiss()} to the screen root to help dismiss the keyboard when tapping away.

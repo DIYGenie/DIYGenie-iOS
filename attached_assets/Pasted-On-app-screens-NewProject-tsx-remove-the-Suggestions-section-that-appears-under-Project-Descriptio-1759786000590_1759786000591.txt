@@ -1,0 +1,86 @@
+On app/screens/NewProject.tsx, remove the Suggestions section that appears under “Project Description”. Keep a single Suggestions card below the photo (before the CTA buttons). Ensure the “Refresh” action still calls fetchSuggestions() and the chips still open PromptApplyModal for Replace/Append/Cancel.
+
+Files to edit
+
+app/screens/NewProject.tsx (only)
+
+What to change
+
+Delete the top Suggestions block
+
+Find the JSX section immediately under the description input that renders a title like:
+
+Suggestions, Design Suggestions (beta), or similar, and a Refresh link/button.
+
+It will be above Budget/Skill or above “Add your room photo”.
+
+Remove that entire wrapper <View> (title, bullets/chips, and refresh) so there is no Suggestions content above the photo.
+
+Do not remove Budget, Skill, or the “Add your room photo” divider.
+
+Keep the bottom Suggestions card (below the photo)
+
+Ensure the remaining Suggestions card lives after the photo block (and its “Change photo” link) and before the CTA buttons (“Generate AI Preview”, “Build Plan Without Preview”).
+
+The remaining card should use:
+
+sugs (array of suggestion strings),
+
+sugsBusy (spinner state),
+
+fetchSuggestions() for refresh,
+
+onChipPress → opens PromptApplyModal with the tapped suggestion.
+
+Visibility logic
+
+Show the card only when user has given enough context:
+
+const showSuggestions = !!photoUri || (description?.trim().length ?? 0) >= 10;
+
+
+Wrap the card in {showSuggestions && ( ... )}.
+
+Wire Refresh + testIDs
+
+The Refresh control must call fetchSuggestions() and respect sugsBusy.
+
+Keep/ensure test IDs on the remaining card:
+
+Card container: testID="np-suggestions-card"
+
+Refresh control: testID="np-suggestions-refresh"
+
+PromptApplyModal still works
+
+Keep the existing PromptApplyModal import, state, and handlers:
+
+applyOpen, setApplyOpen, pendingTip, setPendingTip
+
+normalizeAppend()
+
+Replace/Append logic that updates the description field.
+
+Chips tap → open modal (no change to this flow).
+
+Clean up styles/spacing
+
+Remove any now-unused styles/imports from the deleted top block.
+
+Ensure spacing around the remaining Suggestions card looks consistent with your theme (same vertical margins as other sections).
+
+Acceptance criteria
+
+Only one Suggestions section is rendered on the screen, positioned below the photo and above the CTA buttons.
+
+Tapping Refresh triggers exactly one POST /api/projects/:id/suggestions (or your existing suggestions endpoint) and shows a loading state, then renders the suggestions.
+
+Tapping a suggestion chip opens PromptApplyModal; Replace/Append updates the description correctly; Cancel closes without changes.
+
+No console errors, no duplicate imports, no unused styles.
+
+Don’t change
+
+Any backend URLs, env usage, or unrelated components.
+
+Budget/Skill controls, photo picker, or CTA button handlers.

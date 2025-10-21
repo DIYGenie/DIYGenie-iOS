@@ -1,0 +1,103 @@
+THEME
+*** FILE: app/screens/NewProject.tsx
+@@
+-import RoiModal from '../components/RoiModal';
+-import MeasureModal from '../components/MeasureModal';
++import RoiModal from '../components/RoiModal';
++import MeasureModal from '../components/MeasureModal';
++// V1: tools are AR-only (hide on Upload flow)
++const __HIDE_MEDIA_TOOLS = true;
+@@
+-      <RoiModal
+-        visible={roiOpen}
+-        scanId={savedScan?.scanId}
+-        imageUrl={savedScan?.imageUrl}
+-        onCancel={() => setRoiOpen(false)}
+-        onSaveRegion={(regionId) => {
+-          setRegionId(regionId);
+-          setRoiOpen(false);
+-        }}
+-      />
++      {/* V1: hide ROI modal for upload flow */}
++      {__HIDE_MEDIA_TOOLS ? null : (
++        <RoiModal
++          visible={roiOpen}
++          scanId={savedScan?.scanId}
++          imageUrl={savedScan?.imageUrl}
++          onCancel={() => setRoiOpen(false)}
++          onSaveRegion={(regionId) => {
++            setRegionId(regionId);
++            setRoiOpen(false);
++          }}
++        />
++      )}
+@@
+-      <MeasureModal
+-        visible={measureOpen}
+-        scanId={savedScan?.scanId}
+-        imageUrl={savedScan?.imageUrl}
+-        regionId={regionId}
+-        onCancel={() => setMeasureOpen(false)}
+-        onSaveLine={async ({ points, valueInches }) => {
+-          await saveLineMeasurement({
+-            scanId: savedScan!.scanId,
+-            regionId,
+-            points,
+-            valueInches,
+-          });
+-          setMeasureOpen(false);
+-        }}
+-      />
++      {/* V1: hide Measure modal for upload flow */}
++      {__HIDE_MEDIA_TOOLS ? null : (
++        <MeasureModal
++          visible={measureOpen}
++          scanId={savedScan?.scanId}
++          imageUrl={savedScan?.imageUrl}
++          regionId={regionId}
++          onCancel={() => setMeasureOpen(false)}
++          onSaveLine={async ({ points, valueInches }) => {
++            await saveLineMeasurement({
++              scanId: savedScan!.scanId,
++              regionId,
++              points,
++              valueInches,
++            });
++            setMeasureOpen(false);
++          }}
++        />
++      )}
+
+*** FILE: app/screens/NewProject.tsx
+@@
+-          <View style={{ flexDirection: 'row', gap: 12, marginTop: 10 }}>
+-            <Pressable
+-              onPress={() => setRoiOpen(true)}
+-              style={{ backgroundColor: '#7C3AED', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 }}
+-            >
+-              <Text style={{ color: 'white', fontWeight: '600' }}>Mark area</Text>
+-            </Pressable>
+-            <Pressable
+-              onPress={() => setMeasureOpen(true)}
+-              style={{ backgroundColor: '#7C3AED', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 }}
+-            >
+-              <Text style={{ color: 'white', fontWeight: '600' }}>Measure</Text>
+-            </Pressable>
+-          </View>
++          {/* V1: hide tool buttons for uploads */}
++          {__HIDE_MEDIA_TOOLS ? null : (
++            <View style={{ flexDirection: 'row', gap: 12, marginTop: 10 }}>
++              <Pressable
++                onPress={() => setRoiOpen(true)}
++                style={{ backgroundColor: '#7C3AED', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 }}
++              >
++                <Text style={{ color: 'white', fontWeight: '600' }}>Mark area</Text>
++              </Pressable>
++              <Pressable
++                onPress={() => setMeasureOpen(true)}
++                style={{ backgroundColor: '#7C3AED', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 }}
++              >
++                <Text style={{ color: 'white', fontWeight: '600' }}>Measure</Text>
++              </Pressable>
++            </View>
++          )}

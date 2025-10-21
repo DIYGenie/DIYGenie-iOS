@@ -1,0 +1,106 @@
+Files to touch:
+
+app/screens/NewProjectMedia.js
+
+app/screens/NewProject.tsx (tiny effect only; no new imports/deps)
+
+Objective
+
+Fix the “cannot grant permission” error when uploading a photo on New Project by avoiding explicit OS permission requests. Use the system Photo Library picker (which doesn’t require prior permission) and, once a photo is chosen, trigger the Smart Suggestions (beta) fetch on the New Project screen. No server image upload in this step.
+
+Changes
+1) app/screens/NewProjectMedia.js
+
+Remove any calls to ImagePicker.requestMediaLibraryPermissionsAsync() or useMediaLibraryPermissions().
+
+Implement a library-only picker using ImagePicker.launchImageLibraryAsync(...).
+
+Keep “Scan Room” as a stub: on web or if camera permission fails, show an alert that scanning is coming later and suggest using Upload Photo.
+
+Implementation details (replace current upload handlers):
+
+// at top
+import * as ImagePicker from 'expo-image-picker';
+import { Platform, Alert } from 'react-native';
+
+// inside component
+const onUploadPhoto = async () => {
+  try {
+    // Directly open library; do NOT request permission up-front.
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      quality: 0.85,
+      selectionLimit: 1,
+    });
+    if (result.canceled) return;
+    const asset = result.assets?.[0];
+    if (!asset?.uri) return;
+
+    // Call your existing setter/prop to update parent state
+    // e.g., props.onPickImage?.(asset.uri);
+    onPickImage && onPickImage(asset.uri);
+  } catch (e) {
+    Alert.alert('Upload failed', 'Please try again or use a different photo.');
+  }
+};
+
+const onScanRoom = async () => {
+  // keep stub — avoid camera on web/preview
+  if (Platform.OS === 'web') {
+    Alert.alert('Scan coming soon', 'Use “Upload Photo” for now.');
+    return;
+  }
+  try {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Camera permission', 'Please allow camera access or use “Upload Photo”.');
+      return;
+    }
+    const res = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.85,
+    });
+    if (!res.canceled && res.assets?.[0]?.uri) {
+      onPickImage && onPickImage(res.assets[0].uri);
+    }
+  } catch (e) {
+    Alert.alert('Scan unavailable', 'Please use “Upload Photo” for now.');
+  }
+};
+
+
+Wire onUploadPhoto to your “Upload Photo” button and onScanRoom to the “Scan Room” button.
+
+Do not call any /api/projects/:id/image endpoint here.
+
+2) app/screens/NewProject.tsx
+
+Ensure Smart Suggestions auto-fetches when a photo URI is set. If you already have formReady logic, just add photoUri to the effect dependencies and skip any image upload attempt.
+
+Tiny effect (add/adjust):
+
+// assumes: formReady = desc>=10 && budget && skill && !!photoUri
+React.useEffect(() => {
+  if (formReady && !sugs && !sugsBusy) {
+    fetchSuggestions(); // this calls /api/projects (ensureDraft) then /suggestions
+  }
+  // IMPORTANT: do not call /image upload here
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [photoUri, formReady]);
+
+
+Under your photo preview, keep the caption:
+“We’ll upload your photo later when you request a visual preview.”
+
+Acceptance Criteria
+
+Tapping Upload Photo opens the system photo picker without any permission error.
+
+After choosing a photo, the image previews locally on the New Project screen.
+
+With description (≥10 chars), budget, and skill selected and a photo chosen, the Smart Suggestions (beta) card appears on New Project automatically (no navigation required).
+
+No network call is made to /api/projects/:id/image during this step.
+
+“Scan Room” on web shows a friendly stub alert instead of an error.

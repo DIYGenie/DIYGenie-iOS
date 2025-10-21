@@ -1,0 +1,73 @@
+Implement Open Plan tabs + Summary under CTA
+
+Add: app/screens/OpenPlanScreen.tsx
+
+import React, { useState } from "react";
+import { View, Text } from "react-native";
+import { ScreenScroll, ButtonPrimary, Card, SectionTitle, ui, space } from "../ui/components";
+
+export default function OpenPlanScreen({ route, navigation }: any) {
+  const { id } = route.params || {};
+  const tabs = ["Overview","Materials","Steps","Shopping"] as const;
+  const [active, setActive] = useState<typeof tabs[number]>("Overview");
+
+  const Tab = ({ name }: { name: typeof tabs[number] }) => (
+    <ButtonPrimary
+      title={name}
+      onPress={() => setActive(name)}
+      style={{ paddingVertical:10, marginRight:10, backgroundColor: active===name ? "#E39A33" : "#F3F4F6" }}
+      textStyle={{ color: active===name ? "#fff" : "#111827", fontSize:14 }}
+    />
+  );
+
+  const Stub = ({ title, body }: { title: string; body: string }) => (
+    <Card style={{ marginTop: space.md }}>
+      <SectionTitle>{title}</SectionTitle>
+      <Text style={ui.p}>{body}</Text>
+    </Card>
+  );
+
+  return (
+    <ScreenScroll>
+      <Text style={[ui.h1, { marginBottom: space.md }]}>Project Plan</Text>
+      <View style={{ flexDirection:"row", marginBottom: space.md }}>
+        {tabs.map(t => <Tab key={t} name={t} />)}
+      </View>
+
+      {active==="Overview"  && <Stub title="Overview"  body="High-level summary (stub)" />}
+      {active==="Materials" && <Stub title="Materials" body="Tools & materials list (stub)" />}
+      {active==="Steps"     && <Stub title="Steps"     body="Step-by-step instructions (stub)" />}
+      {active==="Shopping"  && <Stub title="Shopping"  body="Suggested items & links (stub)" />}
+
+      <ButtonPrimary title="Back to Project" onPress={() => navigation.goBack()} style={{ marginTop: space.lg }} />
+    </ScreenScroll>
+  );
+}
+
+
+Navigator: register the route (update your stack file):
+
+import OpenPlanScreen from "../screens/OpenPlanScreen";
+<Stack.Screen name="OpenPlan" component={OpenPlanScreen} options={{ headerShown:false }} />
+
+
+ProjectDetailsScreen:
+
+Button press:
+
+<ButtonPrimary title="📄 Open Plan" onPress={() => navigation.navigate("OpenPlan", { id: project.id })} />
+
+
+Summary card just below the button:
+
+<Card style={{ marginTop: space.md }}>
+  <SectionTitle>Summary</SectionTitle>
+  <Text style={ui.p}>Description: {project?.name || "—"}</Text>
+  <Text style={ui.p}>Budget: {project?.budget || "—"}</Text>
+  <Text style={ui.p}>Skill: {project?.skill || "—"}</Text>
+  <Text style={ui.p}>Status: {project?.status || "—"}</Text>
+  <Text style={ui.p}>Photo: {project?.input_image_url ? "Attached" : "Missing"}</Text>
+</Card>
+
+
+Hook error fix: Ensure all hooks in ProjectDetailsScreen (and any component you touched) are declared at the very top level of the function body — not inside if, return branches, or loops. If you moved UI around during the last attempt, normalize hooks now.

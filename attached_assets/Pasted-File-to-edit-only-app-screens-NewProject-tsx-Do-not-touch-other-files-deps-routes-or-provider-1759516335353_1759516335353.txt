@@ -1,0 +1,108 @@
+File to edit (only): app/screens/NewProject.tsx
+Do not touch: other files, deps, routes, or providers.
+
+Task
+
+Inline a cross-platform photo picker in NewProject.tsx and wire it to the existing Upload Photo button so that:
+
+On web, it uses a plain file input (document.createElement('input')) with URL.createObjectURL(file) → sets local photoUri.
+
+On iOS/Android, it uses ImagePicker.launchImageLibraryAsync() without any permission calls.
+
+Remove / ignore any previous calls to requestMediaLibraryPermissionsAsync or useMediaLibraryPermissions in this file.
+
+Ensure the Upload Photo button’s onPress points to this new handler (replace whatever it calls today).
+
+Add testID="btn-upload-photo" to that button.
+
+Keep all other logic (suggestions, prompt, generate plan) intact.
+
+Exact changes (inside NewProject.tsx)
+
+Imports at top (ensure these exist):
+
+import { Platform, Alert } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+
+
+State (only if not already present):
+
+const [photoUri, setPhotoUri] = React.useState<string>('');
+
+
+Add these two handlers in the component body:
+
+const pickPhotoWeb = () => {
+  try {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file); // local preview only
+      setPhotoUri(url);
+    };
+    input.click();
+  } catch (e) {
+    Alert.alert('Upload failed', 'Please try a different photo or browser.');
+  }
+};
+
+const pickPhotoNative = async () => {
+  try {
+    // NO permission requests here.
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      quality: 0.85,
+      selectionLimit: 1,
+    });
+    if (!res.canceled && res.assets?.[0]?.uri) {
+      setPhotoUri(res.assets[0].uri);
+    }
+  } catch (e) {
+    Alert.alert('Upload failed', 'Please try again.');
+  }
+};
+
+const onUploadPhoto = () => {
+  if (Platform.OS === 'web') return pickPhotoWeb();
+  return pickPhotoNative();
+};
+
+
+Wire the existing “Upload Photo” button to onUploadPhoto:
+
+Find the Upload Photo button in this file (e.g. <Button ... title="Upload Photo" /> or your custom component).
+
+Change its onPress to onUploadPhoto.
+
+Add testID="btn-upload-photo" on the button component.
+
+Do not navigate to another screen for picking; it should stay inline.
+
+Example (adjust to your component names/props):
+
+<ButtonPrimary
+  title="Upload Photo"
+  onPress={onUploadPhoto}
+  testID="btn-upload-photo"
+/>
+
+
+Guard against any old permission code in this file:
+
+Delete or comment out any requestMediaLibraryPermissionsAsync, useMediaLibraryPermissions, or similar in this file.
+
+Ensure this file does not call /api/projects/:id/image.
+
+Acceptance
+
+On web, tapping Upload Photo opens the OS file picker immediately; after selecting, a preview appears; no permission error shows.
+
+On native, tapping Upload Photo opens the library (no prior permission dialog); selecting an image sets the preview; no “could not grant permission” error.
+
+Existing suggestions/prompt/plan flow remains unchanged.
+
+DevTools Network: no /image call from this screen.

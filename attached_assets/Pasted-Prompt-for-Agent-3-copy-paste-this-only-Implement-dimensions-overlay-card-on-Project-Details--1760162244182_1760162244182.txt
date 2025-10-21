@@ -1,0 +1,118 @@
+Prompt for Agent 3 (copy/paste this only)
+
+Implement dimensions overlay & card on Project Details.
+
+1) API helper
+
+File: app/lib/api.ts
+
+Add:
+
+export type MeasureResult = { width_in:number; height_in:number; px_per_in:number; roi:{x:number;y:number;w:number;h:number} };
+export async function getMeasurement(projectId:string, scanId:string) {
+  const res = await api(`GET`, `/api/projects/${projectId}/scans/${scanId}/measure/status`);
+  if (!res?.ok) return null;
+  return res.result as MeasureResult;
+}
+
+
+2) Project details hook
+
+File: app/screens/ProjectDetails.tsx
+
+State:
+
+const [measure, setMeasure] = useState<MeasureResult|null>(null);
+const scanId = project?.last_scan_id || project?.scan_id || project?.scan?.id;
+
+
+Effect (poll once on mount, no loop):
+
+useEffect(() => {
+  let mounted = true;
+  (async () => {
+    if (!project?.id || !scanId) return;
+    try {
+      const m = await getMeasurement(project.id, scanId);
+      if (mounted) setMeasure(m);
+    } catch {}
+  })();
+  return () => { mounted = false; };
+}, [project?.id, scanId]);
+
+
+3) Hero overlay
+
+In the hero image container (where we render the preview or scan), after the download icon, render:
+
+{measure?.roi && (
+  <View style={{ position:'absolute', left: 16, right: 16, top: 16, bottom: 16 }}>
+    {/* ROI is in percents 0..1; convert within the padded container bounds */}
+    <View
+      pointerEvents="none"
+      style={{
+        position:'absolute',
+        left: `${measure.roi.x * 100}%`,
+        top: `${measure.roi.y * 100}%`,
+        width: `${measure.roi.w * 100}%`,
+        height: `${measure.roi.h * 100}%`,
+        borderWidth: 2,
+        borderColor: 'rgba(255,255,255,0.9)',
+        backgroundColor: 'rgba(255,255,255,0.12)',
+        borderRadius: 8,
+      }}
+    />
+    <View style={{
+      position:'absolute',
+      left: `${measure.roi.x * 100}%`,
+      top: Math.max(0, (measure.roi.y * 100) - 6) + '%',
+      paddingHorizontal:8, paddingVertical:4, borderRadius:6,
+      backgroundColor:'rgba(0,0,0,0.55)'
+    }}>
+      <Text style={{color:'#fff', fontSize:12, fontWeight:'600'}}>
+        {Math.round(measure.width_in)}″ × {Math.round(measure.height_in)}″
+      </Text>
+    </View>
+  </View>
+)}
+
+
+4) Dimensions card
+
+Create app/components/DimensionsCard.tsx:
+
+import { View, Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import type { MeasureResult } from '@/app/lib/api';
+export default function DimensionsCard({measure}:{measure:MeasureResult|null}) {
+  return (
+    <View style={{backgroundColor:'#F5F3FF', borderRadius:20, padding:16, marginHorizontal:16, marginTop:12}}>
+      <View style={{flexDirection:'row', alignItems:'center', marginBottom:8}}>
+        <Ionicons name="expand-outline" size={18} color="#6D28D9" />
+        <Text style={{fontSize:18, fontWeight:'700', marginLeft:8}}>Dimensions</Text>
+      </View>
+      {!measure ? (
+        <Text style={{color:'#6b7280'}}>Waiting for dimensions…</Text>
+      ) : (
+        <View style={{gap:6}}>
+          <Text>Width: <Text style={{fontWeight:'700'}}>{measure.width_in.toFixed(0)} in</Text></Text>
+          <Text>Height: <Text style={{fontWeight:'700'}}>{measure.height_in.toFixed(0)} in</Text></Text>
+          <Text>Pixels / inch: <Text style={{fontWeight:'700'}}>{measure.px_per_in}</Text></Text>
+          <Text style={{color:'#6b7280', fontSize:12}}>
+            Region: x {Math.round(measure.roi.x*100)}% • y {Math.round(measure.roi.y*100)}% • w {Math.round(measure.roi.w*100)}% • h {Math.round(measure.roi.h*100)}%
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+
+In ProjectDetails.tsx, import and render this card under Overview:
+
+<DimensionsCard measure={measure} />
+
+
+5) Safe rendering
+
+Ensure the hero container uses overflow:'hidden' and a fixed aspect ratio wrapper so percent-based ROI positions align with the image area.

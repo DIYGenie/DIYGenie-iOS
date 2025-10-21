@@ -1,0 +1,124 @@
+Goal: Make the purple rectangle resizable (your drag works already). We’ll update the handle responders so they capture touches and don’t get stolen by the parent drag responder, and make handles bigger/easier to grab.
+
+THEME
+*** FILE: app/components/DraggableRect.tsx
+@@
+-  const dragResponder = useMemo(
+-    () =>
+-      PanResponder.create({
+-        onStartShouldSetPanResponder: () => true,
+-        onMoveShouldSetPanResponder: () => true,
+-        onPanResponderMove: (_e, g) => {
+-          update({ ...rect, x: rect.x + g.dx, y: rect.y + g.dy });
+-        },
+-      }),
+-    [rect, update]
+-  );
++  const dragResponder = useMemo(
++    () =>
++      PanResponder.create({
++        // Let children (corner handles) win first.
++        onStartShouldSetPanResponderCapture: () => false,
++        onMoveShouldSetPanResponderCapture: () => false,
++        onStartShouldSetPanResponder: () => true,
++        onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) + Math.abs(g.dy) > 2,
++        onPanResponderTerminationRequest: () => false,
++        onPanResponderMove: (_e, g) => {
++          update({ ...rect, x: rect.x + g.dx, y: rect.y + g.dy });
++        },
++      }),
++    [rect, update]
++  );
+@@
+-  function handleHandleDrag(which: 'tl' | 'tr' | 'bl' | 'br') {
+-    return PanResponder.create({
+-      onStartShouldSetPanResponder: () => true,
+-      onMoveShouldSetPanResponder: () => true,
+-      onPanResponderMove: (_e, g) => {
++  function handleHandleDrag(which: 'tl' | 'tr' | 'bl' | 'br') {
++    return PanResponder.create({
++      // Corner handles must capture the gesture immediately
++      onStartShouldSetPanResponderCapture: () => true,
++      onMoveShouldSetPanResponderCapture: () => true,
++      onStartShouldSetPanResponder: () => true,
++      onMoveShouldSetPanResponder: () => true,
++      onPanResponderTerminationRequest: () => false,
++      onPanResponderMove: (_e, g) => {
+         let { x, y, w, h } = rect;
+         if (which === 'tl') {
+           const nx = clamp(x + g.dx, 0, x + w - 24);
+           const ny = clamp(y + g.dy, 0, y + h - 24);
+           w = w - (nx - x);
+           h = h - (ny - y);
+           x = nx;
+           y = ny;
+         } else if (which === 'tr') {
+           const ny = clamp(y + g.dy, 0, y + h - 24);
+           const nw = clamp(w + g.dx, 24, container.w - x);
+           h = h - (ny - y);
+           y = ny;
+           w = nw;
+         } else if (which === 'bl') {
+           const nx = clamp(x + g.dx, 0, x + w - 24);
+           const nh = clamp(h + g.dy, 24, container.h - y);
+           w = w - (nx - x);
+           x = nx;
+           h = nh;
+         } else {
+           // br
+           const nw = clamp(w + g.dx, 24, container.w - x);
+           const nh = clamp(h + g.dy, 24, container.h - y);
+           w = nw;
+           h = nh;
+         }
+         update({ x, y, w, h });
+       },
+     });
+   }
+@@
+-      <View
++      <View
+         {...dragResponder.panHandlers}
+         style={[
+           styles.rect,
+           {
+             left: rect.x,
+             top: rect.y,
+             width: rect.w,
+             height: rect.h,
+           },
+         ]}
+       >
+         {/* Handles */}
+-        <View {...handleHandleDrag('tl').panHandlers} style={[styles.handle, styles.tl]} />
+-        <View {...handleHandleDrag('tr').panHandlers} style={[styles.handle, styles.tr]} />
+-        <View {...handleHandleDrag('bl').panHandlers} style={[styles.handle, styles.bl]} />
+-        <View {...handleHandleDrag('br').panHandlers} style={[styles.handle, styles.br]} />
++        <View {...handleHandleDrag('tl').panHandlers} style={[styles.handle, styles.tl]} />
++        <View {...handleHandleDrag('tr').panHandlers} style={[styles.handle, styles.tr]} />
++        <View {...handleHandleDrag('bl').panHandlers} style={[styles.handle, styles.bl]} />
++        <View {...handleHandleDrag('br').panHandlers} style={[styles.handle, styles.br]} />
+       </View>
+@@
+-  handle: {
++  handle: {
+     position: 'absolute',
+-    width: 16,
+-    height: 16,
+-    borderRadius: 8,
++    width: 28,
++    height: 28,
++    borderRadius: 14,
+     backgroundColor: '#7C3AED',
++    // Easier to grab even if you miss by a few px
++    shadowOpacity: 0.2,
++    shadowRadius: 2,
+   },
+-  tl: { left: -8, top: -8 },
+-  tr: { right: -8, top: -8 },
+-  bl: { left: -8, bottom: -8 },
+-  br: { right: -8, bottom: -8 },
++  tl: { left: -14, top: -14 },
++  tr: { right: -14, top: -14 },
++  bl: { left: -14, bottom: -14 },
++  br: { right: -14, bottom: -14 },

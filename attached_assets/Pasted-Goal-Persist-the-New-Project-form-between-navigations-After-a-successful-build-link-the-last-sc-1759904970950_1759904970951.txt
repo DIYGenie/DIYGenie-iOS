@@ -1,0 +1,93 @@
+Goal:
+
+Persist the New Project form between navigations.
+
+After a successful build, link the last scan to the project, then navigate to ProjectDetails passing a fallback image.
+
+Add a “View in Projects” button on ProjectDetails.
+
+Tasks:
+
+Create a tiny ephemeral store for last scan
+
+// app/lib/ephemeral.ts
+export type LastScan = { scanId: string; imageUrl: string | null };
+let lastScanCache: LastScan | null = null;
+export const setLastScan = (v: LastScan | null) => { lastScanCache = v; };
+export const getLastScan = () => lastScanCache;
+
+
+Persist the New Project form (draft)
+
+In app/screens/NewProject.tsx:
+
+Import AsyncStorage from @react-native-async-storage/async-storage.
+
+On every change to description/budget/skill, await AsyncStorage.setItem('np_draft', JSON.stringify({desc,budget,skill})).
+
+On mount, read that key and prefill state if present.
+
+Remove/avoid any code that clears the form automatically after build; instead add a small “Clear” button that wipes np_draft and state.
+
+Link scan to project & pass fallback image
+
+Create/ensure app/lib/scans.ts has:
+
+import { supabase } from '../supabase';
+export async function attachScanToProject(scanId: string, projectId: string) {
+  const { error } = await supabase.from('room_scans').update({ project_id: projectId }).eq('id', scanId);
+  if (error) throw error;
+  return true;
+}
+
+
+In NewProject.tsx:
+
+Keep the “saved scan” object in a useRef (lastScanRef) and the ephemeral store:
+
+import { setLastScan } from '../lib/ephemeral';
+// when upload finishes:
+lastScanRef.current = { scanId, imageUrl };
+setLastScan({ scanId, imageUrl });
+
+
+When the build webhook returns project_id:
+
+import { attachScanToProject } from '../lib/scans';
+const ls = lastScanRef.current;
+if (ls?.scanId) {
+  try { await attachScanToProject(ls.scanId, project_id); } catch (e) { console.warn('[link scan]', e); }
+}
+navigation.navigate('ProjectDetails', { id: project_id, imageUrl: ls?.imageUrl ?? null });
+
+
+Add import { Keyboard } from 'react-native' and wrap the screen in a Pressable with onPress={Keyboard.dismiss} so the keyboard collapses when tapping the background.
+
+Improve ProjectDetails
+
+Ensure app/screens/ProjectDetails.tsx:
+
+Keeps the header (back works).
+
+Tries to load room_scans for the project_id, or uses the imageUrl param if none found.
+
+Add a secondary button at the bottom:
+
+<Pressable
+  onPress={() => navigation.navigate('Projects' as never)}
+  style={{ backgroundColor:'#111827', marginTop:8, paddingVertical:12, borderRadius:10, alignItems:'center' }}>
+  <Text style={{ color:'#fff', fontWeight:'700' }}>View in Projects</Text>
+</Pressable>
+
+
+(Keep everything else you added.)
+
+Acceptance:
+
+After build → Details screen shows, with either the linked scan image or the just-taken fallback.
+
+Press Back → your New Project form values are still there.
+
+View in Projects takes you to the Projects tab.
+
+No “was not handled by any navigator” warnings.

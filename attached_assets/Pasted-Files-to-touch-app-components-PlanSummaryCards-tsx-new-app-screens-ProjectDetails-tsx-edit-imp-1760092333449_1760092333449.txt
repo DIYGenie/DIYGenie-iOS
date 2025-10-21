@@ -1,0 +1,160 @@
+Files to touch
+
+app/components/PlanSummaryCards.tsx (new)
+
+app/screens/ProjectDetails.tsx (edit: import + render)
+
+c) Exact patches/code
+
+Create the summary component:
+
++++ app/components/PlanSummaryCards.tsx
++import React from 'react';
++import { View, Text, Pressable } from 'react-native';
++import { Ionicons } from '@expo/vector-icons';
++import type { Plan } from '../lib/plan';
++
++type Props = {
++  plan: Plan;
++  onOpenDetails?: () => void;
++};
++
++const Card = ({ title, subtitle, icon, onPress }: { title: string; subtitle?: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void }) => (
++  <Pressable
++    onPress={onPress}
++    style={{
++      flex: 1,
++      backgroundColor: '#F5F3FF',
++      borderRadius: 16,
++      padding: 14,
++      margin: 6,
++    }}
++  >
++    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
++      <Ionicons name={icon} size={18} color="#6D28D9" />
++      <Text style={{ marginLeft: 8, fontWeight: '700', color: '#111827' }}>{title}</Text>
++    </View>
++    {!!subtitle && <Text style={{ color: '#6B7280', fontSize: 13 }}>{subtitle}</Text>}
++  </Pressable>
++);
++
++export default function PlanSummaryCards({ plan, onOpenDetails }: Props) {
++  const open = onOpenDetails ?? (() => {});
++  const stepsCount = plan.steps?.length ?? 0;
++  const materialsCount = plan.materials?.length ?? 0;
++  const toolsCount = plan.tools?.length ?? 0;
++  const cutsCount = plan.cuts?.length ?? 0;
++  const timeStr = plan.time?.total_hours ? `${plan.time.total_hours} hrs` : undefined;
++  const costStr = plan.cost?.estimated ? `$${plan.cost.estimated}` : undefined;
++
++  return (
++    <View style={{ marginTop: 16 }}>
++      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 }}>
++        <Card title="Overview" subtitle={plan.overview?.slice(0, 80) || 'What you’ll build'} icon="information-circle-outline" onPress={open} />
++        <Card title="Steps" subtitle={`${stepsCount} step${stepsCount === 1 ? '' : 's'}`} icon="list-outline" onPress={open} />
++        <Card title="Materials" subtitle={`${materialsCount} item${materialsCount === 1 ? '' : 's'}`} icon="cube-outline" onPress={open} />
++        <Card title="Tools" subtitle={`${toolsCount} tool${toolsCount === 1 ? '' : 's'}`} icon="hammer-outline" onPress={open} />
++        <Card title="Cuts" subtitle={`${cutsCount} cut${cutsCount === 1 ? '' : 's'}`} icon="cut-outline" onPress={open} />
++        <Card
++          title="Time & Cost"
++          subtitle={[timeStr, costStr].filter(Boolean).join(' · ') || 'Estimates'}
++          icon="time-outline"
++          onPress={open}
++        />
++      </View>
++    </View>
++  );
++}
+
+
+Wire it into ProjectDetails (show when a plan is available):
+
+*** app/screens/ProjectDetails.tsx
+@@
+-import { View, Image, ActivityIndicator, Pressable, Text } from 'react-native';
++import { View, Image, ActivityIndicator, Pressable, Text } from 'react-native';
+ import { useRoute, useNavigation, RouteProp, useFocusEffect } from '@react-navigation/native';
+ import { useSafeBack } from '../lib/useSafeBack';
+-import { fetchProjectById, fetchLatestScanForProject } from '../lib/api';
++import { fetchProjectById, fetchLatestScanForProject } from '../lib/api';
++import PlanSummaryCards from '../components/PlanSummaryCards';
++import { Plan } from '../lib/plan';
++import { parsePlanMarkdown, fetchProjectPlanMarkdown } from '../lib/plan'; // if not already imported
+@@
+-  const [scan, setScan] = useState<{ scanId: string; imageUrl: string } | null>(null);
++  const [scan, setScan] = useState<{ scanId: string; imageUrl: string } | null>(null);
++  const [planObj, setPlanObj] = useState<Plan | null>(null);
+@@
+   const load = useCallback(async () => {
+     if (!projectId) return;
+@@
+-      const [p, s] = await Promise.all([
++      const [p, s] = await Promise.all([
+         fetchProjectById(projectId, { signal: controller.signal, timeoutMs: 8000 }),
+         fetchLatestScanForProject(projectId),
+       ]);
+       if (!controller.signal.aborted) {
+         setProject(p);
+         setScan(s);
++        // If backend says plan is ready, try to load markdown → structured plan
++        if (p?.status === 'ready') {
++          try {
++            const md = await fetchProjectPlanMarkdown(projectId);
++            const parsed = parsePlanMarkdown(md || '');
++            setPlanObj(parsed);
++          } catch (e) {
++            // silent; leave planObj null
++          }
++        } else {
++          setPlanObj(null);
++        }
+       }
+@@
+   return (
+     <View style={{ flex: 1, padding: 16 }}>
+@@
+       {loading ? (
+         <View style={{ paddingTop: 40 }}>
+           <ActivityIndicator />
+         </View>
+       ) : scan?.imageUrl ? (
+         <Image
+           source={{ uri: scan.imageUrl }}
+           style={{ width: '100%', height: 220, borderRadius: 16, backgroundColor: '#EEE' }}
+           resizeMode="cover"
+         />
+       ) : (
+         <View
+           style={{
+             width: '100%',
+             height: 220,
+             borderRadius: 16,
+             backgroundColor: '#F2F2F2',
+             alignItems: 'center',
+             justifyContent: 'center',
+           }}
+         >
+           <Text style={{ color: '#6B7280' }}>No scan image yet</Text>
+         </View>
+       )}
++
++      {/* Summary grid when plan data is present */}
++      {!!planObj && (
++        <PlanSummaryCards
++          plan={planObj}
++          onOpenDetails={() =>
++            navigation.navigate('Projects', {
++              screen: 'DetailedInstructions',
++              params: { id: projectId },
++            } as any)
++          }
++        />
++      )}
+     </View>
+   );
+ }
+
+
+Notes:
+• If fetchProjectPlanMarkdown + parsePlanMarkdown are already integrated on this screen, keep them; the diff above just ensures planObj is set and passed to the new cards.
+• If your navigator uses different names than 'Projects'/'DetailedInstructions', keep your known-good ones.

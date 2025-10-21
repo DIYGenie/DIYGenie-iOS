@@ -1,0 +1,54 @@
+Task: Fix “Build with AI Preview” request so it doesn’t error in Expo Go.
+Files: app/lib/api.ts, app/screens/NewProject.tsx
+Changes:
+
+In app/lib/api.ts, add/replace requestProjectPreview() to always hit the DEV webhooks base and to treat 2xx as success and 422/404 as a graceful fallback:
+
+// app/lib/api.ts
+export async function requestProjectPreview(projectId: string) {
+  // Always use DEV webhooks for preview while in development
+  const dev = process.env.EXPO_PUBLIC_WEBHOOKS_DEV 
+    ?? 'https://diy-genie-webhooks-tyekowalski.replit.app';
+  const url = `${dev}/api/projects/${projectId}/preview`;
+  try {
+    const res = await fetch(url, { method: 'POST' });
+    const body = await res.json().catch(() => ({}));
+    const ok = res.status >= 200 && res.status < 300;
+    // Graceful fallback: treat 404/422 as “stub accepted” for dev
+    const softOk = res.status === 404 || res.status === 422;
+    return { ok: ok || softOk, status: res.status, body };
+  } catch (e: any) {
+    return { ok: false, status: 0, body: { error: String(e?.message || e) } };
+  }
+}
+
+
+In app/screens/NewProject.tsx, inside handleBuildWithPreview():
+
+Keep existing validation.
+
+After calling requestProjectPreview(projectId), if r.ok === true, show a toast and navigate to ProjectDetails. If r.ok === false, show an alert and do not throw or log a redbox.
+Replace the preview call section with:
+
+const r = await requestProjectPreview(projectId);
+if (!r.ok) {
+  console.log('[preview request] non-OK', r.status, r.body);
+  Alert.alert('Preview not available', 'Preview service is disabled in this build. You can still proceed to your project details.');
+} else {
+  Toast.show('Preview requested. We’ll notify you when it’s ready.');
+}
+navigation.navigate('Projects' as never, {
+  screen: 'ProjectDetails',
+  params: { id: projectId },
+} as never);
+
+
+Ensure no console.error or thrown exception on non-2xx so we don’t trigger the red error overlay.
+
+Acceptance:
+
+Tap Build with AI Preview → no red error.
+
+You’re navigated to ProjectDetails with toast or friendly alert.
+
+Works even if the prod API returns 422.

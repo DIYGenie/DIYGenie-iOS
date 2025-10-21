@@ -1,0 +1,125 @@
+New screen: app/screens/PlanWaiting.tsx
+import React, { useEffect } from 'react';
+import { View, Text, ActivityIndicator, Pressable } from 'react-native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { InteractionManager } from 'react-native';
+import { fetchProjectPlanMarkdown } from '../lib/api'; // already exists
+
+type Params = { id: string };
+type R = RouteProp<Record<'PlanWaiting', Params>, 'PlanWaiting'>;
+
+export default function PlanWaiting() {
+  const route = useRoute<R>();
+  const navigation = useNavigation<any>();
+  const id = route.params?.id;
+
+  useEffect(() => {
+    let cancelled = false;
+    let tries = 0;
+
+    async function poll() {
+      if (cancelled) return;
+      tries += 1;
+      console.log('[wait] poll try', tries);
+
+      try {
+        const md = await fetchProjectPlanMarkdown(id); // returns string on 200
+        if (!cancelled && md) {
+          // Seed the Projects stack then push details (same pattern we used before)
+          const parent = navigation.getParent?.();
+          parent?.navigate('Projects', { screen: 'ProjectsList' });
+          InteractionManager.runAfterInteractions(() => {
+            parent?.navigate('Projects', { screen: 'ProjectDetails', params: { id } });
+          });
+          return; // stop polling
+        }
+      } catch (e: any) {
+        // 409 = not ready; anything else log
+        if (e?.status !== 409) console.log('[wait] poll error', e);
+      }
+
+      if (!cancelled) setTimeout(poll, 2000); // keep polling
+    }
+
+    poll();
+    return () => { cancelled = true; };
+  }, [id, navigation]);
+
+  return (
+    <View style={{ flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center' }}>
+      <ActivityIndicator />
+      <Text style={{ marginTop: 16, fontSize: 16, fontWeight: '600' }}>Building your plan…</Text>
+      <Text style={{ marginTop: 6, color: '#6B7280', textAlign: 'center' }}>
+        This can take a moment. We’ll open your project automatically.
+      </Text>
+
+      <Pressable
+        onPress={() => navigation.getParent()?.navigate('Home')}
+        style={{ marginTop: 24, padding: 12, paddingHorizontal: 18, backgroundColor: '#EEE', borderRadius: 12 }}
+      >
+        <Text>Go Home</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+
+Navigator: add this screen to your Projects stack.
+
+// app/navigation/ProjectsNavigator.tsx (or wherever your stack is)
+<Stack.Screen name="PlanWaiting" component={PlanWaiting} options={{ title: 'Building Plan' }} />
+
+2) Route to PlanWaiting after build
+
+NewProject.tsx – when your “Build Plan Without Preview” (or the preview path) returns the project_id, navigate to PlanWaiting instead of ProjectDetails:
+
+// after you get projectId
+const parent = navigation.getParent?.();
+parent?.navigate('Projects', { screen: 'PlanWaiting', params: { id: projectId } });
+
+3) Gate taps on Projects list
+
+In your Projects list card onPress (Home recent projects too), run a fast readiness check:
+
+import { fetchProjectPlanMarkdown } from '../lib/api';
+
+async function openProject(item) {
+  try {
+    await fetchProjectPlanMarkdown(item.id); // 200 => ready
+    const parent = navigation.getParent?.();
+    parent?.navigate('Projects', { screen: 'ProjectsList' });
+    InteractionManager.runAfterInteractions(() => {
+      parent?.navigate('Projects', { screen: 'ProjectDetails', params: { id: item.id } });
+    });
+  } catch (e: any) {
+    // 409 => not ready yet: send to waiting screen
+    const parent = navigation.getParent?.();
+    parent?.navigate('Projects', { screen: 'PlanWaiting', params: { id: item.id } });
+  }
+}
+
+
+That guarantees you never hit ProjectDetails until the plan is actually available.
+
+4) Don’t show “Plan ready” badge prematurely
+
+In ProjectDetails.tsx, make the header badge depend on !!planObj (parsed data), not just project.status:
+
+const isPlanReady = !!planObj;
+
+useLayoutEffect(() => {
+  navigation.setOptions({
+    headerTitle: () => (
+      <View style={{ flexDirection:'row', alignItems:'center', maxWidth: 260 }}>
+        <Text numberOfLines={1} style={{ fontSize:16, fontWeight:'700' }}>
+          {project?.name || 'Project'}
+        </Text>
+        {isPlanReady ? (
+          <View style={{ marginLeft: 8 }}>
+            <StatusBadge status="Plan ready" />
+          </View>
+        ) : null}
+      </View>
+    ),
+  });
+}, [navigation, project?.name, isPlanReady]);

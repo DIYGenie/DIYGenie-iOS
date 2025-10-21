@@ -1,0 +1,83 @@
+Goal: Make the keyboard chill on New Project: dismiss on drag/tap, and close when the user hits “Done.” Tiny, safe edits—no UI redesign.
+
+THEME
+*** FILE: app/screens/NewProject.tsx
+@@
+-import React, { useMemo, useState, useRef } from 'react';
+-import { View, Text, ScrollView, TextInput, Pressable, Image, ActivityIndicator } from 'react-native';
++import React, { useMemo, useState, useRef } from 'react';
++import { View, Text, ScrollView, TextInput, Pressable, Image, ActivityIndicator, Keyboard } from 'react-native';
+@@
+-  return (
+-    <ScrollView contentContainerStyle={{ padding: 16 }}>
++  return (
++    <ScrollView
++      contentContainerStyle={{ padding: 16 }}
++      keyboardDismissMode="on-drag"
++      keyboardShouldPersistTaps="handled"
++    >
+@@
+-        <TextInput
++        <TextInput
+           placeholder="e.g., Built-in Bookcase"
+           value={title}
+           onChangeText={setTitle}
++          returnKeyType="done"
++          blurOnSubmit
++          onSubmitEditing={() => Keyboard.dismiss()}
+           style={{
+             backgroundColor: 'white',
+             borderRadius: 12,
+             paddingHorizontal: 14,
+             paddingVertical: 12,
+           }}
+         />
+@@
+-        <TextInput
++        <TextInput
+           placeholder="e.g. Build 3 floating shelves for living room wall (minimum 10 characters)"
+           value={description}
+           onChangeText={setDescription}
+           multiline
++          returnKeyType="done"
++          blurOnSubmit
++          onSubmitEditing={() => Keyboard.dismiss()}
+           style={{
+             backgroundColor: 'white',
+             borderRadius: 12,
+             paddingHorizontal: 14,
+             paddingVertical: 12,
+             minHeight: 100,
+           }}
+         />
+@@
+-        <Pressable onPress={openBudgetPicker} /* ...existing props... */>
++        <Pressable
++          onPress={() => { Keyboard.dismiss(); openBudgetPicker(); }}
++          /* ...existing props... */
++        >
+           {/* existing children */}
+         </Pressable>
+@@
+-        <Pressable onPress={openSkillPicker} /* ...existing props... */>
++        <Pressable
++          onPress={() => { Keyboard.dismiss(); openSkillPicker(); }}
++          /* ...existing props... */
++        >
+           {/* existing children */}
+         </Pressable>
+@@
+-    </ScrollView>
++    </ScrollView>
+   );
+
+
+Notes:
+
+keyboardDismissMode="on-drag" lets users swipe the screen down to close the keyboard.
+
+keyboardShouldPersistTaps="handled" forwards taps to your buttons (so picking Budget/Skill won’t re-focus the input).
+
+We dismiss the keyboard before opening the Budget/Skill pickers.
+
+returnKeyType="done" + blurOnSubmit + onSubmitEditing closes the keyboard when the user taps “Done”.

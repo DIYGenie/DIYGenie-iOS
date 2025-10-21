@@ -1,0 +1,89 @@
+**project:** Theme
+**autonomy:** low
+**app testing:** off
+
+**Agent-3 Prompt — Final Asset & Screenshot Audit (iPhone 17 Pro / Pro Max)**
+
+Goal: verify production assets and auto-generate App Store-ready screenshots using **iPhone 17 Pro Max (6.7″)** + **iPhone 17 Pro (6.1″)** frames.
+Everything must remain backward-compatible with prior iPhone classes.
+
+---
+
+### 🧩 Tasks
+
+1. **Validate required assets**
+
+   * Confirm presence and size:
+
+     * `/assets/icon.png` ≥ 1024×1024 (px)
+     * `/assets/adaptive-icon.png` (square, transparent background)
+     * `/assets/splash.png` ≥ 1242×2688 (px), purple→white gradient center logo
+   * If smaller, upscale via Expo asset pipeline.
+   * Verify contrast ≥ 4.5:1 (text/logo vs background).
+
+2. **Generate new screenshot set**
+
+   * Capture these app views from the live build:
+
+     1. Home / Projects List
+     2. Project Details (with preview shown)
+     3. “What to Test” sheet
+     4. Diagnostics screen
+   * Devices:
+
+     * **iPhone 17 Pro Max (6.7″)** → main marketing frame
+     * **iPhone 17 Pro (6.1″)** → secondary size class
+   * Themes: Light & Dark.
+   * Export → `/assets/screenshots/ios/` as:
+
+     ```
+     01_home_6.7_light.png
+     02_details_6.7_dark.png
+     03_whattotest_6.1_light.png
+     04_diagnostics_6.1_dark.png
+     ```
+
+     plus mirrored dark/light variants (total = 8 PNG files).
+   * Auto-generate `metadata.json` describing filename, screen, device, mode.
+
+3. **Audit manifest**
+
+   * Confirm in `app.config.js`:
+
+     ```js
+     ios: { icon: './assets/icon.png',
+            splash: { image: './assets/splash.png' } },
+     android: { adaptiveIcon: { foregroundImage: './assets/adaptive-icon.png' } },
+     orientation: 'portrait',
+     userInterfaceStyle: 'automatic'
+     ```
+   * Ensure no deprecated asset references remain.
+
+4. **Outputs**
+
+   * Console summary:
+
+     ```
+     [assets] ok { icon:true, splash:true, adaptive:true,
+                   screenshots:8, contrast:"pass", devices:["17 Pro","17 Pro Max"] }
+     ```
+   * Save `docs/assets-report.md` containing:
+
+     * Asset sizes + contrast check
+     * Screenshot inventory
+     * Recommended App Store captions (one-liners per screen).
+
+---
+
+### ✅ Acceptance
+
+* All 3 core assets ≥ 1024 px & contrast pass
+* 8 screenshots generated with iPhone 17 frames
+* `metadata.json` + `docs/assets-report.md` created
+* No TypeScript or build errors
+
+**Stop after generation** and report:
+
+* The `[assets] ok …` log line
+* Total screenshots exported
+* Any contrast/size warnings (if present)

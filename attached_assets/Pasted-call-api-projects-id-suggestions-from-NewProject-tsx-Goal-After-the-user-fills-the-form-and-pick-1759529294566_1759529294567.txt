@@ -1,0 +1,70 @@
+call /api/projects/:id/suggestions from NewProject.tsx
+
+Goal: After the user fills the form and picks a photo, create (or reuse) a draft project, then POST to /api/projects/:id/suggestions and render a “Smart Suggestions (beta)” card with refresh + loading states. Keep your current photo picker and build buttons intact.
+
+Give this to Agent 3:
+
+Update app/screens/NewProject.tsx to fetch and show server-backed “Smart Suggestions (beta)”.
+Requirements:
+
+Use const BASE = process.env.EXPO_PUBLIC_BASE_URL || 'http://localhost:5000'; and const USER_ID = 'auto'; (we map auto on backend).
+
+State:
+
+draftId: string | null
+
+photoUri: string | null (already present; keep current picker)
+
+sugs: string[] | null (top 5 bullets)
+
+sugsBusy: boolean
+
+promptText: string (pre-filled from form; user editable)
+
+ensureDraft()
+
+If draftId exists, return it.
+
+Else POST ${BASE}/api/projects with JSON: { user_id: USER_ID, name, budget, skill: skillLevel }.
+
+On 200: save res.item.id into draftId.
+
+On 4xx: show toast with server message and abort.
+
+fetchSuggestions()
+
+Preconditions: description >= 10, budget set, skill set, and photoUri present.
+
+await ensureDraft(); then POST ${BASE}/api/projects/${draftId}/suggestions with { user_id: USER_ID, name, budget, skill_level: skillLevel }.
+
+Expect { ok: true, suggestions: string[], tags?: string[] }.
+
+Store top 5 into sugs.
+
+sugsBusy during fetch; catch → toast error.
+
+Triggering:
+
+Call fetchSuggestions() automatically when photoUri becomes non-null and form is valid; also expose a Refresh button.
+
+UI:
+
+Render a card titled “Smart Suggestions (beta)” when sugs is not null.
+
+Each suggestion as a bullet with a ✓ icon.
+
+Small meta line: style: modern • difficulty: {skillLevel} • budget: {budget} (static “modern” is fine for now).
+
+Add a Refresh icon/button; testID="np-suggestions-refresh".
+
+Container has testID="np-suggestions-card".
+
+Keep the existing Generate Plan and Build Without Preview buttons. For Generate Plan, continue to call your build endpoint; do not upload the local photo.
+
+Test IDs to add/keep:
+
+np-suggestions-card, np-suggestions-refresh, np-generate-plan, btn-upload-photo.
+
+Do not navigate away to NewProjectMedia—use the inline picker already in this file.
+
+No new deps. Keep the code idiomatic and minimal.

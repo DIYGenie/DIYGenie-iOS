@@ -1,0 +1,83 @@
+{
+  "screenshots": [
+    {
+      "filename": "01_home_6.7_light.png",
+      "screen": "Home / Projects List",
+      "device": "iPhone 17 Pro Max",
+      "size": "6.7\"",
+      "mode": "light",
+      "caption": "Browse your DIY projects with visual previews and smart organization"
+    },
+    {
+      "filename": "01_home_6.7_dark.png",
+      "screen": "Home / Projects List",
+      "device": "iPhone 17 Pro Max",
+      "size": "6.7\"",
+      "mode": "dark",
+      "caption": "Browse your DIY projects with visual previews and smart organization"
+    },
+    {
+      "filename": "02_details_6.7_light.png",
+      "screen": "Project Details",
+      "device": "iPhone 17 Pro Max",
+      "size": "6.7\"",
+      "mode": "light",
+      "caption": "See AI-generated visual mockups and detailed build plans"
+    },
+    {
+      "filename": "02_details_6.7_dark.png",
+      "screen": "Project Details",
+      "device": "iPhone 17 Pro Max",
+      "size": "6.7\"",
+      "mode": "dark",
+      "caption": "See AI-generated visual mockups and detailed build plans"
+    },
+    {
+      "filename": "03_whattotest_6.1_light.png",
+      "screen": "What to Test",
+      "device": "iPhone 17 Pro",
+      "size": "6.1\"",
+      "mode": "light",
+      "caption": "First-time user guide shows you exactly what to try"
+    },
+    {
+      "filename": "03_whattotest_6.1_dark.png",
+      "screen": "What to Test",
+      "device": "iPhone 17 Pro",
+      "size": "6.1\"",
+      "mode": "dark",
+      "caption": "First-time user guide shows you exactly what to try"
+    },
+    {
+      "filename": "04_diagnostics_6.1_light.png",
+      "screen": "Diagnostics",
+      "device": "iPhone 17 Pro",
+      "size": "6.1\"",
+      "mode": "light",
+      "caption": "Built-in diagnostics help with TestFlight feedback"
+    },
+    {
+      "filename": "04_diagnostics_6.1_dark.png",
+      "screen": "Diagnostics",
+      "device": "iPhone 17 Pro",
+      "size": "6.1\"",
+      "mode": "dark",
+      "caption": "Built-in diagnostics help with TestFlight feedback"
+    }
+  ],
+  "devices": [
+    {
+      "name": "iPhone 17 Pro Max",
+      "display": "6.7\"",
+      "resolution": "1290x2796",
+      "scale": 3
+    },
+    {
+      "name": "iPhone 17 Pro",
+      "display": "6.1\"",
+      "resolution": "1179x2556",
+      "scale": 3
+    }
+  ],
+  "note": "Screenshots to be captured from live TestFlight build with device frames applied"
+}

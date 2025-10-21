@@ -1,0 +1,61 @@
+Task: Fix CORS preflight and image picker crash. No new files; modify only existing ones.
+Autonomy: Medium.
+Files to edit: server.js, app/lib/storage.ts
+
+1) CORS – reflect requested headers (don’t whitelist)
+
+In server.js, replace the current CORS setup with this:
+
+import cors from 'cors';
+// Reflect any origin
+app.use(cors({ origin: true }));
+// Ensure preflights always succeed and reflect requested headers
+app.use((req, res, next) => {
+  const origin = req.headers.origin || '*';
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,OPTIONS');
+  const reqHeaders = req.headers['access-control-request-headers'];
+  if (reqHeaders) res.setHeader('Access-Control-Allow-Headers', reqHeaders);
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
+
+Keep /health, /api/projects (GET+POST), and /me/entitlements/:id as they are.
+
+2) ImagePicker – backward compatible call
+
+In app/lib/storage.ts, update the gallery picker so it does not reference ImagePicker.MediaType (new) and does not crash if the SDK is older:
+
+import * as ImagePicker from 'expo-image-picker';
+
+export async function pickImageAsync() {
+  // asking permission (no-op on web)
+  await ImagePicker.requestMediaLibraryPermissionsAsync();
+  const result = await ImagePicker.launchImageLibraryAsync({
+    // omit mediaTypes for widest compatibility; defaults to images
+    allowsMultipleSelection: false,
+    quality: 0.9,
+    exif: false,
+  });
+  if (result.canceled) return null;
+  return result.assets?.[0]?.uri ?? null;
+}
+
+
+Ensure callers use const uri = await pickImageAsync(); if (!uri) return; before uploading.
+
+3) Dev hint (optional, no UI changes): If not present, log the BASE_URL once on app mount so we can verify at a glance.
+
+Acceptance criteria:
+
+From the device (QR preview), the yellow “BASE_URL or CORS” banner disappears.
+
+GET https://api.diygenieapp.com/health succeeds from the app.
+
+Tapping Upload Photo opens gallery and returns a URI; upload begins (no “undefined is not an object”).
+
+Console no longer shows “Network/CORS or wrong BASE_URL”.
+
+Do not rename/move files. No secrets in code.

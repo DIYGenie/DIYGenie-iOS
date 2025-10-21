@@ -1,0 +1,139 @@
+Goal: Ensure Projects tab and Home → Recent Projects always show the latest data by refetching when the screen gains focus (and after returning from creates/updates).
+
+Constraints:
+
+No UI redesign.
+
+Add new helper in lib/api.ts (non-breaking).
+
+Only minimal changes to ProjectsScreen.js and HomeScreen.js.
+
+THEME
+// EDIT FILE: app/lib/api.ts
+// Add a safe helper that fetches projects for the current user via Webhooks.
+
+import { supabase } from './supabase';
+
+const API_BASE = process.env.EXPO_PUBLIC_WEBHOOKS_BASE_URL || 'https://diy-genie-webhooks-tyekowalski.replit.app';
+
+export async function fetchProjectsForCurrentUser() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  const uid = data?.session?.user?.id;
+  if (!uid) return [];
+
+  const url = `${API_BASE}/api/projects?user_id=${encodeURIComponent(uid)}`;
+  const res = await fetch(url);
+  if (!res.ok) return [];
+  const json = await res.json();
+  // normalize: API may return {items:[...]} or {projects:[...]} or array
+  const items = Array.isArray(json) ? json : (json.items || json.projects || []);
+  return items ?? [];
+}
+
+THEME
+// EDIT FILE: app/screens/ProjectsScreen.js
+// Refetch on focus so the list always shows newly-created projects.
+
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, RefreshControl, FlatList } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import T from '../components/T';
+import { fetchProjectsForCurrentUser } from '../lib/api';
+
+export default function ProjectsScreen() {
+  const [projects, setProjects] = useState([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setRefreshing(true);
+      const data = await fetchProjectsForCurrentUser();
+      setProjects(data);
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // initial load
+    load();
+  }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      // refetch anytime this screen gains focus
+      load();
+    }, [load])
+  );
+
+  return (
+    <View style={{ flex: 1 }}>
+      <T.h2 style={{ padding: 16 }}>Projects</T.h2>
+      <FlatList
+        data={projects}
+        keyExtractor={(item, idx) => item.id || item.project_id || String(idx)}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={load} />
+        }
+        renderItem={({ item }) => {
+          // keep your existing card component if you have one
+          // minimal placeholder to avoid layout changes
+          return (
+            <View style={{ paddingHorizontal:16, paddingVertical:12 }}>
+              <T.h3>{item.name || item.title || 'Untitled project'}</T.h3>
+              <T.muted>In progress</T.muted>
+            </View>
+          );
+        }}
+        ListEmptyComponent={
+          <View style={{ padding: 24 }}>
+            <T.p>No projects yet.</T.p>
+          </View>
+        }
+      />
+    </View>
+  );
+}
+
+THEME
+// EDIT FILE: app/screens/HomeScreen.js
+// Refresh "Recent Projects" on focus using the same helper.
+
+import React, { useCallback, useEffect, useState } from 'react';
+import { View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import T from '../components/T';
+import { fetchProjectsForCurrentUser } from '../lib/api';
+
+export default function HomeScreen() {
+  const [recent, setRecent] = useState([]);
+
+  const load = useCallback(async () => {
+    const data = await fetchProjectsForCurrentUser();
+    // take top 2-3 for "Recent"
+    setRecent(data.slice(0, 3));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  return (
+    <View style={{ flex: 1, padding: 16 }}>
+      <T.h2>Welcome back, Tye</T.h2>
+      {/* keep your existing "How it works" UI */}
+      <T.h3 style={{ marginTop: 16 }}>Recent Projects</T.h3>
+      {recent.map((p, i) => (
+        <View key={p.id || i} style={{ paddingVertical: 10 }}>
+          <T.p>{p.name || p.title || 'Untitled project'}</T.p>
+          <T.muted>In progress</T.muted>
+        </View>
+      ))}
+    </View>
+  );
+}

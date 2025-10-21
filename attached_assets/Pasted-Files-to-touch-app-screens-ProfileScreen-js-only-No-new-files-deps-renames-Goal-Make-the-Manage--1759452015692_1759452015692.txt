@@ -1,0 +1,92 @@
+Files to touch: app/screens/ProfileScreen.js only. No new files/deps/renames.
+
+Goal
+Make the Manage and Sync Plan buttons work, and wire the Profile Settings rows (Account Settings, Billing & Payments, Help & Support, Log Out). Ensure no view overlays are blocking taps and add testIDs for quick QA.
+
+Implement
+
+Imports (top of file)
+Ensure these are imported (add if missing):
+import { Pressable, TouchableOpacity, AppState, Platform, Linking, Alert, View, Text } from 'react-native';
+
+Tap-safety wrapper
+Around the Your Plan card container, set pointerEvents="auto" and add style={{ zIndex: 1 }} to avoid any overlay intercept from headers/gradients.
+
+Manage button
+Replace the static “Manage” text with a Pressable:
+
+<Pressable
+  onPress={openPortal}
+  accessibilityRole="button"
+  hitSlop={12}
+  disabled={busy}
+  testID="btn-manage-portal"
+  style={{ paddingVertical: 8, paddingHorizontal: 6 }}
+>
+  <Text style={{ color: '#F4A307', fontWeight: '600' }}>Manage</Text>
+</Pressable>
+
+
+(Keep your brand color for the text.)
+
+Sync Plan
+Ensure the “Sync Plan” text is a Pressable:
+
+<Pressable
+  onPress={getEntitlements}
+  accessibilityRole="button"
+  hitSlop={10}
+  disabled={busy}
+  testID="btn-sync-plan"
+  style={{ alignSelf: 'center', paddingVertical: 8 }}
+>
+  <Text style={{ color: '#F4A307', fontWeight: '600' }}>
+    {busy ? 'Syncing…' : 'Sync Plan'}
+  </Text>
+</Pressable>
+
+
+Settings rows
+Make each row tappable and useful today (no new screens):
+
+Account Settings → Alert.alert('Coming soon', 'Account settings will land here.')
+
+Billing & Payments → openPortal()
+
+Help & Support → Linking.openURL('mailto:support@diygenieapp.com?subject=DIY%20Genie%20Support') with a Linking.canOpenURL guard
+
+Log Out → If you have a supabase client in scope, call supabase.auth.signOut().catch(()=>{}); otherwise show an alert for now.
+Wrap each row container with:
+
+<Pressable onPress={...} accessibilityRole="button" hitSlop={10} testID="row-<name>">
+  {/* existing row content */}
+</Pressable>
+
+
+and add disabled={busy} to avoid mid-request taps.
+
+QA hooks & visuals
+
+Add testIDs: btn-manage-portal, btn-sync-plan, row-account, row-billing, row-help, row-logout, plus keep plan-pro-cta / plan-casual-cta.
+
+Confirm busy disables Manage, Sync, and both Start CTAs.
+
+Ensure there’s no absolute-positioned element above the plan card; if present, give that element pointerEvents="none" or lower zIndex.
+
+Acceptance criteria
+
+Manage opens the Stripe Portal (or shows the 501 alert if the server responds that way).
+
+Sync Plan calls entitlements and updates the plan badge (you should see the change if you upgrade/downgrade).
+
+Settings rows respond:
+
+Billing & Payments → Portal
+
+Account Settings → friendly placeholder alert
+
+Help & Support → email compose opens
+
+Log Out → signs out if Supabase client present, else alert
+
+Presses are reliable on web & native; no view is intercepting touches; testIDs exist.

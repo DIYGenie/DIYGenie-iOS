@@ -1,0 +1,73 @@
+Goal: Auto-poll plan status every ~8s while “building”, keep the manual Refresh working, and swap to a “View Plan” CTA when ready.
+
+1) Add a tiny interval hook app/hooks/useInterval.ts
+
+import { useEffect, useRef } from 'react';
+
+export function useInterval(fn: () => void, delay: number | null) {
+  const saved = useRef<() => void>(() => {});
+  useEffect(() => { saved.current = fn; }, [fn]);
+  useEffect(() => {
+    if (delay == null) return;
+    const id = setInterval(() => saved.current(), delay);
+    return () => clearInterval(id);
+  }, [delay]);
+}
+
+
+2) Update app/screens/ProjectDetails.tsx
+
+import the hook
+
+detect “building” status
+
+poll load() while building
+
+keep your existing “Refresh” tap working
+
+switch the Plan card UI when ready
+
+// imports – add:
+import { useInterval } from '../hooks/useInterval';
+
+// inside component, after `const [project, setProject] = useState...`
+const status = (project?.plan_status || project?.status || '').toLowerCase();
+const isBuilding = /requested|building|queued|pending/.test(status) && !/ready|done|error|failed/.test(status);
+
+// auto-poll while building
+useInterval(() => {
+  if (isBuilding) load();   // reuse your existing loader
+}, isBuilding ? 8000 : null);
+
+
+Now tweak the Plan section render in return (...):
+
+{/* PLAN CARD */}
+<View style={{ marginTop: 16, backgroundColor: '#F6F7FB', borderRadius: 12, padding: 12 }}>
+  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+    <Text style={{ fontWeight: '700' }}>Plan</Text>
+
+    {isBuilding ? (
+      <Pressable onPress={load} style={{ padding: 6 }}>
+        <Text style={{ color: '#6D28D9', fontWeight: '600' }}>Refresh</Text>
+      </Pressable>
+    ) : (
+      <Pressable
+        onPress={() => navigation.navigate('BuildPlan', { id: projectId })}
+        style={{ backgroundColor: '#6D28D9', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 }}
+      >
+        <Text style={{ color: 'white', fontWeight: '700' }}>View Plan</Text>
+      </Pressable>
+    )}
+  </View>
+
+  {isBuilding ? (
+    <Text style={{ color: '#6B7280', marginTop: 6 }}>
+      Your plan is building. This screen will update automatically; you can also tap Refresh.
+    </Text>
+  ) : (
+    <Text style={{ color: '#6B7280', marginTop: 6 }}>
+      Plan is ready. Tap “View Plan” to see materials, tools, cuts, steps, time & cost.
+    </Text>
+  )}
+</View>

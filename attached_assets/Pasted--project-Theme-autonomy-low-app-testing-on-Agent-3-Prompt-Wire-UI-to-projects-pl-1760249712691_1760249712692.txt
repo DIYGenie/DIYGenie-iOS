@@ -1,0 +1,62 @@
+**project:** Theme
+**autonomy:** low
+**app testing:** on
+
+**Agent 3 Prompt — Wire UI to `projects.plan_json` (replace local stub):**
+
+* Target: `app/screens/ProjectDetails.tsx` (and any helper that feeds it)
+* Goal: Stop using any local/stub plan source and render from **`projects.plan_json`**. Show real section counts and content. No preview-generation buttons.
+
+**Tasks**
+
+* Remove imports/usage of any local plan stub (e.g., `app/lib/localPlan.ts`).
+* Ensure the Supabase fetch for this screen selects:
+  `id, name, status, plan_json, preview_url, input_image_url, scan_json, dimensions_json, updated_at`.
+* Derive a **normalized view** from `plan_json` with safe defaults so UI never crashes:
+
+  ```ts
+  const plan = project?.plan_json ?? {};
+  const overview  = plan?.overview ?? {};
+  const materials = Array.isArray(plan?.materials) ? plan.materials : [];
+  const tools     = Array.isArray(plan?.tools) ? plan.tools : [];
+  const cuts      = Array.isArray(plan?.cuts) ? plan.cuts : [];
+  const steps     = Array.isArray(plan?.steps) ? plan.steps : [];
+  const counts    = { materials: materials.length, tools: tools.length, cuts: cuts.length, steps: steps.length };
+  console.log('[details] plan counts', counts);
+  ```
+* Replace any prior plan-state gating that hid content when `ready` wasn’t matched. Treat both `'ready'` and `'active'` as renderable:
+
+  ```ts
+  const planReady = /ready|active/i.test(project?.status ?? '');
+  ```
+* In the UI:
+
+  * Keep hero logic as-is (preview → scan → upload).
+  * Render collapsible sections using **the arrays above**. If a section is empty, still render the header with a small “No items yet” caption (so the page isn’t blank).
+* Add a lightweight **refetch** after mount if `status` is `active` but `counts` are all zeros (handles race with webhook save):
+
+  ```ts
+  useEffect(() => {
+    if (planReady && counts.materials+counts.tools+counts.cuts+counts.steps === 0) {
+      console.log('[details] empty plan after active → refetch in 2s');
+      const t = setTimeout(() => refetchProject?.(), 2000); // use your existing fetch function
+      return () => clearTimeout(t);
+    }
+  }, [planReady, project?.updated_at]);
+  ```
+* Remove any residual references to local plan stubs (search for `[plan] first-fetch` logs from `localPlan.ts` and delete that code path).
+* Do **not** add any “Generate Preview/Plan” actions here.
+
+**Acceptance**
+
+* Console shows:
+
+  * `[details] loaded …` then `[details] plan counts { materials: N, tools: M, cuts: K, steps: S }`
+* The page renders:
+
+  * Hero image at top.
+  * Meta card (name/status).
+  * Four sections with correct counts; empty sections show “No items yet” (no blank screen).
+* Navigating back and re-opening shows persisted content without stubs.
+
+**Stop after applying these edits and report what changed (files, removed stub imports) plus the printed `[details] plan counts` object.**

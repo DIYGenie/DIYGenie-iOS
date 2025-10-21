@@ -1,0 +1,91 @@
+Move Preview Toggle to Project Details (and remove from Detailed Instructions)
+Goal
+On Project Details: show a Before | After toggle above the preview image, keep the existing Save action (saves After only), and add a small caption.
+
+
+On Detailed Instructions: remove the large preview block (do not change the rest).
+
+
+Files (confirm these paths before editing)
+app/screens/ProjectDetails.tsx (exists ✅)
+
+
+app/screens/DetailedInstructions.tsx (exists ✅)
+
+
+Requirements
+Project Details
+
+
+Add local state:
+
+
+const [previewTab, setPreviewTab] = React.useState<'before'|'after'>('after');
+
+Insert a small segmented toggle just above the preview image:
+
+
+<View style={{ flexDirection:'row', backgroundColor:'#F1EEFF', borderRadius:10, padding:4, marginBottom:8 }}>
+  {(['before','after'] as const).map(tab => (
+    <Pressable key={tab} onPress={() => setPreviewTab(tab)} style={{ flex:1, paddingVertical:8, borderRadius:8, backgroundColor: previewTab===tab ? 'white' : 'transparent' }}>
+      <Text style={{ textAlign:'center', fontWeight: previewTab===tab ? '700':'500', color:'#3A2EB0' }}>
+        {tab === 'before' ? 'Before' : 'After'}
+      </Text>
+    </Pressable>
+  ))}
+</View>
+
+Choose the active URI:
+
+
+const beforeUri = project?.before || planData?.preview?.before;
+const afterUri  = project?.preview || planData?.preview?.after || plan?.preview_image_url;
+const activeUri = previewTab === 'before' ? beforeUri : afterUri;
+
+Render only the active image. If beforeUri is missing and user selects “Before,” show a small text: “No before photo available.”
+
+
+Keep the existing Save action exactly as-is but ensure it uses afterUri (not activeUri) so only After is saved. If it currently references a shared image ref, don’t change that; just ensure source remains the After image.
+
+
+Add a tiny caption below the image:
+ <Text style={{ color:'#666', fontSize:12, marginTop:6 }}>Before and after preview of your space.</Text>
+
+
+Detailed Instructions
+
+
+Remove (or permanently guard) the large preview block so no big image renders here:
+
+
+{false && (/* previous hero/preview block */)}
+
+Do not alter other sections (Summary, Materials, Tools, Cut List, Steps, Safety/Permits).
+
+
+Text safety
+All visible strings wrapped in <Text>. No emojis.
+
+
+Testing (App Testing = ON)
+Reload on device:
+
+
+Project Details shows the toggle; switches images correctly.
+
+
+Save still saves only the After image.
+
+
+Detailed Instructions no longer shows a large preview block.
+
+
+No red “Text strings…” errors.
+
+
+Deliverables
+PR/Output note: “Moved preview toggle to Project Details; preserved Save (After only); removed preview block from Detailed Instructions; verified on device.”
+
+
+Stop if
+The Save logic references a specific ref that breaks when the image source changes. If so, report the variable name and line number and pause.

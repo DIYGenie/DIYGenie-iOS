@@ -1,0 +1,78 @@
+Refine the Home screen “How it works” grid to feel lighter and tighter (phone only).
+
+What to do
+
+In the file that renders the Home screen (where the 2×2 tiles live), convert the tiles to Pressable with a subtle pressed state.
+
+Make each tile slimmer and “ghost” style (soft background + 1px border), smaller type, smaller icons.
+
+Keep the 2×2 layout; ensure spacing from the welcome text and CTA is comfortable.
+
+Implement (add/replace styles + component bits):
+
+import { Pressable, View, Text, StyleSheet } from 'react-native';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+
+const HowItWorks = () => {
+  const Tile = ({ icon, label }) => (
+    <Pressable
+      style={({ pressed }) => [styles.tile, pressed && styles.tilePressed]}
+      android_ripple={{ color: '#E9E2FF' }}
+    >
+      {icon}
+      <Text style={styles.tileLabel}>{label}</Text>
+    </Pressable>
+  );
+
+  return (
+    <View style={styles.hiwSection}>
+      <Text style={styles.hiwTitle}>How it works</Text>
+      <View style={styles.grid}>
+        <Tile icon={<Ionicons name="create-outline" size={18} color="#5B39F5" />} label="Describe" />
+        <Tile icon={<Ionicons name="image-outline" size={18} color="#5B39F5" />} label="Scan" />
+        <Tile icon={<Ionicons name="sparkles-outline" size={18} color="#5B39F5" />} label="Preview" />
+        <Tile icon={<MaterialCommunityIcons name="hammer" size={18} color="#5B39F5" />} label="Build" />
+      </View>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  hiwSection: { marginTop: 4, marginBottom: 12, paddingHorizontal: 16 },
+  hiwTitle: { fontSize: 16, fontWeight: '700', color: '#1B133C', marginBottom: 8 },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 10,
+  },
+  tile: {
+    width: '48%',
+    minHeight: 56,
+    borderRadius: 12,
+    backgroundColor: '#F7F5FF',
+    borderWidth: 1,
+    borderColor: '#E7E3FF',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  tilePressed: { backgroundColor: '#EEE9FF' },
+  tileLabel: { fontSize: 13, fontWeight: '600', color: '#1B133C' },
+});
+
+// Render <HowItWorks /> under the welcome text. Keep the “Start a New Project” CTA below it.
+
+
+Acceptance
+
+Tiles are 2×2, no truncation, no wrap issues.
+
+Labels exactly: Describe, Scan, Preview, Build.
+
+Build uses a hammer icon.
+
+More breathing room above/below; CTA spacing intact.

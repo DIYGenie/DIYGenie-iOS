@@ -1,0 +1,169 @@
+Show the actual plan output on Project Details when the plan is ready.
+We’ll fetch /api/projects/:id/plan and render it with a lightweight Markdown viewer (no new deps).
+
+THEME
+*** FILE: app/lib/api.ts
+@@
+ // (existing imports/exports stay)
++export async function fetchProjectPlanMarkdown(
++  projectId: string,
++  opts?: { signal?: AbortSignal; timeoutMs?: number }
++): Promise<string | null> {
++  const base =
++    // prefer explicit env if you already use one here
++    (global as any).__API_BASE_URL__ ??
++    process.env.EXPO_PUBLIC_API_BASE ??
++    process.env.API_BASE ??
++    'https://diy-genie-webhooks-tyekowalski.replit.app';
++
++  const url = `${base}/api/projects/${projectId}/plan`;
++  const controller = new AbortController();
++  const signal = opts?.signal ?? controller.signal;
++  const timeout = setTimeout(() => controller.abort(), opts?.timeoutMs ?? 10000);
++  try {
++    const res = await fetch(url, { method: 'GET', signal });
++    if (res.status === 409) {
++      // plan not ready yet
++      return null;
++    }
++    if (!res.ok) throw new Error(`plan fetch failed: ${res.status}`);
++    const md = await res.text();
++    return md ?? '';
++  } finally {
++    clearTimeout(timeout);
++  }
++}
+
+// ADD FILE: app/components/Markdown.tsx
+import React from 'react';
+import { View, Text } from 'react-native';
+
+export default function Markdown({ content }: { content: string }) {
+  if (!content) return null;
+  const lines = content.split('\n');
+  return (
+    <View style={{ gap: 6 }}>
+      {lines.map((ln, i) => {
+        if (ln.startsWith('### ')) {
+          return <Text key={i} style={{ fontSize: 16, fontWeight: '700', marginTop: 8 }}>{ln.slice(4)}</Text>;
+        }
+        if (ln.startsWith('## ')) {
+          return <Text key={i} style={{ fontSize: 18, fontWeight: '800', marginTop: 10 }}>{ln.slice(3)}</Text>;
+        }
+        if (ln.startsWith('# ')) {
+          return <Text key={i} style={{ fontSize: 20, fontWeight: '900', marginTop: 12 }}>{ln.slice(2)}</Text>;
+        }
+        if (ln.startsWith('- ')) {
+          return <Text key={i} style={{ fontSize: 14 }}>• {ln.slice(2)}</Text>;
+        }
+        if (ln.trim() === '') {
+          return <View key={i} style={{ height: 4 }} />;
+        }
+        return <Text key={i} style={{ fontSize: 14, lineHeight: 20 }}>{ln}</Text>;
+      })}
+    </View>
+  );
+}
+
+*** FILE: app/screens/ProjectDetails.tsx
+@@
+-import { View, Image, ActivityIndicator, Pressable, Text } from 'react-native';
++import { View, Image, ActivityIndicator, Pressable, Text, ScrollView } from 'react-native';
+-import { fetchProjectById, fetchLatestScanForProject } from '../lib/api';
++import { fetchProjectById, fetchLatestScanForProject, fetchProjectPlanMarkdown } from '../lib/api';
++import Markdown from '../components/Markdown';
+@@
+   const [scan, setScan] = useState<{ scanId: string; imageUrl: string } | null>(null);
++  const [planMd, setPlanMd] = useState<string | null>(null);
++  const [planLoading, setPlanLoading] = useState(false);
+@@
+   const load = useCallback(async () => {
+     if (!projectId) return;
+@@
+       if (!controller.signal.aborted) {
+         setProject(p);
+         setScan(s);
++        // If plan can be ready, try to pull it
++        if (p?.status === 'ready') {
++          setPlanLoading(true);
++          try {
++            const md = await fetchProjectPlanMarkdown(projectId, { signal: controller.signal, timeoutMs: 10000 });
++            if (!controller.signal.aborted) setPlanMd(md);
++          } catch (e) {
++            if ((e as any)?.name !== 'AbortError') console.log('[plan fetch error]', String(e));
++          } finally {
++            if (!controller.signal.aborted) setPlanLoading(false);
++          }
++        } else {
++          setPlanMd(null);
++        }
+       }
+@@
+-  return (
+-    <View style={{ flex: 1, padding: 16 }}>
++  return (
++    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+       <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 6 }}>
+         {project?.name || project?.title || 'Project'}
+       </Text>
+       <Text style={{ fontSize: 14, color: '#6B7280', marginBottom: 16 }}>
+         Status: {project?.status || 'In progress'}
+       </Text>
+@@
+       ) : (
+         <View
+           style={{
+             width: '100%',
+             height: 220,
+             borderRadius: 16,
+             backgroundColor: '#F2F2F2',
+             alignItems: 'center',
+             justifyContent: 'center',
+           }}
+         >
+           <Text style={{ color: '#6B7280' }}>No scan image yet</Text>
+         </View>
+       )}
++
++      {/* --- Plan output --- */}
++      <View style={{ marginTop: 20, padding: 14, borderRadius: 14, backgroundColor: '#F9FAFB' }}>
++        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
++          <Text style={{ fontSize: 16, fontWeight: '700' }}>Plan</Text>
++          <Pressable
++            onPress={async () => {
++              if (!projectId) return;
++              setPlanLoading(true);
++              try {
++                const md = await fetchProjectPlanMarkdown(projectId, { timeoutMs: 10000 });
++                setPlanMd(md);
++              } catch (e) {
++                console.log('[plan refresh error]', String(e));
++              } finally {
++                setPlanLoading(false);
++              }
++            }}
++            style={{ paddingHorizontal: 10, paddingVertical: 6 }}
++          >
++            <Text style={{ color: '#7C3AED', fontWeight: '600' }}>Refresh</Text>
++          </Pressable>
++        </View>
++        {planLoading ? (
++          <View style={{ paddingVertical: 16 }}>
++            <ActivityIndicator />
++          </View>
++        ) : planMd === null ? (
++          <Text style={{ color: '#6B7280', marginTop: 8 }}>
++            Your plan is building. Come back in a moment or tap Refresh.
++          </Text>
++        ) : planMd.trim().length === 0 ? (
++          <Text style={{ color: '#6B7280', marginTop: 8 }}>No plan content yet.</Text>
++        ) : (
++          <View style={{ marginTop: 10 }}>
++            <Markdown content={planMd} />
++          </View>
++        )}
++      </View>
+-    </View>
++    </ScrollView>
+   );
+ }

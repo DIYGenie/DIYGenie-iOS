@@ -1,0 +1,124 @@
+Task: Make the two plan-option buttons larger & more attractive on NewProject.tsx
+
+Goals
+
+Keep the same actions, just restyle.
+
+Primary button = Build with visual mockup (big, filled).
+
+Secondary button = Build plan only (big, outline).
+
+Title text larger (CTA-weight), subtitle smaller.
+
+Good disabled/loading states; full-width; comfy height.
+
+Edit app/screens/NewProject.tsx
+
+Add shared styles near the top (or inside the file’s StyleSheet):
+
+const CTA = {
+  base: {
+    width: '100%',
+    borderRadius: 16,
+    paddingVertical: 18,      // ~64–68px height with text
+    paddingHorizontal: 20,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  primary: {
+    backgroundColor: '#6D28D9',
+  },
+  primaryDisabled: {
+    backgroundColor: '#C4B5FD',
+  },
+  outline: {
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: '#6D28D9',
+  },
+  outlineDisabled: {
+    borderColor: '#C4B5FD',
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  titleOnPrimary: {
+    color: 'white',
+  },
+  subtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#6B7280',
+  },
+  subtitleOnPrimary: {
+    color: '#EDE9FE',
+  },
+};
+
+
+Replace the two existing buttons’ JSX with this block (keep your handlers the same variables you already have):
+
+<View style={{ gap: 14, marginTop: 12 }}>
+  {/* PRIMARY: Build with visual mockup */}
+  <Pressable
+    onPress={handleBuildWithPreview}
+    disabled={isBuilding || !canBuild}
+    style={[
+      CTA.base,
+      CTA.primary,
+      (isBuilding || !canBuild) && CTA.primaryDisabled,
+      { opacity: isBuilding || !canBuild ? 0.9 : 1 },
+    ]}
+    hitSlop={8}
+  >
+    <Text style={[CTA.title, CTA.titleOnPrimary]}>
+      Build with visual mockup
+    </Text>
+    <Text style={[CTA.subtitle, CTA.subtitleOnPrimary]}>
+      Visual mockup of your space + complete build plan
+    </Text>
+  </Pressable>
+
+  {/* SECONDARY: Build plan only */}
+  <Pressable
+    onPress={onBuildWithoutPreview}
+    disabled={isBuilding || !canBuild}
+    style={[
+      CTA.base,
+      CTA.outline,
+      (isBuilding || !canBuild) && CTA.outlineDisabled,
+      { opacity: isBuilding || !canBuild ? 0.6 : 1 },
+    ]}
+    hitSlop={8}
+  >
+    <Text style={CTA.title}>
+      Build plan only
+    </Text>
+    <Text style={CTA.subtitle}>
+      Full DIY plan—steps, materials, tools, cuts, time & cost
+    </Text>
+  </Pressable>
+</View>
+
+
+Ensure canBuild already guards required fields; if not, define:
+
+const canBuild = (title?.trim().length >= 3)
+  && (description?.trim().length >= 10)
+  && !!budget && !!skillLevel;
+
+
+Keep the existing “Building your plan …” banner logic. Buttons will show disabled state automatically when isBuilding is true.
+
+Acceptance
+
+Buttons are full-width, rounded, tall, with clear title/subtitle contrast.
+
+Primary is purple fill; secondary is purple outline.
+
+Disabled state uses lighter purple and slight opacity.
+
+No logic changes; only visuals.

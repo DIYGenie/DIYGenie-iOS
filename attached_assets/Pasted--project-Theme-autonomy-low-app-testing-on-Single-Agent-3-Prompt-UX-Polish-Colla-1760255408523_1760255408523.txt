@@ -1,0 +1,123 @@
+**project:** Theme
+**autonomy:** low
+**app testing:** on
+
+**Single Agent-3 Prompt — UX Polish: Collapsible memory + copy/share tools**
+
+> Light quality-of-life update for ProjectDetails. No new deps. Client-only.
+
+**Goals**
+
+* Remember open/closed state of collapsible sections (Overview, Materials, Tools, Cuts, Steps).
+* Add a small “Copy list” action on Materials/Tools/Cuts to copy text to clipboard.
+* Add a simple “Share Plan” stub button (exports to system share sheet later).
+* Keep layout identical; just smoother UX.
+
+---
+
+### 1) Persistent Collapsible State
+
+In `app/screens/ProjectDetails.tsx`:
+
+* Use React state with AsyncStorage fallback.
+* Save toggled section names per project id.
+
+```ts
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const [openSections, setOpenSections] = useState<string[]>([]);
+
+useEffect(() => {
+  (async () => {
+    const stored = await AsyncStorage.getItem(`sections:${projectId}`);
+    if (stored) setOpenSections(JSON.parse(stored));
+  })();
+}, [projectId]);
+
+async function toggleSection(name: string) {
+  const next = openSections.includes(name)
+    ? openSections.filter(s => s !== name)
+    : [...openSections, name];
+  setOpenSections(next);
+  await AsyncStorage.setItem(`sections:${projectId}`, JSON.stringify(next));
+  console.log('[ui] toggle', { name, open: next.includes(name) });
+}
+```
+
+Each collapsible header uses:
+
+```tsx
+<TouchableOpacity onPress={() => toggleSection('materials')}>
+  <Text style={{fontWeight:'600'}}>Materials + Tools</Text>
+</TouchableOpacity>
+{openSections.includes('materials') && <MaterialsList ... />}
+```
+
+---
+
+### 2) Copy to Clipboard
+
+Add small icon button on section headers (Materials, Tools, Cuts).
+
+```ts
+import * as Clipboard from 'expo-clipboard';
+import { TouchableOpacity } from 'react-native';
+import { Copy } from 'lucide-react-native'; // built-in Expo icon
+
+async function copyList(name: string, arr: any[]) {
+  if (!arr?.length) return;
+  const txt = arr.map(i => i.name || i.item || i.text).filter(Boolean).join('\n');
+  await Clipboard.setStringAsync(txt);
+  console.log('[ui] copy', { name, count: arr.length });
+}
+```
+
+Header example:
+
+```tsx
+<View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}>
+  <Text style={{fontWeight:'600'}}>Materials</Text>
+  <TouchableOpacity onPress={() => copyList('materials', materials)}>
+    <Copy size={18} color="#6D28D9" />
+  </TouchableOpacity>
+</View>
+```
+
+Toast “Copied!” (use your `simpleToast` helper).
+
+---
+
+### 3) Share Plan Stub
+
+At bottom of ProjectDetails:
+
+```tsx
+import * as Sharing from 'expo-sharing';
+
+<TouchableOpacity
+  onPress={() => simpleToast('Share feature coming soon')}
+  style={{ backgroundColor:'#6D28D9', borderRadius:16, padding:14, alignItems:'center', marginTop:20 }}
+>
+  <Text style={{color:'white', fontWeight:'600'}}>Share Plan</Text>
+</TouchableOpacity>
+```
+
+*(Later you can hook this to a generated PDF.)*
+
+---
+
+### 4) Acceptance
+
+* Collapsible sections remember state after leaving/reopening a project.
+* Clicking copy icon copies list content to clipboard and shows toast.
+* “Share Plan” button appears cleanly at bottom.
+* No new dependencies beyond `@react-native-async-storage/async-storage` (already used by Expo).
+* Logs: `[ui] toggle`, `[ui] copy`.
+
+---
+
+When complete, confirm:
+
+* Section memory works (state persists reopen).
+* Copy-to-clipboard logs correct counts.
+* “Share Plan” button appears and fires toast.

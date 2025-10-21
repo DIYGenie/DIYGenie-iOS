@@ -1,0 +1,125 @@
+What this step does (brief)
+
+Prepares the iOS app for AR by adding the required iOS plist keys and a clean AR “session” scaffold.
+
+Blocks AR in Expo Go with a clear banner (dev build only), but keeps your current ROI flow + Save Scan working.
+
+No native modules added yet. This is safe and reversible.
+
+THEME — Make these changes
+1) Edit app.json (or app.config.ts) – add iOS AR permissions
+{
+  "expo": {
+    "ios": {
+      "infoPlist": {
+        "NSCameraUsageDescription": "DIY Genie uses the camera for AR room scans.",
+        "NSPhotoLibraryAddUsageDescription": "DIY Genie saves images of your scans and plans.",
+        "UIRequiredDeviceCapabilities": ["arkit"]
+      }
+    }
+  }
+}
+
+2) Create app/lib/ar/ArSession.ts
+
+Lightweight AR session facade (no native AR calls yet; just guards + types).
+
+// app/lib/ar/ArSession.ts
+import { Platform } from 'react-native';
+
+export type ArStartOpts = {
+  projectId: string;
+  // add future options (plane detection, worldAlign, etc.)
+};
+
+export function arSupported(): boolean {
+  // Real AR only on iOS devices + dev build later
+  return Platform.OS === 'ios';
+}
+
+export async function startArSession(_opts: ArStartOpts): Promise<void> {
+  // Placeholder for real ARKit init; keep side-effect free for now
+  return;
+}
+
+export async function stopArSession(): Promise<void> {
+  // Placeholder for ARKit teardown
+  return;
+}
+
+3) Update app/screens/ScanScreen.tsx
+
+Gate AR usage behind arSupported().
+
+Show a “Dev build required for AR” banner in Expo Go.
+
+Keep your existing ROI overlay + “Save Scan” working exactly as-is.
+
+// app/screens/ScanScreen.tsx
+import React, { useEffect, useState } from 'react';
+import { View, Text, Alert, Platform } from 'react-native';
+import { useRoute, useNavigation } from '@react-navigation/native';
+import { arSupported, startArSession, stopArSession } from '../lib/ar/ArSession';
+
+// … keep your existing imports (ROI overlay, save button, etc.)
+
+export default function ScanScreen() {
+  const route = useRoute<any>();
+  const navigation = useNavigation();
+  const projectId: string = route.params?.projectId;
+
+  const [arReady, setArReady] = useState(false);
+  const usingExpoGo = !global.expo?.modules?.ExpoModules; // quick check; ok for now
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      if (!projectId) {
+        Alert.alert('Missing project', 'Return and try again.');
+        navigation.goBack();
+        return;
+      }
+
+      if (!arSupported() || usingExpoGo) {
+        // No native AR yet; allow ROI-only flow, but make it clear
+        setArReady(false);
+        return;
+      }
+
+      try {
+        await startArSession({ projectId });
+        if (alive) setArReady(true);
+      } catch (e) {
+        console.log('[ar] start failed', e);
+        Alert.alert('AR unavailable', 'Falling back to manual ROI.');
+        setArReady(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+      stopArSession().catch(() => {});
+    };
+  }, [projectId, navigation, usingExpoGo]);
+
+  return (
+    <View style={{ flex: 1, backgroundColor: '#000' }}>
+      {(!arSupported() || usingExpoGo) && (
+        <View style={{ backgroundColor: '#F3E8FF', padding: 12 }}>
+          <Text style={{ color: '#6D28D9', fontWeight: '700' }}>
+            AR requires an iOS development build
+          </Text>
+          <Text style={{ color: '#6B7280', marginTop: 4 }}>
+            You’re in Expo Go. You can still drag the purple focus box and save the scan.
+          </Text>
+        </View>
+      )}
+
+      {/* Keep your existing preview layer / camera view (if any).
+          For now, just render your ROI overlay and Save Scan button like before. */}
+
+      {/* … your existing ROI overlay + Save Scan button/components remain unchanged … */}
+    </View>
+  );
+}

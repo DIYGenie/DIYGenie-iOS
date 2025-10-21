@@ -1,0 +1,172 @@
+Step: Harden project creation before AR scan/upload + persist form immediately before navigating, so you don’t lose inputs and you don’t see PROJECT_CREATE_FAILED:422.
+Automation: high · Testing: on
+
+Files to touch
+
+app/lib/draft.ts
+
+app/screens/NewProject.tsx
+
+THEME (patch/code)
+1) app/lib/draft.ts — robust ensureProjectForDraft with clear errors + retry, and a helper to persist projectId
+diff --git a/app/lib/draft.ts b/app/lib/draft.ts
+@@
+ import { supabase } from './supabase';
+ import AsyncStorage from '@react-native-async-storage/async-storage';
++import { base } from './api'; // base = Webhooks base URL (already in your project)
+ 
+ const DRAFT_KEY = 'newProjectDraft:v1';
+ 
+ export type NewProjectDraft = {
+   projectId?: string | null;
+   name?: string;
+   description?: string;
+-  budget?: number | null;
++  budget?: any; // can be "$$", number, etc — normalize when posting
+   skill_level?: string | null;
+ };
+@@
+ export async function clearNewProjectDraft(): Promise<void> {
+   try {
+     await AsyncStorage.removeItem(DRAFT_KEY);
+   } catch {
+     // ignore
+   }
+ }
++
++function normalizeBudget(b: any) {
++  // Accept "$", "$$", "$$$", numbers, strings — send as-is if truthy
++  if (b == null) return null;
++  if (typeof b === 'number') return b;
++  const s = String(b).trim();
++  return s.length ? s : null;
++}
++
++export async function ensureProjectForDraft(draft: NewProjectDraft): Promise<string> {
++  // 1) reuse if present
++  if (draft?.projectId) return draft.projectId;
++
++  // 2) session required
++  const { data: sess } = await supabase.auth.getSession();
++  const userId = sess?.session?.user?.id;
++  if (!userId) throw new Error('AUTH_REQUIRED');
++
++  // 3) validate inputs (tight but user-friendly)
++  const name = (draft?.name ?? '').trim();
++  const skill = (draft?.skill_level ?? '').trim();
++  const budget = normalizeBudget(draft?.budget);
++  if (name.length < 3 || !skill || !budget) {
++    const e: any = new Error('VALIDATION_FAILED');
++    e.details = { nameLen: name.length, hasSkill: !!skill, hasBudget: !!budget };
++    throw e;
++  }
++
++  // 4) create via Webhooks with small retry (handles transient 5xx)
++  const payload = { user_id: userId, name, budget, skill_level: skill };
++  async function postOnce() {
++    const res = await fetch(`${base}/api/projects`, {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify(payload),
++    });
++    const json = await res.json().catch(() => ({}));
++    if (!res.ok || !json?.ok || !json?.item?.id) {
++      const err: any = new Error(json?.error || `PROJECT_CREATE_FAILED:${res.status}`);
++      err.status = res.status;
++      err.body = json;
++      throw err;
++    }
++    return json.item.id as string;
++  }
++
++  try {
++    const id = await postOnce();
++    // persist projectId into draft storage (best effort)
++    await saveNewProjectDraft({ ...(draft || {}), projectId: id });
++    return id;
++  } catch (e: any) {
++    // single retry for transient issues only
++    if (String(e?.status || '').startsWith('5')) {
++      const id = await postOnce();
++      await saveNewProjectDraft({ ...(draft || {}), projectId: id });
++      return id;
++    }
++    throw e;
++  }
++}
++
++export async function ensureProjectIdAndPersist(draft: NewProjectDraft): Promise<string> {
++  const id = await ensureProjectForDraft(draft);
++  // double-save to be safe
++  await saveNewProjectDraft({ ...(draft || {}), projectId: id });
++  return id;
++}
+
+2) app/screens/NewProject.tsx — persist draft before navigating; call robust ensure; better error alerts
+diff --git a/app/screens/NewProject.tsx b/app/screens/NewProject.tsx
+@@
+-import { loadNewProjectDraft, saveNewProjectDraft, clearNewProjectDraft, NewProjectDraft } from '../lib/draft';
++import { loadNewProjectDraft, saveNewProjectDraft, clearNewProjectDraft, NewProjectDraft, ensureProjectIdAndPersist } from '../lib/draft';
+@@
+-const guard = (fn) => () => {
++const guard = (fn) => () => {
+   if (!isFormValid) { onBlocked?.(); return; }
+   fn && fn();
+ };
+@@
+ const handleScan = guard(async () => {
+   try {
+     await authPreflight();
+-    const projectId = await ensureProjectForDraft(draft);
++    // persist current form immediately (avoid race / blank overwrite)
++    await saveNewProjectDraft({
++      projectId: draftId ?? null,
++      name: title, description, budget, skill_level: skillLevel,
++    });
++    const projectId = await ensureProjectIdAndPersist({
++      projectId: draftId ?? null,
++      name: title, description, budget, skill_level: skillLevel,
++    });
+     // navigate to Scan screen with this projectId (your existing nav call)
+     navigation.navigate('Scan');
+   } catch (e: any) {
+-    if (String(e?.message || e).includes('AUTH_REQUIRED')) return;
+-    Alert.alert('Oops', 'Could not start scan. Please check your fields and try again.');
++    const msg = String(e?.message || e);
++    if (msg === 'AUTH_REQUIRED') return;
++    if (msg.startsWith('VALIDATION_FAILED')) {
++      Alert.alert('Almost there', 'Please fill Title (≥3), Description (≥10), Budget and Skill level.');
++      return;
++    }
++    if (msg.startsWith('PROJECT_CREATE_FAILED') || e?.status === 422) {
++      Alert.alert('Could not create project', 'Please adjust your inputs and try again.');
++      return;
++    }
++    Alert.alert('Oops', 'Could not start scan. Try again.');
+   }
+ });
+ 
+ const handleUpload = guard(async () => {
+   try {
+     await authPreflight();
+-    const projectId = await ensureProjectForDraft(draft);
++    // persist + ensure project
++    await saveNewProjectDraft({
++      projectId: draftId ?? null,
++      name: title, description, budget, skill_level: skillLevel,
++    });
++    const projectId = await ensureProjectIdAndPersist({
++      projectId: draftId ?? null,
++      name: title, description, budget, skill_level: skillLevel,
++    });
+@@
+   } catch (e) {
+
+
+Notes:
+
+We save the draft immediately before creating/navigating (prevents lost inputs).
+
+ensureProjectForDraft is now strict, with clear validation errors and a retry for transient server issues.
+
+The 422s now show a friendly “Could not create project” alert instead of a silent fail.

@@ -1,0 +1,178 @@
+Goal: Add lightweight navigation diagnostics. When ProjectDetails mounts and when Back is pressed, log the parent tab id, available routes, and which branch useSafeBack takes. No UI changes.
+
+THEME
+// CREATE FILE: app/lib/navDebug.ts
+type NavLike = {
+  getState?: () => any;
+  getParent?: (id?: string) => any;
+};
+
+export function logNavTree(navigation: NavLike, label: string) {
+  try {
+    const parentRootTabs = navigation.getParent?.('root-tabs');
+    const parentAny = navigation.getParent?.();
+
+    const fmt = (nav: any) => {
+      const st = nav?.getState?.();
+      if (!st) return '(no state)';
+      const routeNames = (st.routes || []).map((r: any) => r.name);
+      return JSON.stringify(
+        {
+          type: st.type,
+          index: st.index,
+          routes: routeNames,
+          current: st.routes?.[st.index || 0]?.name,
+        },
+        null,
+        2
+      );
+    };
+
+    // current level
+    // @ts-ignore
+    const currentState = navigation.getState?.();
+
+    console.log('NAV DEBUG ::', label, {
+      current: {
+        index: currentState?.index,
+        routes: (currentState?.routes || []).map((r: any) => r.name),
+        current: currentState?.routes?.[currentState?.index || 0]?.name,
+      },
+      parent_root_tabs: fmt(parentRootTabs),
+      parent_any: fmt(parentAny),
+    });
+  } catch (e) {
+    console.log('NAV DEBUG ERROR ::', label, String(e));
+  }
+}
+
+THEME
+// EDIT FILE: app/lib/useSafeBack.ts
+import { useCallback } from 'react';
+import { useNavigation, TabActions } from '@react-navigation/native';
+
+export function useSafeBack() {
+  const navigation = useNavigation();
+
+  return useCallback(() => {
+    // @ts-ignore
+    const parent = navigation.getParent?.('root-tabs') || navigation.getParent?.();
+
+    if (parent) {
+      console.log('SAFEBACK :: using parent TabActions.jumpTo("Projects")');
+      parent.dispatch(TabActions.jumpTo('Projects'));
+      return;
+    }
+
+    console.log('SAFEBACK :: fallback TabActions.jumpTo("Projects") on current nav');
+    // @ts-ignore
+    navigation.dispatch?.(TabActions.jumpTo('Projects'));
+  }, [navigation]);
+}
+
+THEME
+// EDIT FILE: app/screens/ProjectDetails.tsx
+// Add debug logs on mount and back press (no UI changes).
+
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Image, ActivityIndicator, Pressable, Text } from 'react-native';
+import { useRoute, useNavigation, RouteProp, useFocusEffect } from '@react-navigation/native';
+import { useSafeBack } from '../lib/useSafeBack';
+import { logNavTree } from '../lib/navDebug'; // ⬅️ ADD
+import T from '../components/T';
+import { fetchProjectById, fetchLatestScanForProject } from '../lib/api';
+
+type RouteParams = { id: string };
+type R = RouteProp<Record<'ProjectDetails', RouteParams>, 'ProjectDetails'>;
+
+export default function ProjectDetails() {
+  const route = useRoute<R>();
+  const navigation = useNavigation();
+  const safeBack = useSafeBack();
+  const projectId = route.params?.id;
+
+  const [loading, setLoading] = useState(true);
+  const [project, setProject] = useState<any>(null);
+  const [scan, setScan] = useState<{ scanId: string; imageUrl: string } | null>(null);
+
+  const load = useCallback(async () => {
+    if (!projectId) return;
+    setLoading(true);
+    try {
+      const [p, s] = await Promise.all([
+        fetchProjectById(projectId),
+        fetchLatestScanForProject(projectId),
+      ]);
+      setProject(p);
+      setScan(s);
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerBackVisible: false,
+      headerLeft: () => (
+        <Pressable
+          onPress={() => {
+            logNavTree(navigation as any, 'onBackPress');
+            safeBack();
+          }}
+          style={{ paddingHorizontal: 12, paddingVertical: 6 }}
+        >
+          <Text style={{ fontWeight: '600' }}>Back</Text>
+        </Pressable>
+      ),
+      title: 'Project',
+    });
+  }, [navigation, safeBack]);
+
+  useEffect(() => {
+    logNavTree(navigation as any, 'mount ProjectDetails'); // ⬅️ DEBUG
+    load();
+  }, [load, navigation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      logNavTree(navigation as any, 'focus ProjectDetails'); // ⬅️ DEBUG
+      load();
+    }, [load, navigation])
+  );
+
+  return (
+    <View style={{ flex: 1, padding: 16 }}>
+      <T.h2 style={{ marginBottom: 6 }}>
+        {project?.name || project?.title || 'Project'}
+      </T.h2>
+      <T.muted style={{ marginBottom: 16 }}>
+        Status: {project?.status || 'In progress'}
+      </T.muted>
+
+      {loading ? (
+        <View style={{ paddingTop: 40 }}>
+          <ActivityIndicator />
+        </View>
+      ) : scan?.imageUrl ? (
+        <Image
+          source={{ uri: scan.imageUrl }}
+          style={{ width: '100%', height: 220, borderRadius: 16, backgroundColor: '#EEE' }}
+          resizeMode="cover"
+        />
+      ) : (
+        <View
+          style={{
+            width: '100%',
+            height: 220,
+            borderRadius: 16,
+            backgroundColor: '#F2F2F2',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <T.muted>No scan image yet</T.muted>
+        </View>
+      )}
+    </View>
+  );
+}

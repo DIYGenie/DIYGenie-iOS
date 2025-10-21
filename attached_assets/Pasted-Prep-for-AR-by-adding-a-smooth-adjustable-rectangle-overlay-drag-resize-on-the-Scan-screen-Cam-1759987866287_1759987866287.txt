@@ -1,0 +1,231 @@
+Prep for AR by adding a smooth, adjustable rectangle overlay (drag + resize) on the Scan screen. Camera stays blocked. No DB writes yet—just UI + console logging.
+
+THEME
+// ADD FILE: app/components/DraggableRect.tsx
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { View, PanResponder, StyleSheet } from 'react-native';
+
+type NormRect = { x: number; y: number; w: number; h: number }; // 0..1
+type PxRect = { x: number; y: number; w: number; h: number };
+type Size = { w: number; h: number };
+
+function clamp(v: number, lo: number, hi: number) {
+  'worklet'; // harmless hint if RN reanimated exists
+  return Math.max(lo, Math.min(hi, v));
+}
+
+export default function DraggableRect({
+  initial = { x: 0.2, y: 0.2, w: 0.5, h: 0.35 },
+  onChange,
+  style,
+}: {
+  initial?: NormRect;
+  onChange?: (norm: NormRect) => void;
+  style?: any;
+}) {
+  const [container, setContainer] = useState<Size>({ w: 1, h: 1 });
+  const [rect, setRect] = useState<PxRect>({ x: 0, y: 0, w: 0, h: 0 });
+  const ready = useRef(false);
+
+  const toNorm = useCallback(
+    (r: PxRect): NormRect => ({
+      x: r.x / container.w,
+      y: r.y / container.h,
+      w: r.w / container.w,
+      h: r.h / container.h,
+    }),
+    [container.w, container.h]
+  );
+
+  const fromNorm = useCallback(
+    (n: NormRect): PxRect => ({
+      x: n.x * container.w,
+      y: n.y * container.h,
+      w: n.w * container.w,
+      h: n.h * container.h,
+    }),
+    [container.w, container.h]
+  );
+
+  const update = useCallback(
+    (next: PxRect) => {
+      const clamped: PxRect = {
+        x: clamp(next.x, 0, container.w - 24),
+        y: clamp(next.y, 0, container.h - 24),
+        w: clamp(next.w, 24, container.w),
+        h: clamp(next.h, 24, container.h),
+      };
+      // keep in bounds
+      clamped.w = Math.min(clamped.w, container.w - clamped.x);
+      clamped.h = Math.min(clamped.h, container.h - clamped.y);
+
+      setRect(clamped);
+      onChange?.(toNorm(clamped));
+    },
+    [container.w, container.h, onChange, toNorm]
+  );
+
+  const dragResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderMove: (_e, g) => {
+          update({ ...rect, x: rect.x + g.dx, y: rect.y + g.dy });
+        },
+      }),
+    [rect, update]
+  );
+
+  function handleHandleDrag(which: 'tl' | 'tr' | 'bl' | 'br') {
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderMove: (_e, g) => {
+        let { x, y, w, h } = rect;
+        if (which === 'tl') {
+          const nx = clamp(x + g.dx, 0, x + w - 24);
+          const ny = clamp(y + g.dy, 0, y + h - 24);
+          w = w - (nx - x);
+          h = h - (ny - y);
+          x = nx;
+          y = ny;
+        } else if (which === 'tr') {
+          const ny = clamp(y + g.dy, 0, y + h - 24);
+          const nw = clamp(w + g.dx, 24, container.w - x);
+          h = h - (ny - y);
+          y = ny;
+          w = nw;
+        } else if (which === 'bl') {
+          const nx = clamp(x + g.dx, 0, x + w - 24);
+          const nh = clamp(h + g.dy, 24, container.h - y);
+          w = w - (nx - x);
+          x = nx;
+          h = nh;
+        } else {
+          // br
+          const nw = clamp(w + g.dx, 24, container.w - x);
+          const nh = clamp(h + g.dy, 24, container.h - y);
+          w = nw;
+          h = nh;
+        }
+        update({ x, y, w, h });
+      },
+    });
+  }
+
+  return (
+    <View
+      style={[{ width: '100%', aspectRatio: 4 / 3, overflow: 'hidden' }, style]}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        const sz = { w: width, h: height };
+        setContainer(sz);
+        if (!ready.current && width > 0 && height > 0) {
+          ready.current = true;
+          const px = fromNorm(initial);
+          setRect(px);
+          onChange?.(initial);
+        }
+      }}
+    >
+      {/* Rect */}
+      <View
+        {...dragResponder.panHandlers}
+        style={[
+          styles.rect,
+          {
+            left: rect.x,
+            top: rect.y,
+            width: rect.w,
+            height: rect.h,
+          },
+        ]}
+      >
+        {/* Handles */}
+        <View {...handleHandleDrag('tl').panHandlers} style={[styles.handle, styles.tl]} />
+        <View {...handleHandleDrag('tr').panHandlers} style={[styles.handle, styles.tr]} />
+        <View {...handleHandleDrag('bl').panHandlers} style={[styles.handle, styles.bl]} />
+        <View {...handleHandleDrag('br').panHandlers} style={[styles.handle, styles.br]} />
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  rect: {
+    position: 'absolute',
+    borderWidth: 2,
+    borderColor: '#7C3AED',
+    borderRadius: 10,
+    backgroundColor: 'rgba(124,58,237,0.12)',
+  },
+  handle: {
+    position: 'absolute',
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#7C3AED',
+  },
+  tl: { left: -8, top: -8 },
+  tr: { right: -8, top: -8 },
+  bl: { left: -8, bottom: -8 },
+  br: { right: -8, bottom: -8 },
+});
+
+*** FILE: app/screens/ScanScreen.tsx
+@@
+-import React from 'react';
+-import { View, Text, Pressable } from 'react-native';
++import React, { useState } from 'react';
++import { View, Text, Pressable } from 'react-native';
+ import { useNavigation } from '@react-navigation/native';
++import DraggableRect from '../components/DraggableRect';
+ 
+ export default function ScanScreen() {
+   const navigation = useNavigation();
++  const [norm, setNorm] = useState<{ x: number; y: number; w: number; h: number }>({ x: 0.2, y: 0.2, w: 0.5, h: 0.35 });
+ 
+   return (
+-    <View style={{ flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center' }}>
+-      <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>AR Scan</Text>
+-      <Text style={{ fontSize: 16, color: '#6B7280', textAlign: 'center', marginBottom: 16 }}>
+-        AR Scan is coming soon. For now, you can upload a photo.
+-      </Text>
++    <View style={{ flex: 1, padding: 16 }}>
++      <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 8 }}>Adjust area</Text>
++      <Text style={{ fontSize: 14, color: '#6B7280', marginBottom: 12 }}>
++        Drag or resize the rectangle to the target spot. (Camera disabled in this preview.)
++      </Text>
++
++      {/* Camera preview placeholder with adjustable ROI */}
++      <View style={{ backgroundColor: '#111827', borderRadius: 16, padding: 8, alignItems: 'center' }}>
++        <DraggableRect
++          initial={norm}
++          onChange={(n) => {
++            setNorm(n);
++          }}
++          style={{ width: '100%' }}
++        />
++      </View>
+ 
+       <Pressable
+-        onPress={() => navigation.goBack()}
+-        style={{
+-          backgroundColor: '#7C3AED',
+-          paddingHorizontal: 16,
+-          paddingVertical: 12,
+-          borderRadius: 12,
+-        }}
++        onPress={() => {
++          console.log('[roi] normalized', norm);
++          navigation.goBack();
++        }}
++        style={{ backgroundColor: '#7C3AED', paddingVertical: 12, borderRadius: 12, marginTop: 16, alignItems: 'center' }}
+       >
+-        <Text style={{ color: 'white', fontWeight: '600' }}>Close</Text>
++        <Text style={{ color: 'white', fontWeight: '600' }}>Save area & Close</Text>
+       </Pressable>
+     </View>
+   );
+ }

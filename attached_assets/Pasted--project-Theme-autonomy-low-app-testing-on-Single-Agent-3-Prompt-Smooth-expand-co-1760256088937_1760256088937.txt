@@ -1,0 +1,100 @@
+**project:** Theme
+**autonomy:** low
+**app testing:** on
+
+**Single Agent-3 Prompt — Smooth expand/collapse animations for sections (no deps)**
+
+> Add subtle, platform-safe animations when users open/close Overview / Materials / Tools / Cuts / Steps. Keep diffs small; no new libraries.
+
+**Edits**
+
+1. **Create** `app/lib/anim.ts` — one helper for section transitions
+
+```ts
+// app/lib/anim.ts
+import { Platform, UIManager, LayoutAnimation } from 'react-native';
+
+let enabled = false;
+export function enableLayoutAnimOnce() {
+  if (!enabled && Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+    enabled = true;
+  }
+}
+
+export function sectionEase(duration = 180) {
+  // Subtle ease; affects opacity/scale slightly via layout
+  const preset = {
+    duration,
+    create:  { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+    update:  { type: LayoutAnimation.Types.easeInEaseOut },
+    delete:  { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+  };
+  return LayoutAnimation.create(
+    preset.duration,
+    LayoutAnimation.Types.easeInEaseOut,
+    LayoutAnimation.Properties.opacity
+  ) || preset;
+}
+
+export function animateSection(duration = 180) {
+  LayoutAnimation.configureNext(sectionEase(duration));
+}
+```
+
+2. **Update** `app/screens/ProjectDetails.tsx`
+
+* **Imports (add):**
+
+```ts
+import { enableLayoutAnimOnce, animateSection } from 'app/lib/anim';
+```
+
+* **On component mount** (top-level inside component body):
+
+```ts
+enableLayoutAnimOnce();
+```
+
+* **Enhance your existing `toggleSection(name)`** to animate before state update:
+
+```ts
+async function toggleSection(name: string) {
+  animateSection(200);
+  const next = openSections.includes(name)
+    ? openSections.filter(s => s !== name)
+    : [...openSections, name];
+  setOpenSections(next);
+  await AsyncStorage.setItem(`sections:${projectId}`, JSON.stringify(next));
+  console.log('[ui] toggle', { name, open: next.includes(name) });
+}
+```
+
+* **(Optional, tiny fade-in on first load)**: when rendering each expanded section container, add a light style transition by wrapping content in a `<View>` with `{ overflow: 'hidden' }` and rely on LayoutAnimation (no Animated API needed).
+
+Example pattern for each section:
+
+```tsx
+<TouchableOpacity onPress={() => toggleSection('materials')}>
+  {/* header row ... */}
+</TouchableOpacity>
+{openSections.includes('materials') && (
+  <View style={{ overflow: 'hidden' }}>
+    {/* materials content here */}
+  </View>
+)}
+```
+
+3. **No other refactors.** Do not alter data fetching, copy/share, or badges. Keep ruler and AR badges intact.
+
+**Acceptance**
+
+* Tapping any section header smoothly animates open/close (≈180–200ms).
+* Works on iOS/Android; Android has `UIManager.setLayoutAnimationEnabledExperimental(true)` enabled once.
+* No visual jank; layout and scroll remain responsive.
+* Logs remain the same; optional one-time log on mount not required.
+
+**Stop after changes** and report:
+
+* Files touched.
+* Quick note that sections now animate on expand/collapse on both platforms.

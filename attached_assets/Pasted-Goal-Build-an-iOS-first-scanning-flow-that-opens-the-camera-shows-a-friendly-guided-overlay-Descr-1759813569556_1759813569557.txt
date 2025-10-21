@@ -1,0 +1,111 @@
+Goal: Build an iOS-first scanning flow that opens the camera, shows a friendly guided overlay (Describe → Scan → Preview → Build), and lets the user capture a single photo and review it. No AR math yet—this is the UX skeleton we’ll later wire to measurements.
+
+Do this:
+
+Prereqs
+
+We already installed expo-camera and added useCameraPermission + PrePermissionSheet. Re-use them.
+
+Icons: Ionicons (scan-outline, sparkles-outline, hammer-outline, pencil-outline).
+
+Create components/scan/GuidedOverlay.tsx
+
+Purpose: dimmed backdrop, corner brackets, step chip, instruction line, and a pulsing focus reticle.
+
+API:
+
+type Props = {
+  step: 1 | 2 | 3;
+  instruction: string;
+}
+
+
+Implementation notes:
+
+Full-screen absolutely positioned overlay.
+
+Use four small corner Views (top-left/top-right/bottom-left/bottom-right) to form bracket corners around the center guide rectangle (no extra deps).
+
+Add a small Animated.View circle in the center that gently scales 0.95–1.05.
+
+At top-center, show a pill: Step {step} of 3.
+
+Under the guide, show instruction in subtle gray.
+
+Create screens/ScanScreen.tsx
+
+Uses expo-camera back camera.
+
+State machine:
+
+type ScanStep = 1 | 2 | 3; // 1: Frame area, 2: Move slowly, 3: Capture
+const [step, setStep] = useState<ScanStep>(1);
+
+
+Flow:
+
+If permission not granted, show the PrePermissionSheet (from previous task). On continue, request; on granted, render camera.
+
+Render top-left back button; bottom area: big rounded Capture button (disabled unless step === 3), and a small Help text button.
+
+Auto-advance steps every ~2s:
+
+Step 1 → instruction="Frame the wall area you’ll work on"
+
+Step 2 → instruction="Move the phone slowly to stabilize"
+
+Step 3 → instruction="Hold steady, then tap capture"
+
+On Capture, call cameraRef.current?.takePictureAsync({ quality: 0.8, skipProcessing: true }) and navigate to ScanReviewScreen with the photo uri.
+
+Create screens/ScanReviewScreen.tsx
+
+Shows the captured photo full-width.
+
+Bottom sticky actions:
+
+Retake (secondary) → navigate back to ScanScreen and reset to step 1.
+
+Use Photo (primary) → for now, just Alert.alert("Saved", "We’ll use this photo in the next step.") and navigation.goBack() (we’ll wire it into New Project soon).
+
+Navigation
+
+Register two routes:
+
+Scan → ScanScreen
+
+ScanReview → ScanReviewScreen
+
+Ensure the Scan tile on Home continues to navigate to Scan.
+
+Styling
+
+Match the app’s purple for primary actions (#6E3AF2 or whatever token you used).
+
+Rounded-2xl for buttons/cards; soft shadow; text sizes consistent with Home tiles.
+
+Build tile icon = hammer (already done).
+
+Acceptance
+
+Tapping Scan (with permission granted) opens the camera with the guided overlay.
+
+Overlay cycles steps 1→2→3 with the appropriate instruction.
+
+Capture takes a photo and pushes the Review screen.
+
+Review shows Retake / Use Photo; both routes work.
+
+If permission isn’t granted, the pre-permission sheet appears and behaves correctly.
+
+Files to create/edit
+
+components/scan/GuidedOverlay.tsx
+
+screens/ScanScreen.tsx
+
+screens/ScanReviewScreen.tsx
+
+Navigator (add Scan, ScanReview routes)
+
+Home tile (ensure it navigates to Scan and keeps the hammer icon for Build)

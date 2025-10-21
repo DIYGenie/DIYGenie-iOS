@@ -1,0 +1,95 @@
+You are working in the Theme app. Make the following exact changes so that tapping
+“Build Plan Without Preview” navigates to the new project detail reliably on native AND web.
+
+File: app/screens/NewProject.tsx
+
+1) Imports (add if missing):
+   import { Platform } from 'react-native';
+   import { useNavigation } from '@react-navigation/native';
+   import * as Linking from 'expo-linking';
+
+2) Component setup (near other hooks/state):
+   const navigation = useNavigation<any>();
+   const [buildBusy, setBuildBusy] = useState(false);
+
+   // Helper: robust navigation to a project detail, across nested navigators + web
+   function goToProject(id: string) {
+     // Try: Projects tab -> ProjectDetail
+     try { navigation.navigate('Projects', { screen: 'ProjectDetail', params: { id } }); return; } catch {}
+     // Try common standalone detail routes
+     for (const name of ['ProjectDetail', 'OpenPlan', 'Plan', 'ProjectDetails', 'ProjectDetailScreen']) {
+       try { navigation.navigate(name as never, { id } as never); return; } catch {}
+     }
+     // Fallback: go to Projects list
+     try { navigation.navigate('Projects' as never); } catch {}
+
+     // Web hard fallback: update URL if navigation didn’t work (SPA routing)
+     if (Platform.OS === 'web') {
+       try {
+         const url = Linking.createURL(`/projects/${id}`);
+         window.history.pushState({}, '', url);
+       } catch {}
+     }
+   }
+
+3) Ensure ensureDraft() already exists and returns the draft project id.
+   (If not, keep the ensureDraft() you added earlier that POSTs /api/projects and stores setDraftId.)
+
+4) Replace your current “Build without preview” handler with:
+
+   async function onBuildNoPreview() {
+     if (buildBusy) return;
+     setBuildBusy(true);
+     try {
+       const id = await ensureDraft();
+       const body = {
+         user_id: USER_ID,
+         prompt: (promptText?.trim() ||
+           `Build plan for: "${desc}". Budget: ${budget}. Skill: ${skillLevel}.`)
+       };
+       const r = await fetch(`${BASE}/api/projects/${id}/build-without-preview`, {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify(body),
+       });
+       const j = await r.json().catch(() => ({}));
+       if (!r.ok) throw new Error(j?.error || 'build_failed');
+       // Navigate using the known id; don’t depend on response shape
+       goToProject(id);
+       // Clear ephemeral UI state
+       setSugs([]); setTags([]); setPromptText && setPromptText('');
+     } catch (e:any) {
+       Alert.alert('Build failed', String(e?.message || e));
+     } finally {
+       setBuildBusy(false);
+     }
+   }
+
+5) Wire the button:
+   - Find the “Build Plan Without Preview” button.
+   - Set:
+       onPress={onBuildNoPreview}
+       testID="np-build-no-preview"
+       disabled={buildBusy}
+       (If using a custom Button, change its label to show 'Creating…' when buildBusy is true.)
+
+   Example (pseudo):
+     <PrimaryGhostButton
+       testID="np-build-no-preview"
+       title={buildBusy ? 'Creating…' : 'Build Plan Without Preview'}
+       onPress={onBuildNoPreview}
+       disabled={buildBusy}
+     />
+
+6) (Important) Make sure no early returns prevent navigation:
+   - If you still gate this button behind suggestion results or photo upload,
+     keep those checks but verify the handler actually runs (add a console.log before fetch).
+
+7) Web “Unexpected text node … cannot be a child of <View>”:
+   - In this file, ensure ALL strings inside the Suggestions card are wrapped in <Text>.
+   - Remove any stray '.' or '•' that sit directly under a <View>.
+
+Build and run. Expected:
+- Tapping “Build Plan Without Preview” calls POST /build-without-preview (200),
+  then you leave the New Project screen and land on the project’s detail.
+- If route names differ in your navigator, the helper will still find a path or use web URL fallback.

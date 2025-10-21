@@ -1,0 +1,145 @@
+Project: DIYGenieTheme
+Autonomy: Low
+App Testing: ON
+
+Goal
+
+Eliminate the remaining red screen: “Text strings must be rendered within a <Text> component.”
+
+Prevent any undefined/null text from rendering (materials, cut list, time, cost, steps).
+
+Keep only Before/After preview on this screen (no hero).
+
+Scope
+
+File: app/screens/DetailedInstructions.tsx only.
+
+Changes to apply
+1) Add safe helpers at the top of the file (below imports)
+// -- Safe text helpers (local to this screen) --
+const notNil = (v: any) => v !== null && v !== undefined;
+
+const joinText = (...parts: (string | null | undefined)[]) =>
+  parts.filter(p => typeof p === 'string' && p.length > 0).join(' ');
+
+const fmtMoney = (n: number | null | undefined) =>
+  notNil(n) ? `$${Number(n).toFixed(2).replace(/\.00$/, '')}` : null;
+
+const fmtQtyUnit = (qty: number | string | null | undefined, unit?: string | null) => {
+  const q = notNil(qty) ? String(qty) : null;
+  const u = unit ? String(unit) : null;
+  return joinText(q, u);
+};
+
+const fmtDim = (w?: number | null, h?: number | null) =>
+  notNil(w) && notNil(h) ? `${w}" x ${h}"` : null;
+
+const TextIf: React.FC<{ style?: any; children?: string | null }> = ({ style, children }) => {
+  if (!children) return null;
+  return <Text style={style}>{children}</Text>;
+};
+
+2) Quick stats row — no custom components, all inside <Text>
+
+Replace the whole “Quick stats” block with:
+
+{/* Quick stats */}
+<View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+  <TextIf style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>
+    {typeof plan?.skill_level === 'string' ? plan.skill_level : null}
+  </TextIf>
+
+  <TextIf style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>
+    {notNil(planData?.summary?.estTimeHours) ? `${planData!.summary!.estTimeHours} hrs`
+     : notNil(plan?.time_estimate_hours) ? `${plan!.time_estimate_hours} hrs`
+     : null}
+  </TextIf>
+
+  <TextIf style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>
+    {fmtMoney(planData?.summary?.estCostUsd)}
+  </TextIf>
+
+  <TextIf style={{ color: 'white', fontSize: 14, fontWeight: '600' }}>
+    {Array.isArray(steps) ? `${steps.length} steps` : null}
+  </TextIf>
+</View>
+
+3) Materials list — never render undefined
+
+Find the materials row render and replace string templates like:
+
+{`${m.qty} ${m.unit} ${m.name}`}
+
+
+with:
+
+<Text>{joinText(fmtQtyUnit(m.qty, m.unit), m.name)}</Text>
+
+
+For price:
+
+<TextIf style={{ color: '#0a8f5b', fontWeight: '600' }}>
+  {fmtMoney(m.price)}
+</TextIf>
+
+
+(Use fmtMoney so $undefined never appears; 0 will render as $0.)
+
+4) Cut list row — defensive dimension/size + qty
+
+Replace the problematic template:
+
+{`${cut.width && cut.height ? `${cut.width}" x ${cut.height}"` : cut.size} x${cut.qty ?? 1}`}
+
+
+with:
+
+const dimOrSize = fmtDim(cut.width, cut.height) ?? (cut.size ?? null);
+const qty = notNil(cut.qty) ? String(cut.qty) : '1';
+<Text>{joinText(dimOrSize, `x${qty}`)}</Text>
+
+5) Time & Cost anywhere else
+
+Time strings → use nullish coalescing + TextIf:
+
+<TextIf>{notNil(hours) ? `${hours} hrs` : null}</TextIf>
+
+
+Cost strings → always via fmtMoney(value) inside TextIf.
+
+6) Steps titles/descriptions
+
+Ensure every title/description is inside <Text> (no raw strings inside <View>).
+
+7) Ensure top hero image is not rendered on this screen
+
+If there’s still a hero above the “Preview” section, wrap it so it never renders:
+
+{false && (
+  /* hero block */
+)}
+
+
+(Keep the Before/After preview section as-is.)
+
+8) Remove any remaining emojis in this file (if any survived earlier pass).
+Testing (App Testing = ON)
+
+Stop Metro / close Expo Go; reopen to clear cache.
+
+Projects → pick a project → Open Detailed Build Plan.
+
+Verify:
+
+✅ No red error overlay.
+
+✅ Quick stats show only when values exist.
+
+✅ Materials/Cut list never show “undefined”.
+
+✅ Only Before/After images at top.
+
+✅ Totals render using fmtMoney (e.g., $122.30).
+
+Output note to include:
+“Applied safe text helpers; replaced unsafe templates; wrapped all visible strings in <Text>; removed hero; verified on device that the red-screen error is gone.”

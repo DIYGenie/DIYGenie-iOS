@@ -1,0 +1,89 @@
+Goal
+When I tap Save scan on ScanScreen, insert a row in room_scans with project_id, source: 'ar', roi, image_url: null, then navigate back to NewProject passing { savedScan }. The New Project form values must remain intact.
+
+Exact edits
+
+Create/replace app/lib/scanEvents.ts with a safe saver:
+
+// app/lib/scanEvents.ts
+import { supabase } from '../lib/supabase';
+
+export type Roi = { x: number; y: number; w: number; h: number };
+
+export async function saveArScan(opts: {
+  projectId: string;
+  roi?: Roi | null;
+}): Promise<{ scanId: string; imageUrl?: string; source: 'ar' }> {
+  const { projectId, roi } = opts;
+  if (!projectId) throw new Error('PROJECT_ID_REQUIRED');
+
+  console.log('[scan] saveArScan start', { projectId, roi, source: 'ar' });
+
+  const { data, error } = await supabase
+    .from('room_scans')
+    .insert([{
+      project_id: projectId,
+      source: 'ar',
+      roi: roi ?? null,     // JSONB column
+      image_url: null       // no image from AR
+      // user_id is DB default (auth.uid())
+    }])
+    .select('id, image_url')
+    .single();
+
+  if (error) {
+    console.log('[scan] save failed', error.message);
+    throw error;
+  }
+
+  return { scanId: data.id, imageUrl: data.image_url, source: 'ar' };
+}
+
+
+Wire it in the scan screen. In app/screens/ScanScreen.tsx:
+
+Import the saver: import { saveArScan } from '../lib/scanEvents';
+
+In the handler for “Save scan / Save area & Close”, replace any old insert logic with:
+
+// assume you already have projectId and current ROI (normalized or px – pass what you store in DB)
+const res = await saveArScan({ projectId, roi: currentRoi });
+console.log('[scan] saved', res);
+
+// Navigate back to New Project with the saved scan
+navigation.navigate('Main', {
+  screen: 'NewProject',
+  params: { savedScan: res },
+});
+
+
+Consume the param in New Project without clearing the draft.
+In app/screens/NewProject.tsx (or wherever the form lives), ensure this exists (or add it). It must not reset any form state:
+
+useFocusEffect(
+  React.useCallback(() => {
+    const paramScan = route.params?.savedScan;
+    if (paramScan) {
+      console.log('[newProject] param savedScan detected', paramScan);
+      setLastScan(paramScan);            // show “Saved scan (AR)” card
+      lastScanRef.current = paramScan;
+      navigation.setParams({ savedScan: undefined }); // prevent re-fire
+    }
+    return () => {};
+  }, [route.params?.savedScan, navigation])
+);
+
+
+Keep the draft persistence you added (AsyncStorage auto-save + hydrate) as-is so the title/description/budget/skill remain.
+
+Acceptance
+
+Tap Scan room → set ROI → Save scan.
+
+You return to New Project with all previously entered form fields intact.
+
+A card shows Saved scan (AR) (image optional).
+
+Supabase table room_scans has a row where project_id, source='ar', roi set, image_url=null.
+
+Please make these changes only; do not add or remove any other API calls or navigation.

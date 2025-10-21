@@ -1,0 +1,70 @@
+Task: Remove the “building plan” screen. Keep user on NewProject with a loading banner, then auto-navigate to ProjectDetails when the plan is ready.
+
+Files:
+
+app/screens/NewProject.tsx
+
+app/lib/api.ts
+
+Implement:
+
+API helper: add a light poller.
+
+// app/lib/api.ts
+export async function pollProjectReady(projectId: string, opts = { tries: 40, interval: 2000 }) {
+  for (let i = 0; i < opts.tries; i++) {
+    const item = await fetchProjectById(projectId); // existing helper
+    const ready = item?.status === 'ready' || !!item?.plan; // either flag means go
+    if (ready) return { ok: true, item };
+    await new Promise(r => setTimeout(r, opts.interval));
+  }
+  return { ok: false };
+}
+
+
+NewProject UI state: add const [isBuilding, setIsBuilding] = useState(false);
+
+Inline loading banner: just above the buttons, render when isBuilding:
+
+{isBuilding && (
+  <View style={{ padding: 14, borderRadius: 12, backgroundColor: '#EFE9FF', marginBottom: 12 }}>
+    <ActivityIndicator />
+    <Text style={{ marginTop: 8, fontWeight: '600' }}>Building your plan…</Text>
+    <Text style={{ color: '#5B5B66' }}>Hang tight — we’ll open the project when it’s ready.</Text>
+  </View>
+)}
+
+
+Disable inputs while building: wrap inputs/buttons with pointerEvents={isBuilding ? 'none' : 'auto'} and add disabled={isBuilding} on buttons.
+
+Unify build handlers (preview + no-preview):
+
+After we ensure/create the project, kick the job (use existing request function(s)).
+
+Do not navigate away. Set setIsBuilding(true), start pollProjectReady(projectId).
+
+On success, navigation.navigate('Projects' as never, { screen: 'ProjectDetails', params: { id: projectId } } as never);
+
+On timeout, show Alert.alert('Still working', 'We’ll keep trying — check Projects in a moment.'); then setIsBuilding(false).
+
+// app/screens/NewProject.tsx  (inside handlers)
+setIsBuilding(true);
+const { ok: kicked } = await requestPlanOrPreview(projectId, mode); // reuse your existing request fn(s)
+const res = await pollProjectReady(projectId, { tries: 40, interval: 2000 });
+setIsBuilding(false);
+if (res.ok) {
+  navigation.navigate('Projects' as never, { screen: 'ProjectDetails', params: { id: projectId } } as never);
+} else {
+  Alert.alert('Still building', 'Plan is taking longer than usual. You can continue and check the Projects tab.');
+}
+
+
+Cleanup on unmount/back: keep a let cancelled = false; flag or store timer refs; abort polling if the screen unmounts.
+
+Acceptance:
+
+Tap Build Plan Without Preview or Build with AI Preview → stay on NewProject, see banner + spinner, inputs disabled.
+
+When backend flips to ready (or returns a plan), app automatically opens ProjectDetails.
+
+No more intermediate “building” page, no red errors, graceful timeout.

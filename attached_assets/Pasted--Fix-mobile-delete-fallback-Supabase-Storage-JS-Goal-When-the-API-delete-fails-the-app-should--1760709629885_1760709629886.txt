@@ -1,0 +1,149 @@
+“Fix mobile delete fallback (Supabase Storage JS)”
+
+Goal: When the API delete fails, the app should delete the project’s storage files directly via Supabase Storage JS (no SQL RPC), then delete the project row. Buckets: uploads, room-scans.
+
+Scope
+
+Add a small storage cleanup helper.
+
+Wire it into the existing deleteProjectDeep fallback.
+
+No UI changes.
+
+Files to edit / add
+
+Create app/lib/storageCleanup.ts
+
+// app/lib/storageCleanup.ts
+import { SupabaseClient } from '@supabase/supabase-js';
+
+type CleanupArgs = {
+  supabase: SupabaseClient;
+  projectId: string;
+  userId?: string | null;
+};
+
+async function deleteByPrefix(
+  supabase: SupabaseClient,
+  bucket: string,
+  prefix: string
+) {
+  try {
+    // Recursively list up to a few thousand; our app won’t hit huge volumes
+    const toRemove: string[] = [];
+    let next: string | null = null;
+
+    do {
+      const { data, error } = await supabase
+        .storage
+        .from(bucket)
+        .list(prefix, { limit: 1000, token: next });
+
+      if (error) break;
+      if (!data) break;
+
+      for (const f of data) {
+        if (f.name === '.' || f.name === '..') continue;
+        // If it's a folder, recurse
+        if (f.id === null && f.name && f.created_at === null) {
+          // nested folder – call again
+          await deleteByPrefix(supabase, bucket, `${prefix}/${f.name}`);
+        } else {
+          toRemove.push(`${prefix}/${f.name}`);
+        }
+      }
+
+      // remove in batches of 100
+      while (toRemove.length) {
+        const batch = toRemove.splice(0, 100);
+        const { error: remErr } = await supabase.storage.from(bucket).remove(batch);
+        if (remErr) {
+          // swallow; best-effort cleanup
+          break;
+        }
+      }
+
+      // no pageable token exposed by supabase-js list(); exit loop
+      next = null;
+    } while (next);
+  } catch {
+    // best-effort; never throw
+  }
+}
+
+export async function deleteProjectStorage({ supabase, projectId, userId }: CleanupArgs) {
+  // Primary bucket where preview/input images live
+  // We save under: uploads / projects/{projectId}/...
+  await deleteByPrefix(supabase, 'uploads', `projects/${projectId}`);
+
+  // Room scans bucket: folder naming varies; cover common prefixes safely
+  // 1) user-scoped project folder: room-scans/{userId}/{projectId}/...
+  if (userId) {
+    await deleteByPrefix(supabase, 'room-scans', `${userId}/${projectId}`);
+    // 2) some earlier builds may have only user folder – leave as-is to avoid nuking all user scans
+  }
+
+  // Best effort only; never throw
+}
+
+
+Modify app/lib/deleteProject.ts (or wherever deleteProjectDeep lives).
+
+Import the helper and use it only in the fallback branch (when API delete fails).
+
+Remove any calls to SQL functions like storage.delete_files(...).
+
+// app/lib/deleteProject.ts
+import { deleteProjectStorage } from './storageCleanup';
+
+// ...existing imports & code...
+
+export async function deleteProjectDeep(args: {
+  supabase: SupabaseClient;
+  projectId: string;
+  userId: string;
+  apiBase?: string;
+}) {
+  const { supabase, projectId, userId, apiBase } = args;
+
+  // 1) Try API first (unchanged)
+  try {
+    const res = await fetch(`${apiBase}/api/projects/${projectId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (res.ok) {
+      return { ok: true, usedApi: true };
+    }
+  } catch {
+    // ignore; continue to fallback
+  }
+
+  // 2) Fallback: client-side cleanup (new)
+  try {
+    // 2a) Storage (best-effort)
+    await deleteProjectStorage({ supabase, projectId, userId });
+
+    // 2b) Delete DB row (FKs/ON DELETE CASCADE will handle children)
+    const { error: delErr } = await supabase
+      .from('projects')
+      .delete()
+      .eq('id', projectId)
+      .eq('user_id', userId);
+
+    if (delErr) {
+      return { ok: false, usedApi: false, error: delErr.message };
+    }
+    return { ok: true, usedApi: false };
+  } catch (e: any) {
+    return { ok: false, usedApi: false, error: e?.message ?? 'fallback_failed' };
+  }
+}
+
+Notes / Assumptions
+
+uploads paths are stored under projects/{projectId}/... (matches your existing file names).
+
+room-scans uses a user folder; we only delete room-scans/{userId}/{projectId} if it exists (safe).
+
+This change removes any dependency on SQL RPC storage functions; no Supabase migration needed.

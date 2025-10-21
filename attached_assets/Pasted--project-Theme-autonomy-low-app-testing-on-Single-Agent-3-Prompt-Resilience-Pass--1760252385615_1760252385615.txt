@@ -1,0 +1,123 @@
+**project:** Theme
+**autonomy:** low
+**app testing:** on
+
+**Single Agent-3 Prompt — Resilience Pass (backoff, unified errors, retry on NewProject, status badges, stub/live flag)**
+
+> Make the preview flow feel solid without adding deps or new screens. No server edits.
+
+**Edits (minimal, safe diffs)**
+
+1. `app/lib/api.ts` — add tiny helpers & types (no breaking changes)
+
+* Add types:
+
+```ts
+export type PreviewSubmitRes = { ok: boolean; jobId?: string; mode?: 'stub'|'live' };
+export type PreviewStatusRes = { ok: boolean; status: string; preview_url?: string|null; cached?: boolean };
+```
+
+* Add a guard for non-200s in `submitPreview` / `getPreviewStatus` to return `{ ok:false, ... }` instead of throwing.
+
+2. `app/lib/ui.ts` (new) — simple, non-blocking toasts (no deps)
+
+```ts
+import { Platform, ToastAndroid } from 'react-native';
+let bannerCb: ((msg:string)=>void) | null = null;
+export function simpleToast(msg: string) {
+  if (Platform.OS === 'android') ToastAndroid.show(msg, ToastAndroid.SHORT);
+  else console.log('[toast]', msg);
+  bannerCb?.(msg); // optional in-app banner hookup
+}
+export function _attachBanner(cb: (msg:string)=>void){ bannerCb = cb; }
+```
+
+3. `app/screens/NewProject.tsx` — exponential backoff + unified errors + retry
+
+* At top imports: `import { simpleToast } from 'app/lib/ui';`
+* Add util in file (near handlers):
+
+```ts
+function* backoffDelays(ms=1500, factor=1.6, max=10000, tries=12){
+  let d=ms;
+  for(let i=0;i<tries;i++){ yield Math.min(d, max); d = Math.ceil(d*factor); }
+}
+```
+
+* In `handleBuildWithPreview` flow:
+
+  * Replace fixed 2.5s loop with:
+
+```ts
+const delays = backoffDelays(1200, 1.7, 9000, 14); // ~2 min cap
+let attempt = 0; let ready = false;
+for (const delay of delays){
+  attempt++;
+  const statusRes = await getPreviewStatus(projectId);
+  console.log('[preview ui] poll', { projectId, attempt, status: statusRes.status });
+  if (!statusRes.ok){
+    simpleToast('Preview status check failed — retrying…');
+  } else if (statusRes.status === 'ready' && statusRes.preview_url){
+    console.log('[preview ui] ready', { projectId, hasUrl: !!statusRes.preview_url });
+    ready = true; break;
+  }
+  await new Promise(r => setTimeout(r, delay + Math.floor(Math.random()*250)));
+}
+if (!ready){
+  console.warn('[preview ui] timeout', { projectId, attempts: attempt });
+  simpleToast('Preview still processing — you can view the project now.');
+}
+```
+
+* **Retry button (only on NewProject):** under the “Build with visual mockup” CTA, show a small text-button “Retry preview” **only when** submit failed or we timed out. On press: re-call `submitPreview(projectId)` then re-run the backoff loop. Log `[preview ui] retry`.
+* Submit error handling:
+
+```ts
+const res = await submitPreview(projectId);
+if (!res.ok){
+  console.error('[preview ui] error submit');
+  simpleToast('Could not start preview. Check connection and try again.');
+  // fall through to navigate to details anyway
+} else {
+  if (res.mode) console.log('[preview ui] mode', res.mode);
+  setPreviewStatusMsg('Preview: queued…');
+}
+```
+
+4. `app/screens/ProjectsScreen.tsx` (Projects list) — status badge
+
+* Ensure list query selects `preview_status` and `status`.
+* On each project card, render a tiny badge at top-right of the thumbnail/title:
+
+  * `queued` → “Preview: queued”
+  * `ready`  → “Preview: ready”
+  * else     → nothing
+* Keep lightweight styles; no new components.
+
+5. `app/screens/ProjectDetails.tsx` — surface stub/live (if present) + cached flag
+
+* Read `project.preview_meta?.mode` if fetched; if not available in this screen’s select, add `preview_meta` to select (jsonb).
+* Under hero (same row as AR badges if present), add an inline dimmed label when available:
+
+  * `Mode: live` or `Mode: stub`
+* When `getPreviewStatus` returns `{ cached:true }` (if server provided), add a one-time `console.log('[preview ui] cached hit')`. (No UI change required.)
+
+6. Logging & guardrails (don’t change existing good logs)
+
+* Keep: `[preview ui] submit|poll|ready|timeout|error`
+* New: `[preview ui] retry` on manual retry
+* No blocking modals; only `simpleToast`.
+
+**Acceptance**
+
+* In **stub**, it hits `ready` within a few polls; badge shows “Preview: ready” in list; Details can display `Mode: stub` if meta persisted.
+* In **live**, polling backs off smoothly (1.2s → 2s → 3.4s … capped 9s), no freezes; on timeout you still navigate and see scan/upload hero; toast explains it’s still processing.
+* “Retry preview” appears **only** on NewProject when fail/timeout, and works.
+* No new dependencies, no TypeScript errors.
+
+**Stop after these edits.**
+Reply with:
+
+* Whether stub or live mode appears in logs.
+* A short 3-line log snippet (`submit`, one `poll`, then `ready` or `timeout`).
+* Confirmation that the Projects list now shows the small `Preview: queued/ready` badge.

@@ -1,0 +1,105 @@
+Do NOT rename/move/delete files or add deps.
+
+Task:
+Add a minimal client integration to call the stubbed POST /preview and display the image.
+
+Exact changes (safe minimal diffs in this file only):
+
+Imports – add:
+
++import React, { useState } from 'react';
++import { View, Text, Image, Pressable, ActivityIndicator, Alert } from 'react-native';
+
+
+(If React and core components are already imported, only add the missing ones.)
+
+Inside the component (top-level of function body) – add state + base URL helper:
+
++  const [previewUrl, setPreviewUrl] = useState(null);
++  const [previewLoading, setPreviewLoading] = useState(false);
++  const RAW_BASE = process.env.EXPO_PUBLIC_BASE_URL || 'http://localhost:5000';
++  const API_BASE_URL = RAW_BASE.startsWith('http') ? RAW_BASE : `https://${RAW_BASE}`;
+
+
+Add handler – place inside the component:
+
++  const handleGeneratePreview = async () => {
++    try {
++      if (!project || !project.photo_url || !project.prompt) {
++        Alert.alert('Missing data', 'This project needs a photo_url and prompt before generating a preview.');
++        return;
++      }
++      setPreviewLoading(true);
++      setPreviewUrl(null);
++      const res = await fetch(`${API_BASE_URL}/preview`, {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({
++          photo_url: project.photo_url,
++          prompt: project.prompt,
++          measurements: project.measurements_json || null
++        })
++      });
++      const data = await res.json();
++      if (!res.ok || !data?.ok) {
++        throw new Error(data?.error || `HTTP ${res.status}`);
++      }
++      setPreviewUrl(data.preview_url);
++    } catch (err) {
++      Alert.alert('Preview failed', String(err?.message || err));
++    } finally {
++      setPreviewLoading(false);
++    }
++  };
+
+
+UI block – append near the bottom of the existing JSX (e.g., below other action buttons, before the closing container). Create a small section without disturbing existing layout:
+
++      {/* --- Preview (Decor8 stub) --- */}
++      <View style={{ marginTop: 16, padding: 12, borderRadius: 12, backgroundColor: '#f3f4f6' }}>
++        <Text style={{ fontWeight: '600', marginBottom: 8 }}>Design Preview</Text>
++        <Pressable
++          onPress={handleGeneratePreview}
++          disabled={previewLoading}
++          style={({ pressed }) => ({
++            opacity: previewLoading ? 0.6 : pressed ? 0.8 : 1,
++            alignSelf: 'flex-start',
++            paddingVertical: 10,
++            paddingHorizontal: 14,
++            borderRadius: 10,
++            backgroundColor: '#6D28D9',
++            marginBottom: 10
++          })}
++          testID="btn-generate-preview"
++        >
++          <Text style={{ color: 'white', fontWeight: '600' }}>
++            {previewLoading ? 'Generating…' : 'Generate Preview'}
++          </Text>
++        </Pressable>
++        {previewLoading && <ActivityIndicator size="small" />}
++        {previewUrl && (
++          <Image
++            source={{ uri: previewUrl }}
++            style={{ width: '100%', aspectRatio: 4 / 3, borderRadius: 10 }}
++            resizeMode="cover"
++            testID="img-preview"
++          />
++        )}
++      </View>
+
+
+Assumptions used (do not change names):
+
+project object is available in this screen with fields: photo_url, prompt, and optional measurements_json.
+
+Env var set: EXPO_PUBLIC_BASE_URL=api.diygenieapp.com (no protocol). The code auto-prefixes https:// if missing.
+
+Success criteria:
+
+Tapping Generate Preview calls POST ${API_BASE_URL}/preview.
+
+On success, the preview image renders.
+
+On missing data, an Alert explains what’s needed.
+
+No other screen behavior changes.

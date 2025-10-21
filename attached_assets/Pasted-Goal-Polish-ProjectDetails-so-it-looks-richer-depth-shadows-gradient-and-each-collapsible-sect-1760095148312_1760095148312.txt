@@ -1,0 +1,95 @@
+Goal: Polish ProjectDetails so it looks richer (depth, shadows, gradient), and each collapsible section shows useful, detailed content (not just counts). Keep a single top CTA to the full guide.
+
+Files to touch
+
+app/screens/ProjectDetails.tsx
+
+app/components/SectionCard.tsx (new)
+
+leave DetailedInstructions as-is; keep planObj data source
+
+Design tokens
+
+Primary: #6D28D9 → gradient ['#7C3AED','#6D28D9']
+
+Surface: #F5F3FF
+
+Card bg: #F8F7FF
+
+Radius: 16
+
+Shadow (iOS): {shadowColor:'#000',shadowOpacity:0.12,shadowRadius:12,shadowOffset:{width:0,height:6}}
+
+Android: elevation:6
+
+Icon color: #6D28D9
+
+Section spacing: 14
+
+Top area
+
+If project has imageUrl show it; else rounded placeholder with subtle pattern.
+
+Big CTA card: “Open Detailed Build Plan” (subtitle: “Document-style guide with every step and detail”). Gradient background, large, rounded, press scale.
+
+Create SectionCard
+
+Props: { icon: ReactNode, title: string, summary?: string, children: ReactNode, defaultOpen?: boolean, countBadge?: number }
+
+Visual: rounded card, soft shadow, chevron that rotates on open, tap area entire header.
+
+Animation: LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut) on toggle.
+
+Populate sections from planObj
+
+Overview
+
+Show first paragraph. If time/cost exist, add pills: ⏱ {hours} hrs 💵 ${cost}.
+
+If empty → “No overview yet.”
+
+Steps
+
+Numbered list. Support sub-bullets if present.
+
+After each step, optionally render a faint tip row if step text contains “tip:” or “safety:”.
+
+At bottom actions row: Start Build (navigates to full guide scrolled to Steps), Copy steps.
+
+Materials
+
+Bulleted list: • {name} — {qty} {unit}.
+
+Add actions row: Copy list, Add to Notes (clipboard both).
+
+Tools
+
+Bulleted list. If present, prepend safety chip: Wear eye & hearing protection.
+
+Cuts
+
+Mini “table”: each row shows Part on left, WxL xQty on right with monospaced font for measurements.
+
+Time & Cost
+
+Big chips for time & cost; if missing, text placeholders.
+
+Empty states
+
+Keep helpful text like “No tools listed.” inside expanded body.
+
+Cleanup
+
+Remove/stop rendering old PlanTabs on this screen.
+
+Keep the single top CTA; each SectionCard header navigates to DetailedInstructions with a section param when tapped (long-press opens here; tap opens full guide at that section).
+
+Acceptance
+
+Cards have visible depth, chevron rotates, smooth expand/collapse.
+
+Sections show real parsed data (not just counts).
+
+Copy to clipboard works (log success).
+
+No regressions to plan fetching or navigation.

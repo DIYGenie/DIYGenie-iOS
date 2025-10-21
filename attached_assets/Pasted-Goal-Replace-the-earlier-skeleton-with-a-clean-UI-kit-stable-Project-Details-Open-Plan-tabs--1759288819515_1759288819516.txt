@@ -1,0 +1,90 @@
+Goal: Replace the earlier skeleton with a clean UI kit + stable Project Details → “Open Plan” tabs, add a Summary under the CTA, and harden project create/upload (fix 403). Keep stubs (no paid APIs).
+
+Important:
+
+This prompt must be safe even if some of these files already exist. Prefer update/merge over duplicate files.
+
+Do not touch environment variables. Keep EXPO_PUBLIC_BASE_URL=https://api.diygenieapp.com.
+
+Fix the “Rendered more hooks than during the previous render” error by ensuring all hooks are top-level (no conditionals/loops/returns above hooks).
+
+1) Add/Update a tiny UI kit and unify styling
+
+Create or update:
+
+app/ui/theme.ts
+
+export const colors = {
+  bg: "#FFFFFF", text: "#111827", sub: "#6B7280", border: "#E5E7EB",
+  card: "#F9FAFB", primary: "#E39A33", primaryText: "#FFFFFF",
+  successBg: "#E8F6EE", successText: "#2E7D32", mutedBg: "#F3F4F6", mutedText: "#374151",
+};
+export const radii = { xs: 6, sm: 10, md: 14, lg: 18, pill: 999 };
+export const space = { xs: 6, sm: 10, md: 14, lg: 20, xl: 28 };
+export const shadow = { card: { shadowColor:"#000", shadowOpacity:0.05, shadowRadius:8, elevation:2 } };
+export const ui = {
+  h1: { fontSize: 22, fontWeight: "800", color: colors.text },
+  h2: { fontSize: 18, fontWeight: "700", color: colors.text },
+  p:  { fontSize: 14, color: colors.text },
+  sub:{ fontSize: 13, color: colors.sub },
+};
+
+
+app/ui/components.tsx
+
+import React from "react";
+import { View, Text, Pressable, ScrollView, ViewStyle, TextStyle } from "react-native";
+import { colors, radii, space, shadow, ui } from "./theme";
+
+export function Screen({ children, style }: React.PropsWithChildren<{ style?: ViewStyle }>) {
+  return <View style={[{ flex:1, backgroundColor: colors.bg }, style]}>{children}</View>;
+}
+export function ScreenScroll({ children, style }: React.PropsWithChildren<{ style?: ViewStyle }>) {
+  return (
+    <ScrollView style={{ flex:1, backgroundColor: colors.bg }}
+      contentContainerStyle={[{ padding: space.lg }, style]}>
+      {children}
+    </ScrollView>
+  );
+}
+export function Card({ children, onPress, style }: React.PropsWithChildren<{ onPress?: () => void; style?: ViewStyle }>) {
+  const body = (
+    <View style={[
+      { backgroundColor: colors.card, borderRadius: radii.md, padding: space.md, borderWidth:1, borderColor: colors.border },
+      shadow.card, style]}>
+      {children}
+    </View>
+  );
+  return onPress ? <Pressable onPress={onPress}>{body}</Pressable> : body;
+}
+export function Badge({ text, tone = "muted" as "muted" | "success", style }:
+  { text: string; tone?: "muted" | "success"; style?: ViewStyle }) {
+  const bg = tone === "success" ? colors.successBg : colors.mutedBg;
+  const fg = tone === "success" ? colors.successText : colors.mutedText;
+  return (
+    <View style={[{ alignSelf:"flex-start", paddingHorizontal:10, paddingVertical:6, borderRadius: radii.pill, backgroundColor:bg }, style]}>
+      <Text style={{ color: fg, fontWeight:"700", fontSize:12 }}>{text}</Text>
+    </View>
+  );
+}
+export function ButtonPrimary({ title, onPress, style, textStyle }:
+  { title: string; onPress?: () => void; style?: ViewStyle; textStyle?: TextStyle }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [
+      { backgroundColor: colors.primary, paddingVertical:16, borderRadius: radii.md, alignItems:"center", opacity: pressed ? .92 : 1 },
+      style]}>
+      <Text style={[{ color: colors.primaryText, fontWeight:"700", fontSize:16 }, textStyle]}>{title}</Text>
+    </Pressable>
+  );
+}
+export function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <Text style={[ui.h2, { marginBottom: space.sm }]}>{children}</Text>;
+}
+export { colors, ui, space, radii };
+
+
+Refactor screens to use the kit, no logic changes:
+
+ProjectsScreen: wrap with <Screen>; list uses contentContainerStyle={{ padding: 20, paddingBottom: 120 }}; each row is a <Card onPress={...}>…</Card>; status chip with <Badge> (“Preview ready”, “Plan ready”, else “In progress”).
+
+ProjectDetailsScreen: wrap with <ScreenScroll>; replace chip with <Badge tone={status==='plan_ready'?'success':'muted'} text="Plan ready" />; replace main CTA with <ButtonPrimary .../>; white background (no gradient).

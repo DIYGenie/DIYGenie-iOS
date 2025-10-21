@@ -1,0 +1,97 @@
+Goal: Replace any Blob usage with ArrayBuffer upload; convert HEIC to JPEG before upload; remove deprecated ImagePicker option.
+
+Tasks
+
+Install expo-image-manipulator.
+
+Add to package.json and ensure it’s auto-linked.
+
+Update app/lib/uploadRoomScan.ts:
+
+Stop using Blob. Read the local image URI as ArrayBuffer via await (await fetch(uri)).arrayBuffer().
+
+If the picked file is HEIC or content type is unknown, convert it to JPEG using expo-image-manipulator, then upload that URI instead.
+
+Use contentType: 'image/jpeg' for converted JPEGs.
+
+Keep path shape: room-scans/${userId}/${scanId}.jpg, and still insert the row into public.room_scans.
+
+Return { scanId, imageUrl, path } unchanged.
+
+Example (core logic to implement):
+
+import * as ImageManipulator from 'expo-image-manipulator';
+
+function guessContentType(uri: string) {
+  const lower = uri.split('?')[0].toLowerCase();
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.heic')) return 'image/heic';
+  return 'application/octet-stream';
+}
+
+async function ensureJpeg(uri: string) {
+  const ct = guessContentType(uri);
+  if (ct === 'image/heic' || ct === 'application/octet-stream') {
+    const out = await ImageManipulator.manipulateAsync(
+      uri,
+      [],
+      { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
+    );
+    return { uri: out.uri, contentType: 'image/jpeg' as const };
+  }
+  if (ct === 'image/png' || ct === 'image/jpeg') {
+    return { uri, contentType: ct as 'image/png' | 'image/jpeg' };
+  }
+  // default to jpeg
+  const out = await ImageManipulator.manipulateAsync(
+    uri,
+    [],
+    { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
+  );
+  return { uri: out.uri, contentType: 'image/jpeg' as const };
+}
+
+export async function uploadRoomScan(supabase: any, userId: string, localUri: string) {
+  const { scanId, path } = /* keep your existing id/path generation */;
+  const { uri: uploadUri, contentType } = await ensureJpeg(localUri);
+
+  const ab = await (await fetch(uploadUri)).arrayBuffer();
+
+  const { error } = await supabase
+    .storage
+    .from('room-scans')
+    .upload(path, ab, { contentType, upsert: true });
+
+  if (error) throw error;
+
+  const { data: publicUrl } = supabase.storage.from('room-scans').getPublicUrl(path);
+
+  // insert row in public.room_scans (unchanged)
+  await supabase.from('room_scans').insert({
+    id: scanId,
+    user_id: userId,
+    image_url: publicUrl.publicUrl,
+    raw_scan_url: null,
+    meta: { platform: 'expo', source: 'camera' }
+  });
+
+  return { scanId, imageUrl: publicUrl.publicUrl, path };
+}
+
+
+Update app/screens/NewProject.tsx ImagePicker call:
+
+Replace deprecated MediaTypeOptions with the new API:
+
+// before: mediaTypes: ImagePicker.MediaTypeOptions.Images
+mediaTypes: [ImagePicker.MediaType.Images],
+
+
+Leave the rest of the flow unchanged.
+
+Verify:
+
+Launch the app (Expo Go), take a photo → Use Photo.
+
+Expect: no crash, toast “Scan uploaded & saved”, and the saved-scan card with thumbnail appears.

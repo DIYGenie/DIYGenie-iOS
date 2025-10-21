@@ -1,0 +1,201 @@
+Goal: Make uploaded-photo flow upload-only (no “Mark area” / “Measure”), and ensure Scan room does not open the camera. We’ll hard-replace both possible component files so we’re certain the right one is rendered.
+
+THEME
+// REPLACE FILE: app/screens/NewProjectMedia.js
+import React, { useState } from 'react';
+import { View, Pressable, Text, Image } from 'react-native';
+import Toast from '../components/Toast';
+import { supabase } from '../lib/supabase';
+import { ensureProjectForDraft } from '../lib/draft';
+
+export default function NewProjectMedia(props) {
+  const {
+    draft = {},
+    onDraftChange = () => {},
+    isFormValid = false,
+    onBlocked = () => {},
+  } = props;
+
+  const [savedScan, setSavedScan] = useState(null);
+  console.log('[NPMedia] vFINAL (js) render', { hasSavedScan: !!savedScan });
+
+  const guard = (fn) => () => {
+    if (!isFormValid) { onBlocked?.(); return; }
+    fn && fn();
+  };
+
+  async function authPreflight() {
+    const { data } = await supabase.auth.getSession();
+    const user = data?.session?.user;
+    if (!user) {
+      Toast.show('Session expired. Please sign in again.');
+      await supabase.auth.signOut();
+      throw new Error('AUTH_REQUIRED');
+    }
+    return user;
+  }
+
+  const handleScan = guard(async () => {
+    Toast.show('AR Scan coming soon.');
+  });
+
+  const handleUpload = guard(async () => {
+    try {
+      await authPreflight();
+      const projectId = await ensureProjectForDraft(draft);
+      if (!draft?.projectId) onDraftChange({ ...draft, projectId });
+
+      const { uploadRoomScan } = await import('../lib/uploadRoomScan');
+      const result = await uploadRoomScan(); // { imageUrl, scanId }
+      if (!result?.scanId) { Toast.show('Upload failed. Try again.'); return; }
+
+      await supabase.from('room_scans').update({ project_id: projectId }).eq('id', result.scanId);
+
+      setSavedScan({ ...result, projectId, source: 'upload' });
+      Toast.show('Scan saved to project!');
+    } catch (e) {
+      if (String(e?.message || e).includes('AUTH_REQUIRED')) return;
+      console.log('[upload/link failed]', e);
+      Toast.show('Upload failed. Please try again.');
+    }
+  });
+
+  return (
+    <View style={{ gap: 12, marginTop: 8 }}>
+      <Pressable
+        onPress={handleScan}
+        style={{
+          backgroundColor: isFormValid ? '#7C3AED' : '#C7C7C7',
+          padding: 14, borderRadius: 14, alignItems: 'center',
+          opacity: isFormValid ? 1 : 0.7,
+        }}
+      >
+        <Text style={{ color: 'white', fontWeight: '600' }}>Scan room</Text>
+      </Pressable>
+
+      <Pressable
+        onPress={handleUpload}
+        style={{
+          backgroundColor: isFormValid ? '#7C3AED' : '#C7C7C7',
+          padding: 14, borderRadius: 14, alignItems: 'center',
+          opacity: isFormValid ? 1 : 0.7,
+        }}
+      >
+        <Text style={{ color: 'white', fontWeight: '600' }}>Upload Photo</Text>
+      </Pressable>
+
+      {savedScan && (
+        <View style={{ marginTop: 16, backgroundColor: '#F3F0FF', borderRadius: 16, padding: 12, alignItems: 'center' }}>
+          <Image source={{ uri: savedScan.imageUrl }} style={{ width: 220, height: 140, borderRadius: 12 }} resizeMode="cover" />
+          <Text style={{ marginTop: 8, fontWeight: '600' }}>Saved scan</Text>
+          <Text style={{ marginTop: 8, color: '#6B7280', textAlign: 'center' }}>
+            Tools appear when you use <Text style={{ fontWeight: '700' }}>Scan room</Text>.
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// REPLACE FILE: app/screens/NewProjectMedia.tsx
+import React, { useState } from 'react';
+import { View, Pressable, Text, Image } from 'react-native';
+import Toast from '../components/Toast';
+import { supabase } from '../lib/supabase';
+import { ensureProjectForDraft } from '../lib/draft';
+
+type Props = {
+  draft?: any;
+  onDraftChange?: (d: any) => void;
+  isFormValid?: boolean;
+  onBlocked?: () => void;
+};
+
+export default function NewProjectMedia(props: Props) {
+  const {
+    draft = {},
+    onDraftChange = () => {},
+    isFormValid = false,
+    onBlocked = () => {},
+  } = props;
+
+  const [savedScan, setSavedScan] = useState<any>(null);
+  console.log('[NPMedia] vFINAL (tsx) render', { hasSavedScan: !!savedScan });
+
+  const guard = (fn?: () => void) => () => {
+    if (!isFormValid) { onBlocked?.(); return; }
+    fn && fn();
+  };
+
+  async function authPreflight() {
+    const { data } = await supabase.auth.getSession();
+    const user = data?.session?.user;
+    if (!user) {
+      Toast.show('Session expired. Please sign in again.');
+      await supabase.auth.signOut();
+      throw new Error('AUTH_REQUIRED');
+    }
+    return user;
+  }
+
+  const handleScan = guard(async () => {
+    Toast.show('AR Scan coming soon.');
+  });
+
+  const handleUpload = guard(async () => {
+    try {
+      await authPreflight();
+      const projectId = await ensureProjectForDraft(draft);
+      if (!draft?.projectId) onDraftChange({ ...draft, projectId });
+
+      const { uploadRoomScan } = await import('../lib/uploadRoomScan');
+      const result: any = await uploadRoomScan();
+      if (!result?.scanId) { Toast.show('Upload failed. Try again.'); return; }
+
+      await supabase.from('room_scans').update({ project_id: projectId }).eq('id', result.scanId);
+
+      setSavedScan({ ...result, projectId, source: 'upload' });
+      Toast.show('Scan saved to project!');
+    } catch (e: any) {
+      if (String(e?.message || e).includes('AUTH_REQUIRED')) return;
+      console.log('[upload/link failed]', e);
+      Toast.show('Upload failed. Please try again.');
+    }
+  });
+
+  return (
+    <View style={{ gap: 12, marginTop: 8 }}>
+      <Pressable
+        onPress={handleScan}
+        style={{
+          backgroundColor: isFormValid ? '#7C3AED' : '#C7C7C7',
+          padding: 14, borderRadius: 14, alignItems: 'center',
+          opacity: isFormValid ? 1 : 0.7,
+        }}
+      >
+        <Text style={{ color: 'white', fontWeight: '600' }}>Scan room</Text>
+      </Pressable>
+
+      <Pressable
+        onPress={handleUpload}
+        style={{
+          backgroundColor: isFormValid ? '#7C3AED' : '#C7C7C7',
+          padding: 14, borderRadius: 14, alignItems: 'center',
+          opacity: isFormValid ? 1 : 0.7,
+        }}
+      >
+        <Text style={{ color: 'white', fontWeight: '600' }}>Upload Photo</Text>
+      </Pressable>
+
+      {savedScan && (
+        <View style={{ marginTop: 16, backgroundColor: '#F3F0FF', borderRadius: 16, padding: 12, alignItems: 'center' }}>
+          <Image source={{ uri: savedScan.imageUrl }} style={{ width: 220, height: 140, borderRadius: 12 }} resizeMode="cover" />
+          <Text style={{ marginTop: 8, fontWeight: '600' }}>Saved scan</Text>
+          <Text style={{ marginTop: 8, color: '#6B7280', textAlign: 'center' }}>
+            Tools appear when you use <Text style={{ fontWeight: '700' }}>Scan room</Text>.
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}

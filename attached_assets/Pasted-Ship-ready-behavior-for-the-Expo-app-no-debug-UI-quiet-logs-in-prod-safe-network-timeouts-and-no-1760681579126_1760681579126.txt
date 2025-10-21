@@ -1,0 +1,80 @@
+Ship-ready behavior for the Expo app: no debug UI, quiet logs in prod, safe network timeouts, and no leftover demo/testing code.
+
+Do
+
+Env flags
+
+Read process.env.EXPO_PUBLIC_ENV (values: dev | prod).
+
+Add app/lib/env.ts:
+
+export const ENV = (process.env.EXPO_PUBLIC_ENV || 'dev') as 'dev'|'prod';
+export const WEBHOOKS_BASE = process.env.EXPO_PUBLIC_BASE_URL!;
+export const IS_PROD = ENV === 'prod';
+
+
+Replace direct uses of EXPO_PUBLIC_BASE_URL with WEBHOOKS_BASE via this module where convenient (no need to touch everything if centralized already).
+
+Quiet logger
+
+Add app/lib/logger.ts:
+
+import { IS_PROD } from './env';
+export const log  = (...a:any[]) => { if (!IS_PROD) console.log(...a); };
+export const warn = (...a:any[]) => { if (!IS_PROD) console.warn(...a); };
+export const error= (...a:any[]) => console.error(...a); // keep errors
+
+
+Replace top-level console.log/warn in screens (Home, Projects, ProjectDetails, DetailedInstructions) with log/warn. Keep error as is.
+
+Disable test UI
+
+Remove/hide any Welcome/Test modal and any remaining demo references:
+
+Ensure “Try a Sample Project” button is not rendered anywhere.
+
+Ensure no “testing reminders” toast/banner renders in prod: wrap with if (!IS_PROD).
+
+Network hardening
+
+In app/lib/api.ts (or central fetch helper), add default timeout + abort:
+
+8s timeout for GETs, 12s for POSTs.
+
+On timeout, throw Error('timeout') and show non-intrusive toast/snackbar if you already have one; otherwise just log via warn.
+
+Ensure all API base URLs come from WEBHOOKS_BASE.
+
+Images in lists
+
+Where project thumbnails render, ensure we use preview_thumb_url ?? preview_url and resizeMode="cover" with a fixed height (56–64) and rounded corners.
+
+No layout changes, just ensure we prefer thumbs.
+
+Navigation safety
+
+Confirm that undefined/null strings never render directly:
+
+For any templated strings in ProjectDetails / DetailedInstructions, ensure we guard with ?? '' or conditional renders (this prevented earlier “text must be inside <Text>” crashes).
+
+No emojis anywhere.
+
+Dead code sweep
+
+Remove unused imports and variables flagged by TS/LSP in the touched files only.
+
+Do not refactor component structure.
+
+Acceptance
+
+Setting EXPO_PUBLIC_ENV=prod results in:
+
+No debug toasts/banners/modals; logs are quiet except errors.
+
+API requests have timeouts and never hang the UI.
+
+Projects list still loads quickly with thumbs; navigation unchanged.
+
+No references to demo or test UI remain.
+
+App bundles and runs clean in Expo Go.

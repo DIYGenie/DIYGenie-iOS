@@ -1,0 +1,157 @@
+patch Profile billing actions, web-safe open, inline upgrade picker, stronger error UX. No backend edits. No new files/renames/deletes.
+
+Task
+
+Update app/screens/Profile.tsx to:
+
+open external URLs reliably on web and native,
+
+show an inline upgrade picker (no ActionSheet on web),
+
+handle 404s with friendly alerts and dev fallback (/api/billing/upgrade),
+
+try alternate entitlements path if the short path 404s, then degrade gracefully.
+
+Files to touch (only):
+
+app/screens/Profile.tsx
+
+Implementation details
+
+Endpoints map (top of file) — keep existing, but add:
+
+const ENDPOINTS = {
+  checkout: `${BASE}/api/billing/checkout`,   // POST { tier } -> { url }
+  portal:   `${BASE}/api/billing/portal`,     // POST -> { url }
+  entitlementsShort: `${BASE}/me/entitlements`,        // GET -> { tier, remaining, previewAllowed }
+  entitlementsWithId: (id:string) => `${BASE}/me/entitlements/${id}`, // optional server shape
+  devUpgrade: `${BASE}/api/billing/upgrade`,  // POST { tier } -> 200
+};
+
+
+Add a CURRENT_USER_ID?: string if you already have it in props/context. If not, leave undefined — we’ll still work.
+
+Utility: openExternal (inside this file, no new deps):
+
+const openExternal = async (url: string) => {
+  try {
+    if (Platform.OS === 'web') { window.open(url, '_blank', 'noopener,noreferrer'); return; }
+    const supported = await Linking.canOpenURL(url);
+    if (!supported) throw new Error('Cannot open URL');
+    await Linking.openURL(url);
+  } catch (e) {
+    Alert.alert('Billing', 'Could not open link. Please try again.');
+  }
+};
+
+
+fetch helper with timeout + JSON guard:
+
+const api = async (url: string, opts: RequestInit = {}) => {
+  const controller = new AbortController();
+  const t = setTimeout(()=>controller.abort(), 12000);
+  const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, signal: controller.signal, ...opts });
+  clearTimeout(t);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) throw new Error('Non-JSON response');
+  return res.json();
+};
+
+
+Entitlements loader — attempt short path, then /:userId (if available), else show friendly alert and keep current UI:
+
+const getEntitlements = async () => {
+  try {
+    const data = await api(ENDPOINTS.entitlementsShort);
+    setEntitlements(data);
+  } catch (e:any) {
+    if (String(e.message).startsWith('404') && CURRENT_USER_ID) {
+      try {
+        const data = await api(ENDPOINTS.entitlementsWithId(CURRENT_USER_ID));
+        setEntitlements(data);
+        return;
+      } catch {}
+    }
+    Alert.alert('Billing', 'Could not load your plan right now. You can still try Upgrade or Manage, then tap Sync Plan.');
+  }
+};
+
+
+Keep the existing AppState listener to call getEntitlements() when returning to foreground.
+
+Portal action — show errors clearly:
+
+const openPortal = async () => {
+  setBusy(true);
+  try {
+    const { url } = await api(ENDPOINTS.portal, { method: 'POST' });
+    await openExternal(url);
+  } catch (e:any) {
+    Alert.alert('Billing', 'Portal is unavailable (404). If you just need to change plans, use Upgrade for now.');
+  } finally { setBusy(false); }
+};
+
+
+Checkout with dev fallback:
+
+const openCheckout = async (tier:'casual'|'pro') => {
+  setBusy(true);
+  try {
+    const { url } = await api(ENDPOINTS.checkout, { method: 'POST', body: JSON.stringify({ tier }) });
+    await openExternal(url);
+  } catch (e:any) {
+    // Fallback only on missing routes or not implemented
+    if (String(e.message).startsWith('404') || String(e.message).startsWith('501')) {
+      try {
+        await api(ENDPOINTS.devUpgrade, { method: 'POST', body: JSON.stringify({ tier }) });
+        Alert.alert('Billing', `Upgraded to ${tier} in dev mode. Syncing…`);
+        await getEntitlements();
+      } catch {
+        Alert.alert('Billing', 'Upgrade fallback failed. Try Sync Plan or contact support.');
+      }
+    } else {
+      Alert.alert('Billing', 'Checkout is unavailable right now. Try again shortly.');
+    }
+  } finally { setBusy(false); }
+};
+
+
+Inline Upgrade Picker (web-safe) — no ActionSheet; render a small conditional card below the plan card:
+
+Add const [showUpgradePicker, setShowUpgradePicker] = useState(false);
+
+“Upgrade Plan” button: onPress={() => setShowUpgradePicker(v=>!v)}
+
+Conditional JSX (simple and on-brand):
+
+{showUpgradePicker && (
+  <Card style={{ marginTop: 8 }}>
+    <Text style={{ marginBottom: 8 }}>Choose a plan</Text>
+    <ButtonPrimary disabled={busy} onPress={()=>{ setShowUpgradePicker(false); openCheckout('casual'); }}>
+      Casual — 5 projects/mo + previews
+    </ButtonPrimary>
+    <ButtonPrimary disabled={busy} onPress={()=>{ setShowUpgradePicker(false); openCheckout('pro'); }} style={{ marginTop: 8 }}>
+      Pro — 25 projects/mo + previews
+    </ButtonPrimary>
+  </Card>
+)}
+
+
+Keep Manage → openPortal()
+
+Keep Sync Plan → getEntitlements()
+
+Busy state — disable buttons during calls and show a tiny inline “Syncing…” text under the buttons (no full-screen spinner).
+
+Acceptance criteria
+
+Upgrade Plan toggles an inline picker on web/native; choosing Casual or Pro opens Checkout (or triggers dev fallback if 404/501) and then refreshes entitlements.
+
+Manage calls portal endpoint and opens in a new tab on web; shows a clear alert if 404.
+
+Sync Plan calls entitlements; if short path 404s and CURRENT_USER_ID exists, the /:id path is attempted; otherwise a friendly alert appears and UI stays stable.
+
+No new files or dependencies added; bottom tab remains; no infinite spinners.
+
+Returning to the app triggers auto entitlements refresh.

@@ -1,0 +1,155 @@
+Goal
+Make project creation robust with the new webhooks behavior:
+
+Always POST user_id:"auto" (server maps to TEST_USER_ID)
+
+Handle { ok:false, error/details } as 422 validation (show full message)
+
+Store returned item.id as draftId and then fetch /suggestions
+
+Keep photo selection local only (no /image upload)
+
+Implement (surgical edits in NewProject.tsx)
+
+Ensure these constants exist near top (or update existing):
+
+const BASE = process.env.EXPO_PUBLIC_BASE_URL || 'https://api.diygenieapp.com';
+const USER_ID = 'auto'; // server maps 'auto' -> TEST_USER_ID
+
+
+Add/keep state (don’t duplicate if present):
+
+const [draftId, setDraftId] = React.useState<string|null>(null);
+const [creating, setCreating] = React.useState(false);
+const [sugs, setSugs] = React.useState<{bullets:string[]; tags?:string[]} | null>(null);
+const [sugsBusy, setSugsBusy] = React.useState(false);
+// you already have: description (≥10), budget, skill, photoUri, promptText
+
+
+Tiny JSON helper (idempotent if already added):
+
+async function postJSON(path: string, body: any) {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  let data: any = null;
+  try { data = await res.json(); } catch {}
+  return { ok: res.ok, status: res.status, data };
+}
+
+
+Create (or reuse) draft with the exact keys the server expects:
+
+async function ensureDraft(): Promise<string> {
+  if (draftId) return draftId;
+
+  // basic client-side validation to avoid noisy calls
+  if (!description || description.trim().length < 10) {
+    Alert.alert('Tell us a bit more', 'Please enter at least 10 characters for the description.');
+    throw new Error('invalid_description');
+  }
+  if (!budget || !skill) {
+    Alert.alert('Missing info', 'Please choose a budget and skill level.');
+    throw new Error('invalid_form');
+  }
+
+  setCreating(true);
+  try {
+    const body = {
+      user_id: USER_ID,                // 'auto' (backend maps to TEST_USER_ID)
+      name: description.trim(),        // required ≥10 (backend validates)
+      budget,                          // required (backend validates)
+      skill_level: skill,              // normalized key
+    };
+
+    const res = await postJSON('/api/projects', body);
+
+    if (!res.ok || res.data?.ok === false) {
+      const msg = res.data?.details || res.data?.error || `HTTP ${res.status}`;
+      Alert.alert('Couldn’t create project', String(msg));
+      throw new Error(`create_failed: ${msg}`);
+    }
+
+    const id = res.data?.item?.id || res.data?.id || res.data?.project?.id;
+    if (!id) {
+      Alert.alert('Create project', 'Create succeeded but no project ID was returned.');
+      throw new Error('no_project_id');
+    }
+
+    setDraftId(id);
+    return id;
+  } finally {
+    setCreating(false);
+  }
+}
+
+
+Suggestions fetch (no image upload):
+
+async function fetchSuggestions() {
+  if (sugsBusy) return;
+  setSugsBusy(true);
+  try {
+    const id = await ensureDraft();
+    const res = await postJSON(`/api/projects/${id}/suggestions`, { user_id: USER_ID });
+    if (!res.ok || res.data?.ok === false) {
+      const msg = res.data?.details || res.data?.error || `HTTP ${res.status}`;
+      throw new Error(msg);
+    }
+    const data = res.data?.data || {};
+    setSugs({ bullets: data.bullets || [], tags: data.tags || [] });
+  } catch (e:any) {
+    setSugs({ bullets: [] });
+    console.warn('[suggestions]', e?.message || e);
+  } finally {
+    setSugsBusy(false);
+  }
+}
+
+
+Auto-trigger suggestions when form is ready (desc ≥10, budget, skill, photo selected):
+
+const formReady =
+  (description?.trim().length || 0) >= 10 &&
+  !!budget && !!skill && !!photoUri;
+
+React.useEffect(() => {
+  if (formReady && !sugs && !sugsBusy) { fetchSuggestions(); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [formReady]);
+
+
+Generate Plan (no preview):
+
+async function generatePlan() {
+  try {
+    const id = await ensureDraft();
+    const prompt = (promptText || '').trim() || description.trim();
+    const res = await postJSON(`/api/projects/${id}/build-without-preview`, { user_id: USER_ID, prompt });
+    if (!res.ok || res.data?.ok === false) {
+      const msg = res.data?.details || res.data?.error || `HTTP ${res.status}`;
+      Alert.alert('Couldn’t generate plan', String(msg));
+      return;
+    }
+    // Navigate to your plan/details screen (use your existing nav):
+    // navigation.navigate('BuildPlan', { id });
+  } catch { /* ensureDraft already alerts on failure */ }
+}
+
+
+Keep the existing inline photo picker you just added (data URL on web).
+Do not call /api/projects/:id/image anywhere in this file.
+
+Acceptance Criteria
+
+New Project → fill desc (≥10), select budget + skill, pick a photo → Suggestions appear on the New Project screen.
+
+Network shows: POST /api/projects (200 with { ok:true, item:{ id } }) → POST /api/projects/:id/suggestions (200).
+
+If validation fails, an Alert shows the server’s message (422 details), not a generic “permissions”.
+
+Generate Plan calls /build-without-preview successfully.
+
+No /image upload from this screen.

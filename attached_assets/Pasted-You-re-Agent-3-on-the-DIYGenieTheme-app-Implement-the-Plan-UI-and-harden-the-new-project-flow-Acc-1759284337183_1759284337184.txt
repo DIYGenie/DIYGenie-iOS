@@ -1,0 +1,43 @@
+You’re Agent 3 on the DIYGenieTheme app. Implement the Plan UI and harden the new-project flow.
+
+Acceptance:
+- ProjectDetailsScreen shows:
+  - Header (already OK),
+  - Room photo (already OK),
+  - A **Summary** card under the “Open Plan” button listing: Description, Budget, Skill, Status (badges), and Created date.
+- Tapping **Open Plan** navigates to a new **PlanTabs** screen with **four swipeable tabs**:
+  1) Overview (step list with progress dots + short intro)
+  2) Materials (array of items, quantity, estimated cost)
+  3) Tools (array of tools with optional substitutes)
+  4) AI Tips (bulleted tips block)
+- Data can be **stubbed** for now (use memoized placeholder content keyed by projectId). No network is required for these tabs yet.
+- Navigation:
+  - ProjectDetails → PlanTabs(projectId) using our existing navigator.
+  - PlanTabs uses a top tab or swipeable pager, consistent with our design system.
+- Styling matches the current white-card look (no purple gradient on details).
+- New Project page:
+  - On submit: call POST /api/projects with {user_id, name, budget, skill}.
+  - If it returns 403 or {ok:false}, show a toast: “Couldn’t create your project (permission). Try again or contact support.”
+  - If success, proceed to photo upload flow (existing flow). Do **not** start preview/build automatically.
+- “Upload allowed • Upgrade for AI preview & plans” hint remains.
+
+Tasks:
+1) Create PlanTabs (PlanScreen) with 4 tabs and placeholder content. Make it resilient if projectId is missing (show a friendly empty state).
+2) Add Summary card component to ProjectDetailsScreen under the button:
+   - title/value rows for Description, Budget, Skill, Status, Created.
+   - status uses our badge components (preview_ready, plan_ready, etc).
+3) Wire navigation from “Open Plan” button to PlanTabs(projectId).
+4) In NewProjectForm, ensure we pass {user_id, name, budget, skill} to /api/projects.
+   - On 403 or {ok:false}, show a toast and do *not* navigate.
+   - On success, continue to photo picker/upload as before.
+
+5) Quick test path:
+   - Create a project (should succeed; if not, the toast appears).
+   - Go to Projects → Project Details → Open Plan → see tabs with stubs.
+   - Confirm the Summary card renders real fields from the project object.
+
+Deliverables:
+- New PlanTabs screen with 4 tabs and stubbed data.
+- SummaryCard component rendered on ProjectDetailsScreen.
+- New-project error handling toast on 403/ok:false.
+- Small README note in replit.md explaining the Plan tabs are stubbed.

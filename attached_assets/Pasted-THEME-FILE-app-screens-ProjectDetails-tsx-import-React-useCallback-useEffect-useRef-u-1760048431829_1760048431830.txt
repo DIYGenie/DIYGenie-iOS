@@ -1,0 +1,52 @@
+THEME
+*** FILE: app/screens/ProjectDetails.tsx
+@@
+-import React, { useCallback, useEffect, useRef, useState } from 'react';
+-import { View, Image, ActivityIndicator, Pressable, Text, ScrollView } from 'react-native';
++import React, { useCallback, useEffect, useRef, useState, useLayoutEffect } from 'react';
++import { View, Image, ActivityIndicator, Pressable, Text, ScrollView } from 'react-native';
+ import { useRoute, useNavigation, RouteProp, useFocusEffect } from '@react-navigation/native';
+ import { useSafeBack } from '../lib/useSafeBack';
+ import { fetchProjectById, fetchLatestScanForProject, fetchProjectPlanMarkdown } from '../lib/api';
++import StatusBadge from '../components/StatusBadge';
+@@
+   const [planMd, setPlanMd] = useState<string | null>(null);
+   const [planLoading, setPlanLoading] = useState(false);
+@@
+-  useEffect(() => {
+-    navigation.setOptions({
+-      headerBackVisible: false,
+-      headerLeft: () => (
+-        <Pressable onPress={safeBack} style={{ paddingHorizontal: 12, paddingVertical: 6 }}>
+-          <Text style={{ fontWeight: '600' }}>Back</Text>
+-        </Pressable>
+-      ),
+-      title: 'Project',
+-    });
+-  }, [navigation, safeBack]);
++  // Dev-friendly back, and dynamic header title/status
++  useLayoutEffect(() => {
++    navigation.setOptions({
++      headerBackVisible: false,
++      headerLeft: () => (
++        <Pressable onPress={safeBack} style={{ paddingHorizontal: 12, paddingVertical: 6 }}>
++          <Text style={{ fontWeight: '600' }}>Back</Text>
++        </Pressable>
++      ),
++      headerTitle: () => (
++        <View style={{ flexDirection: 'row', alignItems: 'center', maxWidth: 260 }}>
++          <Text
++            numberOfLines={1}
++            style={{ fontSize: 16, fontWeight: '700' }}
++          >
++            {project?.name || 'Project'}
++          </Text>
++          {!!project?.status && (
++            <View style={{ marginLeft: 8 }}>
++              <StatusBadge status={project.status} />
++            </View>
++          )}
++        </View>
++      ),
++    });
++  }, [navigation, safeBack, project?.name, project?.status]);

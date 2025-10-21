@@ -1,0 +1,56 @@
+Goal: From Home, tapping a project should navigate to the Projects tab → ProjectDetails (nested stack), not try navigate('ProjectDetails') from the Home tab.
+
+THEME
+// EDIT FILE: app/screens/HomeScreen.js
+// Add navigation into the nested Projects stack (Projects tab -> ProjectDetails)
+
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Pressable } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native'; // ⬅️ ADD
+import T from '../components/T';
+import { fetchProjectsForCurrentUser } from '../lib/api';
+
+export default function HomeScreen() {
+  const [recent, setRecent] = useState([]);
+  const navigation = useNavigation(); // ⬅️ ADD
+
+  const load = useCallback(async () => {
+    const data = await fetchProjectsForCurrentUser();
+    setRecent(data.slice(0, 3));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // ⬅️ NEW: open ProjectDetails inside the Projects tab's stack
+  const openProject = useCallback((project) => {
+    const id = project?.id || project?.project_id;
+    if (!id) return;
+
+    // Prefer parent tabs with id="root-tabs", fallback to nearest parent
+    // @ts-ignore
+    const parent = navigation.getParent?.('root-tabs') || navigation.getParent?.();
+
+    if (parent?.navigate) {
+      parent.navigate('Projects', { screen: 'ProjectDetails', params: { id } });
+      return;
+    }
+    // Fallback: try direct nested navigate (harmless if ignored)
+    // @ts-ignore
+    navigation.navigate('Projects', { screen: 'ProjectDetails', params: { id } });
+  }, [navigation]);
+
+  return (
+    <View style={{ flex: 1, padding: 16 }}>
+      <T.h2>Welcome back, Tye</T.h2>
+
+      <T.h3 style={{ marginTop: 16 }}>Recent Projects</T.h3>
+      {recent.map((p, i) => (
+        <Pressable key={p.id || p.project_id || i} onPress={() => openProject(p)} style={{ paddingVertical: 10 }}>
+          <T.p>{p.name || p.title || 'Untitled project'}</T.p>
+          <T.muted>In progress</T.muted>
+        </Pressable>
+      ))}
+    </View>
+  );
+}

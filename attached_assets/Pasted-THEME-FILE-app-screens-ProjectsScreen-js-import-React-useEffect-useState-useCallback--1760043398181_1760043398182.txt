@@ -1,0 +1,84 @@
+THEME
+*** FILE: app/screens/ProjectsScreen.js
+@@
+-import React, { useEffect, useState, useCallback } from 'react';
++import React, { useEffect, useState, useCallback } from 'react';
++import { RefreshControl } from 'react-native';
+ import { useFocusEffect } from '@react-navigation/native';
+@@
+-  useEffect(() => {
+-    load();
+-  }, [load]);
++  useEffect(() => { load(); }, [load]);
+ 
++  // Pull-to-refresh state + handler
++  const [refreshing, setRefreshing] = useState(false);
++  const onRefresh = useCallback(async () => {
++    try {
++      setRefreshing(true);
++      await load();
++    } finally {
++      setRefreshing(false);
++    }
++  }, [load]);
++
+   // Auto-refresh list whenever this screen gains focus
+   useFocusEffect(
+     React.useCallback(() => {
+       if (typeof load === 'function') {
+         console.log('[projects] focus → refetch');
+         load();
+       }
+       return () => {};
+     }, [load])
+   );
+ 
+   // ...rest of file unchanged, but attach `refreshControl` to your root scroller:
+   // If your root is <ScrollView>:
+   //   <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />} ...>
+   // If your root is <FlatList data={projects} ...>:
+   //   <FlatList refreshing={refreshing} onRefresh={onRefresh} ... />
+
+*** FILE: app/screens/HomeScreen.js
+@@
+-import React, { useEffect, useState, useCallback } from 'react';
++import React, { useEffect, useState, useCallback } from 'react';
++import { RefreshControl } from 'react-native';
+ import { useFocusEffect } from '@react-navigation/native';
+@@
+-  useEffect(() => {
+-    load();
+-  }, [load]);
++  useEffect(() => { load(); }, [load]);
+ 
++  // Pull-to-refresh state + handler
++  const [refreshing, setRefreshing] = useState(false);
++  const onRefresh = useCallback(async () => {
++    try {
++      setRefreshing(true);
++      await load();
++    } finally {
++      setRefreshing(false);
++    }
++  }, [load]);
++
+   // Keep "Recent Projects" fresh when returning to Home
+   useFocusEffect(
+     React.useCallback(() => {
+       if (typeof load === 'function') {
+         console.log('[home] focus → refetch recent projects');
+         load();
+       }
+       return () => {};
+     }, [load])
+   );
+ 
+   // ...rest of file unchanged, but attach `refreshControl` to your root scroller:
+   // If your root is <ScrollView>:
+   //   <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />} ...>
+   // If your root is <FlatList data={recent} ...>:
+   //   <FlatList refreshing={refreshing} onRefresh={onRefresh} ... />
+
+
+If your root components are ScrollView, add the refreshControl prop on that element.
+If they’re FlatList, use refreshing + onRefresh props on the FlatList.

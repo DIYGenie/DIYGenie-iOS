@@ -1,0 +1,60 @@
+// EDIT FILE: app/screens/NewProject.tsx
+// 1) Shorten the subtitle copy
+// 2) Dismiss keyboard on background tap; keep pickers usable (keyboardShouldPersistTaps="handled")
+
+import React from 'react';
+import {
+  View,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
+  Keyboard,
+} from 'react-native';
+import T from '../components/T';
+import Toast from '../components/Toast';
+import NewProjectForm from './NewProjectForm';
+import NewProjectMedia from './NewProjectMedia';
+// If your file already exports/use a draft hook or props, keep them as-is.
+// We are only changing layout wrappers + subtitle text.
+
+export default function NewProject() {
+  // Preserve your existing draft state logic. Example:
+  // const { draft, setDraft, isValid } = useNewProjectDraft();
+  // If you don't have a useNewProjectDraft hook, leave your current state management untouched.
+
+  // ⬇️ Keep your existing state/props here
+  // --- BEGIN YOUR EXISTING STATE / HOOKS ---
+  // (no changes)
+  // --- END YOUR EXISTING STATE / HOOKS ---
+
+  return (
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+    >
+      {/* Tap outside inputs to dismiss keyboard */}
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <View style={{ flex: 1 }}>
+          <ScrollView
+            contentContainerStyle={{ padding: 16, gap: 16 }}
+            keyboardShouldPersistTaps="handled" // lets picker/select taps work without re-opening keyboard
+          >
+            <T.h2>Create Your New Project</T.h2>
+
+            {/* 🔁 Shorter, friendlier subtitle */}
+            <T.p>Provide details about your DIY project and watch the magic unfold!</T.p>
+
+            {/* Keep your existing form and media components below */}
+            <NewProjectForm /* keep your existing props here */ />
+
+            <NewProjectMedia
+              /* keep your existing props here (draft, onDraftChange, isFormValid, onBlocked, etc.) */
+            />
+          </ScrollView>
+        </View>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
+  );
+}

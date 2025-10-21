@@ -1,0 +1,219 @@
+Files to touch
+
+app/lib/api.ts (tiny addition)
+
+app/lib/localPlan.ts (new)
+
+app/screens/PlanWaiting.tsx (add fallback after N polls)
+
+app/screens/ProjectDetails.tsx (prefer local plan before remote)
+
+THEME
+*** FILE: app/lib/api.ts
+@@
+-export async function fetchProjectPlanMarkdown(
+-  projectId: string,
+-  opts?: { signal?: AbortSignal }
+-): Promise<string | null> {
++// Plan fetch: optionally tolerate 409 (not ready yet) and return null in that case
++export async function fetchProjectPlanMarkdown(
++  projectId: string,
++  opts: { signal?: AbortSignal; tolerate409?: boolean } = {}
++): Promise<string | null> {
+   const baseUrl = (typeof base !== 'undefined' ? base : (typeof API_BASE !== 'undefined' ? API_BASE : '')) as string;
+   const url = `${baseUrl}/api/projects/${projectId}/plan`;
+-  const res = await fetch(url, { method: 'GET', signal: opts?.signal } as any);
++  const res = await fetch(url, { method: 'GET', signal: opts?.signal } as any);
+   if (res.status === 409) {
+-    // plan not ready yet
+-    return null;
++    console.log('[plan fetch] GET /api/projects/:id/plan status', 409);
++    // plan not ready yet
++    return opts.tolerate409 ? null : Promise.reject(Object.assign(new Error('PLAN_409'), { status: 409 }));
+   }
+   if (!res.ok) {
+     const text = await res.text().catch(() => '');
+     console.log('[plan fetch error]', res.status, text);
+     throw new Error(`PLAN_FETCH_FAILED:${res.status}`);
+   }
+   const md = await res.text();
+   return md || '';
+ }
+
+THEME
+*** FILE: app/screens/PlanWaiting.tsx
+@@
+-import React, { useEffect } from 'react';
++import React, { useEffect } from 'react';
+ import { View, Text, ActivityIndicator, Pressable } from 'react-native';
+ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+ import { InteractionManager } from 'react-native';
+-import { fetchProjectPlanMarkdown } from '../lib/api'; // already exists
++import { fetchProjectPlanMarkdown, fetchProjectById } from '../lib/api';
++import { saveLocalPlanMarkdown, generateLocalPlanMarkdown } from '../lib/localPlan';
+@@
+   useEffect(() => {
+     let cancelled = false;
+-    let tries = 0;
++    let tries = 0;
+ 
+     async function poll() {
+       if (cancelled) return;
+       tries += 1;
+       console.log('[wait] poll try', tries);
+ 
+       try {
+-        const md = await fetchProjectPlanMarkdown(id); // returns string on 200
++        const md = await fetchProjectPlanMarkdown(id, { tolerate409: true }); // null if 409
+         if (!cancelled && md) {
+           // Seed the Projects stack then push details (same pattern we used before)
+           const parent = navigation.getParent?.();
+           parent?.navigate('Projects', { screen: 'ProjectsList' });
+           InteractionManager.runAfterInteractions(() => {
+             parent?.navigate('Projects', { screen: 'ProjectDetails', params: { id } });
+           });
+           return; // stop polling
+         }
+       } catch (e: any) {
+         // 409 = not ready; anything else log
+         if (e?.status !== 409) console.log('[wait] poll error', e);
+       }
+ 
+-      if (!cancelled) setTimeout(poll, 2000); // keep polling
++      if (!cancelled) {
++        if (tries >= 10) {
++          // Fallback after ~20s: generate a local plan so the user can proceed
++          try {
++            const p = await fetchProjectById(id).catch(() => ({} as any));
++            const mdLocal = generateLocalPlanMarkdown({
++              title: p?.name || p?.title,
++              description: p?.description,
++              budget: p?.budget,
++              skill_level: p?.skill_level,
++            });
++            await saveLocalPlanMarkdown(id, mdLocal);
++          } catch (e) {
++            console.log('[wait] local plan fallback error', e);
++          }
++          const parent = navigation.getParent?.();
++          parent?.navigate('Projects', { screen: 'ProjectsList' });
++          InteractionManager.runAfterInteractions(() => {
++            parent?.navigate('Projects', { screen: 'ProjectDetails', params: { id } });
++          });
++        } else {
++          setTimeout(poll, 2000); // keep polling
++        }
++      }
+     }
+ 
+     poll();
+     return () => { cancelled = true; };
+   }, [id, navigation]);
+
+THEME
+*** FILE: app/screens/ProjectDetails.tsx
+@@
+-import { fetchProjectById, fetchLatestScanForProject, fetchProjectPlanMarkdown } from '../lib/api';
++import { fetchProjectById, fetchLatestScanForProject, fetchProjectPlanMarkdown } from '../lib/api';
+ import { parsePlanMarkdown, Plan } from '../lib/plan';
++import { getLocalPlanMarkdown } from '../lib/localPlan';
+@@
+   const load = useCallback(async () => {
+     if (!projectId) return;
+@@
+-      const [p, s] = await Promise.all([
++      const [p, s] = await Promise.all([
+         fetchProjectById(projectId, { signal: controller.signal, timeoutMs: 8000 }),
+         fetchLatestScanForProject(projectId),
+       ]);
+       if (!controller.signal.aborted) {
+         setProject(p);
+         setScan(s);
+-        // If plan is ready but not yet loaded in UI, fetch markdown → parse → set tabs
+-        const status = String(p?.plan_status || p?.status || '').toLowerCase();
+-        const ready = /ready/.test(status) && !/requested|building|queued|pending/.test(status);
+-        if (ready && !planMd) {
+-          try {
+-            const md = await fetchProjectPlanMarkdown(projectId, { signal: controller.signal });
+-            if (md && !controller.signal.aborted) {
+-              setPlanMd(md);
+-              setPlanObj(parsePlanMarkdown(md));
+-            }
+-          } catch (e) {
+-            // If API still 409 intermittently, ignore; auto-poll will retry.
+-            console.log('[plan fetch]', String(e));
+-          }
+-        }
++        // Prefer local plan first; if absent, tolerate 409 on server
++        try {
++          let md: string | null = await getLocalPlanMarkdown(projectId);
++          if (!md) md = await fetchProjectPlanMarkdown(projectId, { signal: controller.signal, tolerate409: true });
++          if (md && !controller.signal.aborted) {
++            setPlanMd(md);
++            setPlanObj(parsePlanMarkdown(md));
++          }
++        } catch (e) {
++          console.log('[plan fetch in details]', String(e));
++        }
+       }
+
+THEME
+// FILE: app/lib/localPlan.ts (NEW)
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const KEY = (id: string) => `plan-md:${id}`;
+
+export async function saveLocalPlanMarkdown(projectId: string, md: string) {
+  await AsyncStorage.setItem(KEY(projectId), md);
+}
+
+export async function getLocalPlanMarkdown(projectId: string): Promise<string | null> {
+  return AsyncStorage.getItem(KEY(projectId));
+}
+
+export function generateLocalPlanMarkdown(opts: {
+  title?: string;
+  description?: string;
+  budget?: string;
+  skill_level?: string;
+} = {}) {
+  const t = opts.title || 'Project';
+  const b = opts.budget || '$$';
+  const s = opts.skill_level || 'Intermediate';
+  const d = opts.description || 'A custom DIY project.';
+
+  return `# ${t}
+
+**Overview**  
+${d}
+
+## Materials
+- Plywood — 2 sheets
+- 2x4 studs — 6
+- Wood screws — 1 lb
+- Wood glue — 1 bottle
+
+## Tools
+- Circular saw
+- Drill/driver
+- Tape measure
+- Square
+- Safety glasses
+
+## Cut List
+- Side panel: 24" × 18" ×2
+- Shelf: 24" × 10" ×3
+- Top/bottom: 24" × 12" ×2
+
+## Steps
+1. Measure and mark all cuts.
+2. Rip panels to width.
+3. Assemble the carcass with glue and screws.
+4. Add shelves and square the box.
+5. Sand and finish.
+
+## Time & Cost
+- Time: 6–8 hours
+- Cost: ~${b} (skill: ${s})
+`;
+}

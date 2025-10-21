@@ -1,0 +1,99 @@
+Goal: Hide the Measure button for uploaded photos on the New Project screen. Only show it when the scan came from AR (we’ll enable that later). This also prevents opening MeasureModal unless allowed.
+
+THEME
+*** FILE: app/screens/NewProjectMedia.js
+@@
+-  const handleUpload = guard(async () => {
++  const handleUpload = guard(async () => {
+     try {
+       await authPreflight();
+@@
+-      // 3) Link the scan to the project (authoritative association)
++      // 3) Link the scan to the project (authoritative association)
+       await supabase
+         .from('room_scans')
+         .update({ project_id: projectId })
+         .eq('id', result.scanId);
+ 
+-      // NOTE: uploads are non-AR; disable measurement in UI for V1
+-      setSavedScan({ ...result, projectId, source: 'upload', allowMeasure: false });
++      // NOTE: uploads are non-AR; disable measurement in UI for V1
++      setSavedScan({
++        ...result,
++        projectId,
++        source: 'upload',
++        allowMeasure: false, // <-- key flag the UI will read
++      });
+       Toast.show('Scan saved to project!');
+     } catch (e) {
+       console.log('[upload/link failed]', e);
+@@
+   });
+@@
+-  return (
++  // Helper: only AR scans (future) can measure; uploads cannot.
++  const canMeasure =
++    !!savedScan &&
++    (savedScan.allowMeasure === true || savedScan.source === 'ar'); // strict
++
++  return (
+     <View style={{ gap: 12, marginTop: 8 }}>
+@@
+-      {savedScan && (
++      {savedScan && (
+         <View
+           style={{
+             marginTop: 16,
+             backgroundColor: '#F3F0FF',
+             borderRadius: 16,
+             padding: 12,
+             alignItems: 'center',
+           }}
+         >
+           <Image
+             source={{ uri: savedScan.imageUrl }}
+             style={{ width: 220, height: 140, borderRadius: 12 }}
+             resizeMode="cover"
+           />
+           <Text style={{ marginTop: 8, fontWeight: '600' }}>Saved Scan</Text>
+           <View style={{ flexDirection: 'row', gap: 12, marginTop: 10 }}>
+             <Pressable
+               onPress={() => setShowRoi(true)}
+               style={{ backgroundColor: '#7C3AED', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 }}
+             >
+               <Text style={{ color: 'white', fontWeight: '600' }}>Mark Area</Text>
+             </Pressable>
+-            <Pressable
+-              onPress={() => setShowMeasure(true)}
+-              style={{ backgroundColor: '#7C3AED', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 }}
+-            >
+-              <Text style={{ color: 'white', fontWeight: '600' }}>Measure</Text>
+-            </Pressable>
++            {canMeasure ? (
++              <Pressable
++                onPress={() => setShowMeasure(true)}
++                style={{ backgroundColor: '#7C3AED', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 }}
++              >
++                <Text style={{ color: 'white', fontWeight: '600' }}>Measure</Text>
++              </Pressable>
++            ) : null}
+           </View>
+-          {!savedScan?.allowMeasure ? (
++          {!canMeasure ? (
+             <Text style={{ marginTop: 8, color: '#6B7280', textAlign: 'center' }}>
+               Measurements are available when you use <Text style={{ fontWeight: '700' }}>Scan room</Text>.
+             </Text>
+           ) : null}
+         </View>
+       )}
+ 
+-      <RoiModal visible={showRoi} onClose={() => setShowRoi(false)} scan={savedScan} />
+-      {/* Keep MeasureModal wired but only reachable when allowMeasure=true */}
+-      <MeasureModal visible={showMeasure} onClose={() => setShowMeasure(false)} scan={savedScan} />
++      <RoiModal visible={showRoi} onClose={() => setShowRoi(false)} scan={savedScan} />
++      {/* Only mount MeasureModal when allowed, so it cannot appear via state glitches */}
++      {canMeasure ? (
++        <MeasureModal visible={showMeasure} onClose={() => setShowMeasure(false)} scan={savedScan} />
++      ) : null}
+     </View>
+   );

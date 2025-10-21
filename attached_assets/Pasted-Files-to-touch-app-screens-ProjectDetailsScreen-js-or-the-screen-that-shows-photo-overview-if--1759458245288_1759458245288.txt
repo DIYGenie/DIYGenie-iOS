@@ -1,0 +1,89 @@
+Files to touch:
+
+app/screens/ProjectDetailsScreen.js (or the screen that shows photo + overview; if both ProjectDetailScreen.js and ProjectDetailsScreen.js exist, modify the one actually used; do not create new files)
+
+app/screens/ProfileScreen.js (update upgrade card copy)
+
+Goal
+
+Show a “Smart Suggestions (beta)” card under the room photo, powered by the new stub endpoint.
+
+Visually gate preview usage: if a project already has a preview, show a small “Preview used for this project” pill and disable any “Request Preview” CTA.
+
+Update plan card bullets to say “1 visual preview per project” (not unlimited) for both Casual and Pro.
+
+Implement
+
+Suggestions UI (ProjectDetails screen)
+
+Add local state:
+
+const [sugs, setSugs] = React.useState(null);
+const [sugsBusy, setSugsBusy] = React.useState(false);
+const [sugsErr, setSugsErr] = React.useState('');
+
+
+Add a fetcher (reuse EXPO_PUBLIC_BASE_URL and the project id you already have in this screen):
+
+const fetchSuggestions = async () => {
+  if (sugsBusy) return;
+  setSugsBusy(true); setSugsErr('');
+  try {
+    const res = await fetch(`${BASE}/api/projects/${project.id}/suggestions`, {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ user_id: CURRENT_USER_ID }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.ok) throw new Error(json.error || 'suggestions_failed');
+    setSugs(json.data);
+  } catch (e) {
+    setSugsErr('Could not get suggestions. Try again.');
+  } finally {
+    setSugsBusy(false);
+  }
+};
+React.useEffect(() => { fetchSuggestions(); }, [project?.id]);
+
+
+Render a Card below the photo:
+
+Header: “Smart Suggestions (beta)”
+
+Body: render sugs?.bullets as ✓ bullet list.
+
+Small caption: sugs?.tags.join(' · ') if present.
+
+“Refresh suggestions” button → calls fetchSuggestions(). Disable while sugsBusy.
+
+If sugsErr, show a friendly inline text instead of bullets.
+
+Preview gating UX (ProjectDetails screen)
+
+Use the project data you already fetch (preview_url and/or status):
+
+const previewUsed = !!project?.preview_url || project?.status === 'preview_ready';
+
+
+If you display a preview CTA anywhere in this screen, wrap:
+
+When previewUsed → disable button and show a small pill near the photo:
+“Preview used for this project” (neutral background, 12px).
+
+If backend returns 409 preview_already_used, show a toast/Alert: “You’ve already used the preview for this project.”
+
+Upgrade cards copy (ProfileScreen.js)
+
+In the Pro and Casual PlanCard features:
+
+Replace Unlimited previews (Decor8) with 1 visual preview per project.
+
+Do not change routing/handlers.
+
+Acceptance
+
+Project Details shows the Smart Suggestions card with 4–5 bullets shortly after opening; “Refresh suggestions” works and shows a small loading state.
+
+If a project already has a preview, any “Request preview” action on that project is disabled, and the pill “Preview used for this project” is visible. Attempting the action anyway shows a friendly message.
+
+Profile plan cards now state “1 visual preview per project” for both tiers.

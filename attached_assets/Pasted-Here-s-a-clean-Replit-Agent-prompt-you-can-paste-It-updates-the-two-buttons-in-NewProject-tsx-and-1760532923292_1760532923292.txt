@@ -1,0 +1,69 @@
+Here’s a clean Replit Agent prompt you can paste. It updates the two buttons in `NewProject.tsx` and the reference in `WhatToTest.tsx`, without touching any logic.
+
+---
+
+**Replit Agent Prompt (ONE task)**
+
+**Scope:** THEME (Expo RN)
+**Repo:** DIYGenieTheme
+**Target files:** `app/screens/NewProject.tsx`, `app/screens/WhatToTest.tsx`
+**Autonomy:** Medium • App Testing: OFF
+**Do NOT** rename/move/delete files or change handlers.
+
+**Goal:** Update button copy only (labels + accessibility) for the two CTAs on the New Project screen, and fix the helper text on WhatToTest.
+
+### Changes
+
+#### 1) `app/screens/NewProject.tsx`
+
+Use the grep anchors below to find the right spots:
+
+* Primary block (near lines ~1411)
+
+  * Anchor comments: `/* Primary: Build with visual mockup */`
+  * Current strings:
+
+    * `accessibilityLabel="Build with visual mockup"`
+    * Visible `<Text>` label: `Build with visual mockup`
+    * Subtitle (the line right below the title): `Visual mockup of your space + complete build plan`
+  * **Replace with:**
+
+    * Comment: `/* Primary: Generate AI Plan + Preview */`
+    * `accessibilityLabel="Generate AI Plan + Preview"`
+    * Title text node: `Generate AI Plan + Preview`
+    * Subtitle text node: `Visual mockup of your space + complete AI plan`
+
+* Secondary block (near lines ~1525)
+
+  * Anchor comments: `/* Secondary: Build plan only */`
+  * Current strings:
+
+    * `accessibilityLabel="Build plan only"`
+    * Title text node: `Build plan only`
+  * **Replace with:**
+
+    * Comment: `/* Secondary: Create Plan Only (No Preview) */`
+    * `accessibilityLabel="Create Plan Only (No Preview)"`
+    * Title text node: `Create Plan Only (No Preview)`
+    * (Keep the existing subtitle text as-is)
+
+**Important:** Do **not** change the onPress handlers:
+
+* Primary must still use `handleBuildWithPreview`
+* Secondary must still use `onBuildWithoutPreview`
+
+#### 2) `app/screens/WhatToTest.tsx`
+
+* Find the line that renders `"Build with visual mockup"` inside the instructional text.
+* Replace that quoted text with `"Generate AI Plan + Preview"` (keep quotes in UI text).
+
+### Sanity check
+
+* Ensure **no other** strings “Build with visual mockup” or “Build plan only” remain in these two files.
+* Keep styles and layout unchanged.
+
+### After saving
+
+No other edits. I’ll reload the Expo app on my device.
+
+---

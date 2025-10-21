@@ -1,0 +1,179 @@
+**project:** Theme
+**autonomy:** low
+**app testing:** on
+
+**Single Agent-3 Prompt — Finish UX polish: real “Share Plan”, count chips, and “Copy All”**
+
+> Replace the share stub with real native share, add count chips to headers, and a one-tap “Copy All” (no new deps).
+
+**Edits (client-only)**
+
+1. **Utility formatter** — create `app/lib/planFormat.ts`
+
+* Export `formatPlanText(project:any, plan:any): string` that safely builds a readable text block.
+* Structure:
+
+  ```
+  <Project Name>
+  Status: <status>   Updated: <yyyy-mm-dd>
+
+  OVERVIEW
+  • Time: <est_time>   • Cost: <est_cost>   • Skill: <skill>
+  <notes?>
+
+  MATERIALS (<N>)
+  - <qty?> <name> (<notes?>)
+
+  TOOLS (<N>)
+  - <name> (<notes?>)
+
+  CUT LIST (<N>)
+  - <qty?> <item> — <size?>
+
+  STEPS (<N>)
+  1) <text> (<notes?>)
+  ```
+* Guard nulls, trim, cap output at ~15k chars.
+
+```ts
+// app/lib/planFormat.ts
+export function formatPlanText(project: any, plan: any): string {
+  const name = (project?.name ?? 'DIY Project').trim();
+  const status = project?.status ?? '—';
+  const updated = (project?.updated_at ?? '').toString().slice(0,10);
+
+  const ov = plan?.overview ?? {};
+  const materials = Array.isArray(plan?.materials) ? plan.materials : [];
+  const tools = Array.isArray(plan?.tools) ? plan.tools : [];
+  const cuts = Array.isArray(plan?.cuts) ? plan.cuts : [];
+  const steps = Array.isArray(plan?.steps) ? plan.steps : [];
+
+  const lines: string[] = [];
+  lines.push(`${name}`);
+  lines.push(`Status: ${status}   Updated: ${updated}`);
+  lines.push('');
+  lines.push('OVERVIEW');
+  const ovBits = [
+    ov.est_time ? `Time: ${ov.est_time}` : '',
+    ov.est_cost ? `Cost: ${ov.est_cost}` : '',
+    ov.skill ? `Skill: ${ov.skill}` : '',
+  ].filter(Boolean).join('   ');
+  if (ovBits) lines.push(`• ${ovBits}`);
+  if (ov.notes) lines.push(String(ov.notes));
+  lines.push('');
+
+  lines.push(`MATERIALS (${materials.length})`);
+  for (const m of materials) {
+    const qty = m?.qty ? `${m.qty} ` : '';
+    const notes = m?.notes ? ` (${m.notes})` : '';
+    const name = (m?.name ?? m?.item ?? '').toString().trim();
+    if (name) lines.push(`- ${qty}${name}${notes}`);
+  }
+  lines.push('');
+
+  lines.push(`TOOLS (${tools.length})`);
+  for (const t of tools) {
+    const name = (t?.name ?? t?.tool ?? '').toString().trim();
+    const notes = t?.notes ? ` (${t.notes})` : '';
+    if (name) lines.push(`- ${name}${notes}`);
+  }
+  lines.push('');
+
+  lines.push(`CUT LIST (${cuts.length})`);
+  for (const c of cuts) {
+    const qty = c?.qty ? `${c.qty} ` : '';
+    const item = (c?.item ?? c?.name ?? '').toString().trim();
+    const size = c?.size ? ` — ${c.size}` : '';
+    const notes = c?.notes ? ` (${c.notes})` : '';
+    if (item) lines.push(`- ${qty}${item}${size}${notes}`);
+  }
+  lines.push('');
+
+  lines.push(`STEPS (${steps.length})`);
+  let n = 1;
+  for (const s of steps) {
+    const text = (s?.text ?? s?.step ?? '').toString().trim();
+    const notes = s?.notes ? ` (${s.notes})` : '';
+    if (text) lines.push(`${n++}) ${text}${notes}`);
+  }
+
+  const out = lines.join('\n');
+  return out.length > 15000 ? out.slice(0,14980) + '\n…' : out;
+}
+```
+
+2. **ProjectDetails.tsx** — wire Share + Copy All + count chips
+
+* Imports:
+
+```ts
+import { Share } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { formatPlanText } from 'app/lib/planFormat';
+import { simpleToast } from 'app/lib/ui';
+```
+
+* After you derive `materials/tools/cuts/steps`, compute counts:
+
+```ts
+const counts = { materials: materials.length, tools: tools.length, cuts: cuts.length, steps: steps.length };
+```
+
+* **Header chips**: in the section headers (“Materials”, “Tools”, “Cut List”, “Build Steps”), add a tiny count chip:
+
+```tsx
+<View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}>
+  <Text style={{fontWeight:'600'}}>Materials</Text>
+  <View style={{flexDirection:'row',alignItems:'center', gap:12}}>
+    <View style={{backgroundColor:'#EEF2FF', paddingHorizontal:8, paddingVertical:2, borderRadius:999}}>
+      <Text style={{fontSize:12, color:'#4F46E5'}}>{counts.materials}</Text>
+    </View>
+    <TouchableOpacity onPress={async () => {
+      if (!materials.length) return;
+      const text = materials.map(m => (m?.qty?`${m.qty} `:'') + (m?.name||m?.item||'').toString().trim()).filter(Boolean).join('\n');
+      await Clipboard.setStringAsync(text);
+      simpleToast('Materials copied');
+      console.log('[ui] copy', { name: 'materials', count: materials.length });
+    }}>
+      <Text style={{color:'#6D28D9', fontSize:12}}>Copy list</Text>
+    </TouchableOpacity>
+  </View>
+</View>
+```
+
+* Repeat the same pattern for **Tools** and **Cut List**.
+
+* **Share Plan** (replace stub handler):
+
+```tsx
+<TouchableOpacity
+  onPress={async () => {
+    try {
+      const text = formatPlanText(project, { overview, materials, tools, cuts, steps });
+      const res = await Share.share({ message: text, title: project?.name ?? 'DIY Plan' });
+      console.log('[ui] share', { action: res.action });
+    } catch (e) {
+      console.error('[ui] share error', e);
+      simpleToast('Could not open share sheet');
+    }
+  }}
+  style={{ backgroundColor:'#6D28D9', borderRadius:16, padding:14, alignItems:'center', marginTop:20 }}
+>
+  <Text style={{color:'white', fontWeight:'600'}}>Share Plan</Text>
+</TouchableOpacity>
+```
+
+3. **Keep** your persistent collapsible logic; just use `toggleSection('materials'|'tools'|'cuts'|'steps'|'overview')` for headers as you already do.
+
+**Acceptance**
+
+* Section headers show a small count chip.
+* “Copy list” appears on Materials/Tools/Cuts and copies plain text (toast confirms).
+* “Share Plan” opens the native share sheet with well-formatted text (no stubs).
+* Logs show `[ui] copy` and `[ui] share`.
+
+**Stop after these edits and tell me:**
+
+* Counts visible?
+* Copy & Share working?
+* Any section need different ordering/labels?

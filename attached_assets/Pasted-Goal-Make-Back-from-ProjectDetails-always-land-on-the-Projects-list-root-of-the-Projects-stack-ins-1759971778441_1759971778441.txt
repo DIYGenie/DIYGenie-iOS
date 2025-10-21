@@ -1,0 +1,130 @@
+Goal: Make Back from ProjectDetails always land on the Projects list (root of the Projects stack inside the Projects tab). We’ll read the tab’s nested stack state to target its actual root screen.
+
+THEME
+// REPLACE FILE: app/lib/useSafeBack.ts
+import { useCallback } from 'react';
+import { useNavigation, TabActions } from '@react-navigation/native';
+
+type NavLike = {
+  getParent?: (id?: string) => any;
+  getState?: () => any;
+  dispatch?: (action: any) => void;
+  navigate?: (name: string, params?: any) => void;
+};
+
+function getTabParent(nav: NavLike) {
+  // Prefer explicit id if set in RootTabs.tsx
+  const byId = nav.getParent?.('root-tabs');
+  if (byId) return byId;
+  return nav.getParent?.();
+}
+
+function getProjectsChildRootName(tabParent: any): string | null {
+  const st = tabParent?.getState?.();
+  if (!st?.routes) return null;
+
+  const projectsRoute = st.routes.find((r: any) => r.name === 'Projects');
+  // If the Projects tab hosts a nested stack, its state will be here
+  const child = projectsRoute?.state;
+  if (child?.routes?.length) {
+    // Root of that stack is routes[0] (or use child.index if you want current)
+    const root = child.routes[0]?.name;
+    return typeof root === 'string' ? root : null;
+  }
+  return null;
+}
+
+/**
+ * Jump to the Projects tab AND its root stack screen (Projects list).
+ * - Reads the tab parent's state to discover the nested stack's root route name.
+ * - Falls back to jumpTo('Projects') if the child isn't a stack.
+ */
+export function useSafeBack() {
+  const navigation = useNavigation() as unknown as NavLike;
+
+  return useCallback(() => {
+    const tabParent = getTabParent(navigation);
+
+    if (tabParent) {
+      const childRoot = getProjectsChildRootName(tabParent);
+
+      if (childRoot) {
+        console.log(
+          'SAFEBACK :: parent.navigate("Projects", { screen:', childRoot, '})'
+        );
+        tabParent.navigate('Projects', { screen: childRoot });
+        return;
+      }
+
+      console.log('SAFEBACK :: parent TabActions.jumpTo("Projects") (no child stack)');
+      tabParent.dispatch?.(TabActions.jumpTo('Projects'));
+      return;
+    }
+
+    console.log('SAFEBACK :: no tab parent -> direct navigate("Projects")');
+    navigation.navigate?.('Projects');
+  }, [navigation]);
+}
+
+THEME
+// EDIT FILE: app/lib/navDebug.ts
+// Log the nested child state for the Projects tab so we can see its root screen name.
+type NavLike = {
+  getState?: () => any;
+  getParent?: (id?: string) => any;
+};
+
+export function logNavTree(navigation: NavLike, label: string) {
+  try {
+    const parentRootTabs = navigation.getParent?.('root-tabs');
+    const parentAny = navigation.getParent?.();
+
+    const fmt = (nav: any) => {
+      const st = nav?.getState?.();
+      if (!st) return '(no state)';
+      const routeNames = (st.routes || []).map((r: any) => r.name);
+      return JSON.stringify(
+        {
+          type: st.type,
+          index: st.index,
+          routes: routeNames,
+          current: st.routes?.[st.index || 0]?.name,
+        },
+        null,
+        2
+      );
+    };
+
+    const currentState = navigation.getState?.();
+
+    // ⬇️ NEW: peek into the Projects tab's child state (to discover its stack root)
+    const parent = parentRootTabs || parentAny;
+    const parentState = parent?.getState?.();
+    let projectsChild: any = '(no projects child)';
+    if (parentState?.routes) {
+      const projectsRoute = parentState.routes.find((r: any) => r.name === 'Projects');
+      const child = projectsRoute?.state;
+      if (child?.routes) {
+        projectsChild = {
+          type: child.type,
+          index: child.index,
+          routes: child.routes.map((r: any) => r.name),
+          current: child.routes?.[child.index || 0]?.name,
+        };
+      }
+    }
+
+    console.log('NAV DEBUG ::', label, {
+      current: {
+        index: currentState?.index,
+        routes: (currentState?.routes || []).map((r: any) => r.name),
+        current: currentState?.routes?.[currentState?.index || 0]?.name,
+      },
+      parent_root_tabs: fmt(parentRootTabs),
+      parent_any: fmt(parentAny),
+      projects_child: projectsChild, // ⬅️ shows true root name we should navigate to
+    });
+  } catch (e) {
+    console.log('NAV DEBUG ERROR ::', label, String(e));
+  }
+}

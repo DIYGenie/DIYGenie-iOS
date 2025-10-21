@@ -1,0 +1,83 @@
+File: app/lib/api.ts
+
+Replace/add these helpers:
+
+import axios from 'axios';
+
+export const listProjects = (userId: string) =>
+  axios.get(`/api/projects`, { params: { user_id: userId } }).then(r => r.data);
+
+export const createProject = (userId: string, payload: any) =>
+  axios.post(`/api/projects`, { ...payload, user_id: userId }).then(r => r.data);
+
+export const uploadRoomPhoto = (
+  projectId: string,
+  asset: { uri: string; type?: string; name?: string },
+  directUrl?: string
+) => {
+  if (directUrl) {
+    // test path: set by URL
+    return axios.post(`/api/projects/${projectId}/image`, { direct_url: directUrl });
+  }
+  const form = new FormData();
+  form.append('image', {
+    uri: asset.uri,
+    name: asset.name || 'room.jpg',
+    type: asset.type || 'image/jpeg',
+  } as any);
+  return axios.post(`/api/projects/${projectId}/image`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+
+export const previewProject = (projectId: string, userId: string) =>
+  axios.post(`/api/projects/${projectId}/preview`, { user_id: userId });
+
+export const buildWithoutPreview = (projectId: string, userId: string) =>
+  axios.post(`/api/projects/${projectId}/build-without-preview`, { user_id: userId });
+
+export const getEntitlements = (userId: string) =>
+  axios.get(`/me/entitlements/${userId}`).then(r => r.data);
+
+3) Projects list: fix padding/margins + ensure fresh data shows
+
+File: app/screens/ProjectsScreen.js
+
+Ensure we refetch on focus and when coming back from create.
+
+Tighten the edges to 16 px.
+
+import { useIsFocused } from '@react-navigation/native';
+import { useEffect, useState } from 'react';
+import { ScrollView, RefreshControl } from 'react-native';
+import { listProjects } from '../lib/api';
+import { useUser } from '../lib/useUser';
+
+export default function ProjectsScreen({ navigation }) {
+  const { user } = useUser();
+  const isFocused = useIsFocused();
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = async () => {
+    if (!user?.id) return;
+    setLoading(true);
+    try {
+      const data = await listProjects(user.id);
+      setItems(data?.items ?? []);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [isFocused, user?.id]);
+
+  return (
+    <ScrollView
+      contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 }}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
+    >
+      {/* render cards from items */}
+    </ScrollView>
+  );
+}

@@ -1,0 +1,79 @@
+Eliminate raw-text crashes + keep only Before/After
+
+Repo: DIYGenieTheme
+Autonomy: Low
+App Testing: ON
+
+Goals
+
+Fix all “Text strings must be rendered within a <Text> component” errors in app/screens/DetailedInstructions.tsx.
+
+Remove the top hero/summary image on this screen (keep Before and After only).
+
+Ensure every “pill / label / stat” is proper <Text> inside a row.
+
+Tasks
+
+Audit & wrap all raw strings
+
+In DetailedInstructions.tsx, scan the whole file and wrap every visible string inside a <Text>:
+
+Units and labels: "hrs", "steps", "ea", "sheet", currency symbols, dots (·), dashes, spaces ({' '}), emojis/symbols.
+
+Any conditional fragments that may render a bare string.
+
+Any numeric values interpolated directly in a <View>—wrap them in <Text> or ${value} inside <Text>.
+
+Typical offenders: the Quick stats row, Materials rows, Cut List table headers, Steps section titles/subtitles.
+
+Create tiny helpers (in the same file) to avoid repeats
+
+RowText({ children }) → returns <Text style={{ fontSize: 14 }}>{children}</Text>
+
+Pill({ icon, label }) → <View style={{ flexDirection: 'row', alignItems:'center' }}><Icon ... /><Text>{label}</Text></View>
+
+Use these in the stats row and section headers so no raw text sneaks in.
+
+Hide the hero/summary image on this screen
+
+Remove/comment the hero render block above “Preview”; only show “Before” and “After”.
+
+Guard strings safely
+
+Where you concatenate (e.g., ${qty} ${unit} · ${name}), ensure the whole expression is inside a single <Text>.
+
+Do not leave separators outside <Text>.
+
+Verify sections still render
+
+Materials, Tools, Cut List, Steps show content or their “No … yet” placeholder.
+
+Testing (App Testing = ON)
+
+Run the app on device → Projects → Open Detailed Build Plan.
+
+Confirm:
+
+No red error overlay.
+
+Only Before/After images at the top.
+
+Stats/labels show correctly and scroll fine.
+
+Add 2 screenshots (top area without hero, one section with text-heavy rows) to the PR.
+
+Deliverables
+
+Updated DetailedInstructions.tsx with:
+
+All strings wrapped in <Text> (no raw text).
+
+Hero removed; Before/After remain.
+
+Helpers (RowText, Pill) used where applicable.
+
+PR note: “Fix raw text crash; remove hero; verified on device.”
+
+Stop conditions
+
+If another file (e.g., shared component) is injecting raw strings into this screen, list it and ask before editing.

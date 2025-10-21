@@ -1,0 +1,142 @@
+// app/screens/ProjectDetailsScreen.js
+import React, { useMemo } from 'react';
+import { View, Text, Image, ScrollView, StyleSheet } from 'react-native';
+import AccordionCard from '../components/AccordionCard';
+
+export default function ProjectDetailsScreen({ route }) {
+  const project = route?.params?.project || {};
+
+  const plan = useMemo(() => normalizePlan(project), [project]);
+  const photoUri =
+    project?.input_image_url ||
+    project?.image_url ||
+    'https://images.unsplash.com/photo-1507089947368-19c1da9775ae?w=1200&q=60&auto=format&fit=crop';
+
+  const status = (project?.status || 'ready').replace('_', ' ');
+
+  return (
+    <View style={styles.screen}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
+      >
+        {/* Title + status pill */}
+        <View style={styles.headerRow}>
+          <Text style={styles.title}>{project?.name || 'Project'}</Text>
+          <View style={styles.pill}><Text style={styles.pillText}>{status}</Text></View>
+        </View>
+
+        {/* Photo */}
+        <Text style={styles.sectionLabel}>Room Photo</Text>
+        <Image source={{ uri: photoUri }} style={styles.photo} resizeMode="cover" />
+
+        {/* Expandable sections */}
+        <Text style={styles.sectionLabel}>Plan</Text>
+
+        <AccordionCard title="Overview" items={plan.outline} />
+
+        <AccordionCard title="Materials" items={plan.materials} />
+
+        <AccordionCard title="Steps" items={plan.steps} />
+
+        <AccordionCard
+          title="Shopping"
+          items={plan.shopping}
+          renderItem={(item) => (
+            <View style={styles.shopRow}>
+              <Text style={styles.rowText}>• {item.name}</Text>
+              {!!item.price && <Text style={styles.price}>{item.price}</Text>}
+            </View>
+          )}
+        />
+      </ScrollView>
+    </View>
+  );
+}
+
+/** Fallback/stub plan content while real plans are wired */
+function normalizePlan(p) {
+  const plan = p?.plan || {};
+
+  const outline =
+    Array.isArray(plan.outline) && plan.outline.length
+      ? plan.outline
+      : [
+          'Assemble the main frame using wood glue',
+          'Secure joints with screws or nails',
+          'Install hardware and finishing touches',
+          'Sand → prime → paint',
+          'Locate studs and mount safely',
+          'Final cleanup & styling',
+        ];
+
+  const materials =
+    Array.isArray(plan.materials) && plan.materials.length
+      ? plan.materials
+      : ['2×4 lumber', 'Wood glue', '1 1/4" screws', 'Primer', 'Paint', 'Stud anchors'];
+
+  const steps =
+    Array.isArray(plan.steps) && plan.steps.length
+      ? plan.steps
+      : [
+          'Measure and mark wall layout',
+          'Cut boards to length',
+          'Dry-fit and adjust',
+          'Glue and fasten the frame',
+          'Fill, sand, and finish',
+          'Locate studs and mount unit',
+        ];
+
+  const shopping =
+    Array.isArray(plan.shopping) && plan.shopping.length
+      ? plan.shopping
+      : [
+          { name: 'Anchor screws (pack of 10)', price: '$6.99' },
+          { name: 'Stud finder', price: '$19.99' },
+          { name: 'Painter’s caulk', price: '$4.59' },
+        ];
+
+  return { outline, materials, steps, shopping };
+}
+
+const styles = StyleSheet.create({
+  // Ensure the screen itself has height so the ScrollView can scroll on web
+  screen: { flex: 1, backgroundColor: '#F6F7FB' },
+
+  // Give the ScrollView a flex so it receives height from the screen
+  scroll: { flex: 1 },
+
+  // Key: flexGrow + minHeight let content exceed container and scroll reliably on RN Web
+  content: {
+    padding: 16,
+    paddingBottom: 56,
+    flexGrow: 1,
+    minHeight: '100%',
+  },
+
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  title: { fontSize: 24, fontWeight: '800', color: '#0F172A', flexShrink: 1, paddingRight: 8 },
+  pill: { backgroundColor: '#D1FAE5', paddingHorizontal: 10, height: 28, borderRadius: 14, justifyContent: 'center' },
+  pillText: { color: '#065F46', fontWeight: '700' },
+
+  sectionLabel: { marginTop: 8, marginBottom: 8, fontSize: 16, fontWeight: '700', color: '#111827' },
+
+  photo: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: 16,
+    backgroundColor: '#E5E7EB',
+    marginBottom: 12,
+  },
+
+  shopRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  rowText: { fontSize: 16, color: '#2B2F37' },
+  price: { fontSize: 16, fontWeight: '700', color: '#0F172A', marginLeft: 12 },
+});

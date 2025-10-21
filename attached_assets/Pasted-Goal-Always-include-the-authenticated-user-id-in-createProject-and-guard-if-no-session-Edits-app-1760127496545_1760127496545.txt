@@ -1,0 +1,78 @@
+Goal: Always include the authenticated user id in createProject and guard if no session.
+
+Edits
+
+app/lib/auth.ts – add a helper to get the current user id
+
+import { supabase } from './supabase';
+
+export async function getUserId(): Promise<string | null> {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) return null;
+  return data?.session?.user?.id ?? null;
+}
+
+
+app/lib/api.ts – include user_id in the payload and fail fast if missing
+
+import { getUserId } from './auth';
+
+export async function createProject(payload: {
+  name: string;
+  description: string;
+  budget: string;
+  skill_level: string;
+}) {
+  const user_id = await getUserId();
+  if (!user_id) {
+    throw new Error('AUTH_REQUIRED'); // handled by caller -> show sign-in
+  }
+
+  const body = { ...payload, user_id };
+
+  const url = `${WEBHOOK_BASE}/api/projects`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  const json = await res.json().catch(() => ({}));
+  console.log('[createProject] status', res.status, 'body', json);
+
+  if (!res.ok) throw new Error(json?.error || `HTTP_${res.status}`);
+  if (!json?.item?.id) throw new Error('[createProject] ok but no id');
+
+  return json.item as { id: string; status: string };
+}
+
+
+app/screens/NewProject.tsx – defend in the scan/preview/build handlers
+
+import { getUserId } from '../lib/auth';
+import { Alert } from 'react-native';
+
+// before calling ensureProjectForDraft / createProject:
+const uid = await getUserId();
+if (!uid) {
+  Alert.alert('Sign in required', 'Please sign in to create a project.');
+  navigation.navigate('Auth', { screen: 'SignIn' });
+  return;
+}
+
+
+Logging (optional but helpful)
+Add just before posting:
+
+console.log('[project create] payload', { ...payload, user_id });
+
+
+Acceptance checks
+
+Tap Scan room → no error modal.
+
+Console shows [createProject] status 200 and an item.id.
+
+Project is created; scan flow proceeds.
+
+If signed out, an alert appears and navigates to SignIn.

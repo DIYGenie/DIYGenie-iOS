@@ -1,0 +1,86 @@
+wire Profile screen to existing billing endpoints. No backend edits. No new files/renames/deletes without my confirmation.
+Goal: Implement production-ready upgrade/manage flow that opens Stripe Checkout/Portal via our API, then refreshes entitlements when the app returns to foreground. Include a safe dev fallback if billing endpoints aren’t present.
+
+Task
+
+Wire the Profile screen to call our billing endpoints and refresh entitlements.
+
+Files to touch (only):
+
+app/screens/Profile.tsx
+
+Do NOT create new files or add dependencies. Use Linking and AppState from React Native (no expo-web-browser). Keep bottom tab bar and existing styling/components.
+
+Implementation details
+
+Constants (top of Profile.tsx):
+
+Read BASE from process.env.EXPO_PUBLIC_BASE_URL (already set to https://api.diygenieapp.com).
+
+Add an ENDPOINTS map (editable constants):
+
+checkout: \${BASE}/api/billing/checkout`//POST { tier: 'casual' | 'pro' } -> { url }`
+
+portal: \${BASE}/api/billing/portal` //POST -> { url }`
+
+entitlements: \${BASE}/me/entitlements` //GET -> { tier, remaining, previewAllowed }`
+
+Dev fallback (only if 404/501 on the above): devUpgrade: \${BASE}/api/billing/upgrade`//POST { tier } -> 200`
+
+Helpers (inline in Profile.tsx, no new modules):
+
+async api(path, { method = 'GET', body } = {}) that fetches with JSON and throws on !res.ok (include status text).
+
+async getEntitlements() → GET ENDPOINTS.entitlements. On success, set local state { tier, remaining, previewAllowed }. On failure, keep previous state and show an Alert.
+
+async openPortal() → POST ENDPOINTS.portal, open returned url with Linking.openURL(url). Show friendly Alert if fails; do not crash.
+
+async openCheckout(tier) → POST ENDPOINTS.checkout with { tier }, open returned url. If endpoint missing (404/501), call maybeDevUpgrade(tier) (see below).
+
+async maybeDevUpgrade(tier) → POST ENDPOINTS.devUpgrade with { tier }, then immediately getEntitlements(). Only used if real endpoints are unavailable.
+
+Add a foreground refresh: subscribe to AppState.addEventListener('change', ...); when state becomes 'active', call getEntitlements() (debounced so it can’t spam). Clean up on unmount.
+
+UI Changes (stay inside Profile.tsx):
+
+Use existing card that shows “Current Plan: <Tier>”. Keep “Manage” on the right; hook it to openPortal().
+
+If tier !== 'pro', render an “Upgrade” button (use existing primary/secondary style) just below the plan card.
+
+On press, show a minimal picker (use ActionSheetIOS on iOS; fallback to Alert with options on Android/Web) offering:
+
+Casual — 5 projects/mo + previews
+
+Pro — 25 projects/mo + previews
+
+Selecting an option calls openCheckout(selectedTier).
+
+Add a small “Sync Plan” text button under the card that calls getEntitlements() (manual refresh).
+
+While any billing call is in-flight, disable buttons and show a lightweight inline loading state (no global spinner, no infinite loaders).
+
+Error handling / UX:
+
+Use Alert.alert('Billing', message) for friendly messages (no extra libs).
+
+Time out any network call at ~12s and surface a clear error (“Network is slow—try again or use Sync Plan”).
+
+Performance / cleanliness:
+
+Keep hooks at top level.
+
+No dependency additions, no schema or env changes.
+
+Keep all new code confined to Profile.tsx. Keep styles consistent with existing theme tokens.
+
+Acceptance criteria
+
+Manage opens the Stripe Customer Portal via our API; no crashes if the endpoint is missing—shows a friendly message.
+
+Upgrade button appears when not on Pro; tapping it lets me choose Casual or Pro, opens Stripe Checkout via our API.
+
+Returning to the app (foreground) auto-refreshes entitlements; also works via Sync Plan button.
+
+When the billing API isn’t available, pressing Upgrade uses dev fallback (/api/billing/upgrade) and entitlements update immediately.
+
+No new files or dependencies were added. Bottom nav remains visible. No infinite spinners. Alerts used for errors.

@@ -1,0 +1,101 @@
+Implement “Project Details as Summary Cards + Accordion” and keep “Project Plan” as the deep guide. Use parsed plan data already produced by parsePlanMarkdown().
+
+Files to edit
+
+app/screens/ProjectDetails.tsx
+
+app/components/PlanTabs.tsx (no UI changes, just keep for future; not used on Details)
+
+app/screens/DetailedInstructions.tsx (no change, keep as linear guide)
+
+app/components/ui/AccordionCard.tsx (NEW)
+
+Requirements
+
+Stop showing PlanTabs on ProjectDetails. Replace the tabs block with five accordion cards that summarize the plan. Keep the hero image, title, status badge.
+
+Accordion UI (new component):
+
+File: app/components/ui/AccordionCard.tsx
+
+Props:
+
+type AccordionCardProps = {
+  title: string;
+  subtitle?: string;
+  children?: React.ReactNode;
+  initiallyOpen?: boolean;
+  testID?: string;
+};
+
+
+Visuals: rounded 16, light lilac background #F3F0FF, title bold 20, subtitle muted #6B7280. Chevron on the right rotates when open. Smooth 150ms height/opacity animation.
+
+ProjectDetails content layout:
+
+Keep the existing header (Back, project name, status badge).
+
+Keep hero image if available.
+
+Plan panel (small card) that says either:
+
+“Plan is building…” or
+
+“Plan is ready. Browse the sections below or open the full guide.”
+
+When planObj exists, render five AccordionCard sections in this order with summaries:
+
+Materials — show “N items” as subtitle; inside: bullet list (up to 50). If none: “No materials listed.”
+
+Cut list — subtitle “N cuts”; inside: bullet list “Name — WxH ×Qty” (or whatever fields exist).
+
+Tools — subtitle “N tools”; inside: bullet list.
+
+Step-by-step — subtitle “N steps”; inside: numbered list with each step title + one-line body (truncate after ~100 chars).
+
+Time & Cost — subtitle “~X hrs • ~$Y”; inside: two lines “Estimated time” and “Estimated cost”.
+
+Default: Materials open by default (initiallyOpen true) and others closed.
+
+CTA button at the bottom (full-width, purple):
+“Get detailed instructions” → navigation.navigate('DetailedInstructions', { id: projectId })
+
+Data source:
+
+Keep the current plan state you already wired:
+
+planObj from parsePlanMarkdown().
+
+If no plan yet → show just the “Plan is building…” card and hide the accordion and CTA.
+
+Remove/disable the polling loop you added earlier. Details page should render immediately with either “building” or the accordions if planObj is present. (Do not call /api/projects/:id/plan here anymore.)
+
+Empty states: match the screenshot style:
+
+“No materials listed.” / “No cut list.” / “No tools listed.” / “No steps yet.”
+
+Time & Cost: show “—” when missing.
+
+Performance & UX:
+
+Make the whole page ScrollView with contentContainerStyle={{ padding: 16, paddingBottom: 48 }}.
+
+Ensure the Back button still uses useSafeBack() and returns to Projects → ProjectsList.
+
+QA hooks (console):
+
+When planObj loads: console.log('[details] plan ready', { sections: { materials: planObj.materials?.length ?? 0, cuts: planObj.cuts?.length ?? 0, tools: planObj.tools?.length ?? 0, steps: planObj.steps?.length ?? 0 } });
+
+Acceptance criteria
+
+On a project whose plan is ready, ProjectDetails shows five accordion cards with correct counts and expandable content, plus the Get detailed instructions button that navigates to DetailedInstructions.
+
+On a project whose plan is not ready, ProjectDetails shows only the “Plan is building…” card (no accordions, no CTA).
+
+No PlanTabs render on ProjectDetails anymore.
+
+Back navigation always returns you to Projects list.
+
+No network polling logs (e.g., no 409 spam) from this screen.
+
+End of prompt.

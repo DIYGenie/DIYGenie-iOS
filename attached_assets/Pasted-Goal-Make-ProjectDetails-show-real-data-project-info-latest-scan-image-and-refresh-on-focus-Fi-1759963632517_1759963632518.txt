@@ -1,0 +1,141 @@
+Goal: Make ProjectDetails show real data (project info + latest scan image) and refresh on focus. Fixes the blank “No scan image yet” state and the list-not-updating problem when navigating back.
+
+THEME
+
+// EDIT FILE: app/lib/api.ts
+// Add helpers to fetch a single project and the latest scan for it.
+
+import { supabase } from './supabase';
+
+const API_BASE =
+  process.env.EXPO_PUBLIC_WEBHOOKS_BASE_URL ||
+  'https://diy-genie-webhooks-tyekowalski.replit.app';
+
+export async function fetchProjectById(id: string) {
+  const res = await fetch(`${API_BASE}/api/projects/${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error('PROJECT_FETCH_FAILED');
+  const json = await res.json();
+  // normalize various possible shapes
+  // { item }, { project }, or the object itself
+  return json.item || json.project || json;
+}
+
+export async function fetchLatestScanForProject(projectId: string) {
+  const { data, error } = await supabase
+    .from('room_scans')
+    .select('id,image_url')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+  return { scanId: data.id, imageUrl: data.image_url as string };
+}
+
+
+THEME
+
+// EDIT FILE: app/screens/ProjectDetails.tsx
+// Fetch project + latest scan, render thumbnail if present, and refetch on focus.
+
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Image, ActivityIndicator } from 'react-native';
+import { useRoute, useNavigation, RouteProp, useFocusEffect } from '@react-navigation/native';
+import T from '../components/T';
+import { useSafeBack } from '../lib/useSafeBack';
+import { fetchProjectById, fetchLatestScanForProject } from '../lib/api';
+
+type RouteParams = { id: string };
+type R = RouteProp<Record<'ProjectDetails', RouteParams>, 'ProjectDetails'>;
+
+export default function ProjectDetails() {
+  const route = useRoute<R>();
+  const navigation = useNavigation();
+  const safeBack = useSafeBack();
+  const projectId = route.params?.id;
+
+  const [loading, setLoading] = useState(true);
+  const [project, setProject] = useState<any>(null);
+  const [scan, setScan] = useState<{ scanId: string; imageUrl: string } | null>(null);
+
+  const load = useCallback(async () => {
+    if (!projectId) return;
+    setLoading(true);
+    try {
+      const [p, s] = await Promise.all([
+        fetchProjectById(projectId),
+        fetchLatestScanForProject(projectId),
+      ]);
+      setProject(p);
+      setScan(s);
+    } catch (e) {
+      // noop; keep minimal to avoid noisy UI
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <T.Button onPress={safeBack} style={{ marginLeft: 8 }}>
+          Back
+        </T.Button>
+      ),
+      title: 'Project',
+    });
+  }, [navigation, safeBack]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  return (
+    <View style={{ flex: 1, padding: 16 }}>
+      <T.h2 style={{ marginBottom: 6 }}>
+        {project?.name || project?.title || 'Project'}
+      </T.h2>
+      <T.muted style={{ marginBottom: 16 }}>
+        Status: {project?.status || 'In progress'}
+      </T.muted>
+
+      {loading ? (
+        <View style={{ paddingTop: 40 }}>
+          <ActivityIndicator />
+        </View>
+      ) : scan?.imageUrl ? (
+        <Image
+          source={{ uri: scan.imageUrl }}
+          style={{
+            width: '100%',
+            height: 220,
+            borderRadius: 16,
+            backgroundColor: '#EEE',
+          }}
+          resizeMode="cover"
+        />
+      ) : (
+        <View
+          style={{
+            width: '100%',
+            height: 220,
+            borderRadius: 16,
+            backgroundColor: '#F2F2F2',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <T.muted>No scan image yet</T.muted>
+        </View>
+      )}
+    </View>
+  );
+}

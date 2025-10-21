@@ -1,0 +1,193 @@
+Update the Home screen “How it works” section styling and a11y.
+
+Goals
+
+Two-row grid of tiles (Describe, Scan, Preview, Build) with great spacing on iPhone.
+
+Tile look/feel: higher contrast, consistent outline icons, press feedback.
+
+Slightly lighter card shadows in “Recent Projects”.
+
+Add basic accessibility labels.
+
+Exact changes
+
+A. Colors (theme)
+
+Edit theme/colors.(ts|js) (create if missing) and add:
+
+export const diy = {
+  tileBg: '#F6F3FF',
+  tileBorder: '#E7DFFF',
+  tilePressed: '#EEE6FF',
+};
+
+
+Use existing brand purple for text/icon; no change to CTA.
+
+B. Reusable Tile
+
+Create components/HowItWorksTile.(tsx|js):
+
+import React from 'react';
+import { Pressable, Text, View, StyleSheet } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { colors } from '../theme/colors'; // ensure diy is exported inside colors
+
+export default function HowItWorksTile({
+  icon = 'create-outline',
+  label,
+  onPress,
+  a11yLabel,
+}: {
+  icon?: string;
+  label: string;
+  onPress?: () => void;
+  a11yLabel: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+      style={({ pressed }) => [
+        styles.tile,
+        { backgroundColor: pressed ? colors.diy.tilePressed : colors.diy.tileBg },
+        pressed && { transform: [{ scale: 0.98 }] },
+      ]}
+    >
+      <Ionicons name={icon as any} size={22} color={colors.primary} />
+      <Text style={styles.label}>{label}</Text>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  tile: {
+    minHeight: 72,
+    minWidth: '48%',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.diy.tileBorder,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  label: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F1F1F',
+  },
+});
+
+
+C. Home screen layout & spacing
+
+In screens/HomeScreen.(tsx|js):
+
+Replace the current inline “How it works” buttons with a 2×2 grid using the new component.
+
+Keep the order: Describe → Scan → Preview → Build.
+
+Icons (Ionicons outline set):
+
+Describe: create-outline
+
+Scan: scan-outline
+
+Preview: sparkles-outline
+
+Build: hammer-outline
+
+Spacing tweaks:
+
+Reduce gap between “Ready to start…” and “How it works” by ~4 px.
+
+Increase gap between tiles block and CTA button by ~4 px.
+
+Example block:
+
+import HowItWorksTile from '../components/HowItWorksTile';
+
+<View style={{ marginTop: 8 }}>
+  <Text style={styles.sectionTitle}>How it works</Text>
+  <View style={styles.tilesWrap}>
+    <HowItWorksTile
+      icon="create-outline"
+      label="Describe"
+      a11yLabel="Describe your project"
+      onPress={() => navigation.navigate('NewProject')}
+    />
+    <HowItWorksTile
+      icon="scan-outline"
+      label="Scan"
+      a11yLabel="Scan your room"
+      onPress={() => navigation.navigate('ScanRoom')}
+    />
+    <HowItWorksTile
+      icon="sparkles-outline"
+      label="Preview"
+      a11yLabel="Preview your design"
+      onPress={() => navigation.navigate('NewProject')}
+    />
+    <HowItWorksTile
+      icon="hammer-outline"
+      label="Build"
+      a11yLabel="Open build plan"
+      onPress={() => navigation.navigate('Projects')}
+    />
+  </View>
+</View>
+
+const styles = StyleSheet.create({
+  sectionTitle: { marginBottom: 10, fontSize: 16, fontWeight: '700' },
+  tilesWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 12,
+  },
+  cta: { marginTop: 16 }, // apply to CTA container
+});
+
+
+D. Card shadow lighten (Recent Projects)
+
+Wherever project cards are styled (e.g., ProjectCard or within Home):
+
+shadowOpacity: 0.08, // was ~0.12
+shadowRadius: 12,    // keep soft
+elevation: 2
+
+
+E. Accessibility
+
+For each tile, ensure accessibilityRole="button" and a descriptive accessibilityLabel (as shown).
+
+For the “Start a New Project” button, add accessibilityRole="button" and label “Start a new project”.
+
+Deliverables
+
+New components/HowItWorksTile.(tsx|js) created and used on Home.
+
+Tiles render in a neat 2×2 grid on iPhone; no truncation; consistent outline icons.
+
+Press feedback: slight scale + soft purple fill.
+
+Card shadow slightly lighter.
+
+All items have accessibility labels.
+
+Please run the app and verify on an iPhone profile (e.g., iPhone 16/15 Pro) that:
+
+The grid fits without truncation.
+
+Spacing above/below looks balanced.
+
+Pressing tiles shows subtle scale + fill.
+
+Recent Project cards still look elevated but lighter.
+
+If file names differ, search for the Home screen file containing “Recent Projects” and the existing tiles to apply the same changes.

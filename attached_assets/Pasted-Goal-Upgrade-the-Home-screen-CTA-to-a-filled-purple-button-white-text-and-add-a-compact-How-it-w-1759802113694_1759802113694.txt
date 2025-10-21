@@ -1,0 +1,108 @@
+Goal: Upgrade the Home screen CTA to a filled purple button (white text) and add a compact “How it works” section with 4 steps beneath it. Keep routing and logic unchanged.
+
+1) Theme tokens (colors)
+
+Update app/theme/colors.ts (or the file where colors live). Add/ensure these exports exist (keep existing palette; just add/adjust these keys):
+
+export const colors = {
+  // ...keep existing
+  brand: '#6E40FF',          // primary purple
+  brand600: '#6E40FF',
+  brand700: '#5A2EE8',
+  brand50: '#F2ECFF',
+  onBrand: '#FFFFFF',
+  ctaShadow: 'rgba(110,64,255,0.28)',
+};
+
+2) Home CTA style
+
+Edit app/screens/HomeScreen.js (or .tsx).
+
+Replace the current “Start Your First Project” button styles with a filled button using colors.brand and colors.onBrand, 56px height, 14px radius, medium weight text, and a soft shadow.
+
+Keep the existing onPress navigation to the New Project screen and add testID="home-cta".
+
+Example style block (adjust to your file’s style system):
+
+const styles = StyleSheet.create({
+  cta: {
+    height: 56,
+    borderRadius: 14,
+    backgroundColor: colors.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.ctaShadow,
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  ctaText: {
+    color: colors.onBrand,
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+});
+
+
+Use it like:
+
+<TouchableOpacity testID="home-cta" style={styles.cta} onPress={handleStart}>
+  <Text style={styles.ctaText}>Start a New Project</Text>
+</TouchableOpacity>
+
+3) “How it works” section
+
+Still in HomeScreen, add a small section below the CTA. Use Ionicons from @expo/vector-icons.
+
+Title: “How it works”
+
+Four rows with icon + label (compact cards or simple rows).
+Steps:
+
+“Describe your project”
+
+“Add a room photo or scan”
+
+“Get smart suggestions”
+
+“Generate your build plan”
+
+Add testIDs: how-step-1 … how-step-4.
+
+Example snippet to insert under the CTA:
+
+<View style={{ marginTop: 24 }}>
+  <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 12, color: '#111' }}>
+    How it works
+  </Text>
+
+  {[
+    { id: 1, icon: 'create-outline', label: 'Describe your project' },
+    { id: 2, icon: 'image-outline', label: 'Add a room photo or scan' },
+    { id: 3, icon: 'sparkles-outline', label: 'Get smart suggestions' },
+    { id: 4, icon: 'list-circle-outline', label: 'Generate your build plan' },
+  ].map(({ id, icon, label }) => (
+    <View key={id} testID={`how-step-${id}`} style={{
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 10,
+      borderRadius: 12,
+      paddingHorizontal: 10,
+      backgroundColor: colors.brand50,
+      marginBottom: 8,
+    }}>
+      <Ionicons name={icon as any} size={20} color={colors.brand700} style={{ marginRight: 10 }} />
+      <Text style={{ fontSize: 14, color: '#222' }}>{label}</Text>
+    </View>
+  ))}
+</View>
+
+4) Don’t change anything else
+
+Do not modify navigation or backend calls.
+
+Keep existing Home content; we’re only upgrading the CTA and adding the guide.
+
+When finished, save and run. End result: Filled purple CTA (white text) + 4-step “How it works” list beneath it.

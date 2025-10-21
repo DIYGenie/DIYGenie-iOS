@@ -1,0 +1,116 @@
+Goal (single step): Put the “Build with AI Preview” CTA on the Create New Project screen (NewProject.tsx). Tapping it will (1) ensure a project exists for the current draft, (2) POST to Webhooks /api/projects/:id/preview, (3) toast confirmation, then (4) navigate to Projects → ProjectDetails for that project. (We’ll wire the preview image display on ProjectDetails in the next step.)
+
+Automation: medium
+App Testing: on
+
+(a) Project: [THEME] (Expo)
+
+(b) Files to touch:
+
+app/lib/api.ts
+
+app/screens/NewProject.tsx
+
+(c) Exact patch/code:
+
+*** app/lib/api.ts
+@@
+ export const base = __DEV__
+   ? (process.env.EXPO_PUBLIC_WEBHOOKS_DEV ?? 'https://diy-genie-webhooks-tyekowalski.replit.app')
+   : (process.env.EXPO_PUBLIC_WEBHOOKS_PROD ?? 'https://api.diygenieapp.com');
+ 
++// Fire-and-forget preview build (stub/provider handles job)
++export async function requestProjectPreview(projectId: string) {
++  const url = `${base}/api/projects/${projectId}/preview`;
++  try {
++    const res = await fetch(url, { method: 'POST' });
++    const body = await res.json().catch(() => ({}));
++    return { ok: !!body?.ok, status: res.status, body };
++  } catch (e: any) {
++    return { ok: false, status: 0, body: { error: String(e?.message || e) } };
++  }
++}
+
+*** app/screens/NewProject.tsx
+@@
+-import React, { useEffect, useMemo, useRef, useState } from 'react';
++import React, { useEffect, useMemo, useRef, useState } from 'react';
+ import { View, Text, ScrollView, Pressable, Alert, Keyboard, TouchableWithoutFeedback } from 'react-native';
+ import { useNavigation, useRoute } from '@react-navigation/native';
+ import { supabase } from '../lib/supabase';
+ import { ensureProjectForDraft, saveDraft as saveDraftHelper, loadDraft as loadDraftHelper, clearDraft as clearDraftHelper } from '../lib/draft';
++import { requestProjectPreview } from '../lib/api';
++import Toast from '../components/Toast';
+@@
+   const [isSubmitting, setIsSubmitting] = useState(false);
++  const [isPreviewing, setIsPreviewing] = useState(false);
+@@
+   const canSubmit = useMemo(() => {
+     return (title?.trim()?.length ?? 0) >= 3 && (description?.trim()?.length ?? 0) >= 10 && !!budget && !!skillLevel;
+   }, [title, description, budget, skillLevel]);
+ 
++  async function handleBuildWithPreview() {
++    try {
++      const { data } = await supabase.auth.getSession();
++      if (!data?.session?.user) {
++        Alert.alert('Sign in required', 'Please sign in to build a preview.');
++        return;
++      }
++      if (!canSubmit) {
++        Alert.alert('Almost there', 'Please complete Title (≥3), Description (≥10), Budget and Skill level.');
++        return;
++      }
++      setIsPreviewing(true);
++      // 1) Ensure a project exists for this draft (creates if needed)
++      const projectId = await ensureProjectForDraft({
++        name: title,
++        description,
++        budget,
++        skill_level: skillLevel,
++        projectId: draftId,
++      });
++      // 2) Request preview build
++      const r = await requestProjectPreview(projectId);
++      if (!r.ok) {
++        console.log('[preview request failed]', r.status, r.body);
++        Alert.alert('Preview failed', 'Could not request AI preview. Please try again.');
++        return;
++      }
++      // 3) Feedback + navigate to details so user can watch status
++      Toast.show('Preview requested. We’ll notify when it’s ready.');
++      // Seed Projects stack and push details
++      navigation.navigate('Projects' as never, {
++        screen: 'ProjectDetails',
++        params: { id: projectId },
++      } as never);
++    } finally {
++      setIsPreviewing(false);
++    }
++  }
+@@
+       {/* Existing primary actions remain here */}
+       {/* ... your existing buttons ... */}
+ 
++      {/* Build with AI Preview CTA */}
++      <View style={{ marginTop: 12 }}>
++        <Pressable
++          onPress={handleBuildWithPreview}
++          disabled={!canSubmit || isPreviewing}
++          style={{
++            backgroundColor: canSubmit ? '#7C3AED' : '#C7C7C7',
++            paddingVertical: 14,
++            borderRadius: 14,
++            alignItems: 'center',
++            opacity: isPreviewing ? 0.7 : 1,
++          }}
++        >
++          <Text style={{ color: 'white', fontWeight: '700' }}>
++            {isPreviewing ? 'Requesting…' : 'Build with AI Preview'}
++          </Text>
++        </Pressable>
++        {!canSubmit && (
++          <Text style={{ marginTop: 8, color: '#6B7280', fontSize: 12, textAlign: 'center' }}>
++            Fill in Title, Description, Budget, and Skill level to enable preview.
++          </Text>
++        )}
++      </View>

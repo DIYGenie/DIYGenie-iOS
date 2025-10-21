@@ -1,0 +1,90 @@
+When projects are loading, show tasteful skeleton cards. If there are no projects yet, show a friendly empty state with a CTA.
+
+Do this:
+
+Install shimmer dependency
+npx expo install expo-linear-gradient
+
+Add a reusable skeleton
+
+Create components/ui/Skeleton.tsx
+
+Uses Animated + LinearGradient from expo-linear-gradient to sweep left→right.
+
+Props: width, height, borderRadius=12, style.
+
+Background: #ECEBF6; shimmer: white → #ECEBF6 → white at ~30% opacity.
+
+Add Home list skeletons
+
+Create components/home/ProjectCardSkeleton.tsx
+
+Renders 2–3 stacked placeholders matching the project card layout:
+
+Left square (56x56) skeleton
+
+Title line (55% width, height 16)
+
+Subtitle line (35% width, height 12)
+
+Card wrapper with same padding/radius/shadow as real cards.
+
+Add a friendly empty state
+
+Create components/ui/EmptyState.tsx
+
+Props: title, subtitle, primaryLabel, onPrimary.
+
+Centered icon (use @expo/vector-icons/Ionicons “sparkles-outline” size 56, brand purple).
+
+Primary button uses the same CTA style.
+
+Wire it up on Home
+
+In screens/HomeScreen.tsx (or equivalent):
+
+Derive loading from your projects fetch (or set a local loading true on mount until data returns).
+
+Pseudocode:
+
+if (loading) {
+  return (
+    <ScreenWrapper>
+      {/* header + “How it works” stay visible */}
+      <ProjectCardSkeleton count={2} />
+    </ScreenWrapper>
+  );
+}
+
+if (!projects || projects.length === 0) {
+  return (
+    <ScreenWrapper>
+      {/* header + “How it works” stay visible */}
+      <EmptyState
+        title="No projects yet"
+        subtitle="Start your first DIY and it’ll show up here."
+        primaryLabel="Start a New Project"
+        onPrimary={() => navigation.navigate('NewProject')}
+      />
+    </ScreenWrapper>
+  );
+}
+
+// else render the real list
+
+
+Make sure the skeleton/empty state appear below the “How it works” tiles and above the tab bar (no layout jumps).
+
+Design nits
+
+Respect 16–20pt vertical gaps so the header doesn’t feel cramped.
+
+Skeleton sweep duration ~1400ms, loop, easing linear.
+
+Acceptance
+
+On slow/first load, you see shimmering cards (no blank flashes).
+
+With zero projects, you see the empty state and the CTA navigates to New Project.
+
+With data, you see the real list (no jank).

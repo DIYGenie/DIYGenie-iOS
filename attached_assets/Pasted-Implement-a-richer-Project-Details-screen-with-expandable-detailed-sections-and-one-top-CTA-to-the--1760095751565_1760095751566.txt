@@ -1,0 +1,308 @@
+Implement a richer Project Details screen with expandable, detailed sections and one top CTA to the full guide.
+
+Files
+
+app/screens/ProjectDetails.tsx (update)
+
+app/components/SectionCard.tsx (new)
+
+Visual spec (tokens)
+
+Primary #6D28D9, gradient ['#7C3AED', '#6D28D9']
+
+Surface #F5F3FF, Card #F8F7FF
+
+Radius 16, horizontal padding 20
+
+iOS shadow: {shadowColor:'#000',shadowOpacity:0.12,shadowRadius:12,shadowOffset:{width:0,height:6}}
+
+Android: elevation:6
+
+Icon color #6D28D9
+
+Section gap 14
+
+1) New component: app/components/SectionCard.tsx
+
+Create a reusable expandable card.
+
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, LayoutAnimation, Platform, UIManager } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+type Props = {
+  icon: React.ReactNode;
+  title: string;
+  summary?: string;
+  countBadge?: number;
+  defaultOpen?: boolean;
+  onHeaderPress?: () => void; // optional deep-link to full guide
+  children: React.ReactNode;
+};
+
+export default function SectionCard({
+  icon, title, summary, countBadge, defaultOpen, onHeaderPress, children,
+}: Props) {
+  const [open, setOpen] = useState(!!defaultOpen);
+  const toggle = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setOpen(v => !v);
+  };
+
+  return (
+    <View
+      style={{
+        backgroundColor: '#F8F7FF',
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 14,
+        shadowColor: '#000',
+        shadowOpacity: 0.12,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 6 },
+        elevation: 6,
+      }}
+    >
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={onHeaderPress ?? toggle}
+        style={{ flexDirection: 'row', alignItems: 'center' }}
+      >
+        <View style={{ marginRight: 12 }}>{icon}</View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700' }}>{title}</Text>
+          {!!summary && <Text style={{ marginTop: 2, color: '#6B7280' }}>{summary}</Text>}
+        </View>
+
+        {!!countBadge && (
+          <View style={{
+            backgroundColor: '#EDE9FE', paddingHorizontal: 8, paddingVertical: 4,
+            borderRadius: 10, marginRight: 8,
+          }}>
+            <Text style={{ color: '#6D28D9', fontWeight: '700' }}>{countBadge}</Text>
+          </View>
+        )}
+
+        <Ionicons name="chevron-down" size={22} color="#6D28D9" style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }} />
+      </TouchableOpacity>
+
+      {open && <View style={{ marginTop: 12 }}>{children}</View>}
+    </View>
+  );
+}
+
+2) Update app/screens/ProjectDetails.tsx
+
+Keep existing data fetch (project, planObj).
+
+Remove old PlanTabs usage on this screen.
+
+Add top CTA (big gradient) → navigate to DetailedInstructions (no changes there).
+
+Render SectionCards with real content from planObj.
+
+Each header tap navigates to DetailedInstructions with { section: 'steps' | 'materials' | ... }.
+
+Add copy helpers.
+
+Add the following helpers at top:
+
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Clipboard from 'expo-clipboard';
+import SectionCard from '../components/SectionCard';
+import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
+
+const copyText = async (txt: string) => {
+  if (!txt) return;
+  await Clipboard.setStringAsync(txt);
+  console.log('[copy] ok');
+};
+
+const fmtQty = (q?: number | string, u?: string) => {
+  if (q == null || q === '') return '';
+  return u ? `${q} ${u}` : String(q);
+};
+
+
+Inside the component’s JSX (where content area renders after header/photo):
+
+{/* Top CTA */}
+<TouchableOpacity
+  activeOpacity={0.9}
+  onPress={() => navigation.navigate('DetailedInstructions', { projectId: project.id })}
+  style={{
+    borderRadius: 16, overflow: 'hidden', marginBottom: 16,
+    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 6
+  }}
+>
+  <LinearGradient colors={['#7C3AED','#6D28D9']} start={{x:0,y:0}} end={{x:1,y:1}} style={{ padding: 18 }}>
+    <Text style={{ color: 'white', fontSize: 20, fontWeight: '800', marginBottom: 4 }}>
+      Open Detailed Build Plan
+    </Text>
+    <Text style={{ color: 'white', opacity: 0.85 }}>
+      Document-style guide with every step and detail
+    </Text>
+  </LinearGradient>
+</TouchableOpacity>
+
+{/* OVERVIEW */}
+<SectionCard
+  icon={<Ionicons name="information-circle-outline" size={22} color="#6D28D9" />}
+  title="Overview"
+  summary="What you'll build"
+  onHeaderPress={() => navigation.navigate('DetailedInstructions', { projectId: project.id, section: 'overview' })}
+>
+  {planObj?.overview ? (
+    <>
+      <Text style={{ color: '#111827' }}>{planObj.overview}</Text>
+      {(planObj?.time?.hours || planObj?.cost?.usd) && (
+        <View style={{ flexDirection:'row', gap:8, marginTop:10, flexWrap:'wrap' }}>
+          {!!planObj.time?.hours && (
+            <View style={{ backgroundColor:'#EDE9FE', borderRadius:999, paddingHorizontal:10, paddingVertical:6 }}>
+              <Text style={{ color:'#6D28D9', fontWeight:'700' }}>⏱ {planObj.time.hours} hrs</Text>
+            </View>
+          )}
+          {!!planObj.cost?.usd && (
+            <View style={{ backgroundColor:'#EDE9FE', borderRadius:999, paddingHorizontal:10, paddingVertical:6 }}>
+              <Text style={{ color:'#6D28D9', fontWeight:'700' }}>💵 ${planObj.cost.usd}</Text>
+            </View>
+          )}
+        </View>
+      )}
+    </>
+  ) : <Text style={{ color:'#6B7280' }}>No overview yet.</Text>}
+</SectionCard>
+
+{/* STEPS */}
+<SectionCard
+  icon={<Feather name="list" size={22} color="#6D28D9" />}
+  title="Steps"
+  summary={`${planObj?.steps?.length ?? 0} steps`}
+  countBadge={planObj?.steps?.length}
+  onHeaderPress={() => navigation.navigate('DetailedInstructions', { projectId: project.id, section: 'steps' })}
+  defaultOpen
+>
+  {planObj?.steps?.length ? (
+    <>
+      {planObj.steps.slice(0, 6).map((s, i) => (
+        <View key={i} style={{ marginBottom: 10 }}>
+          <Text style={{ fontWeight:'700' }}>{i + 1}. {s.title || s.text}</Text>
+          {!!s.body && <Text style={{ color:'#374151', marginTop: 4 }}>{s.body}</Text>}
+          {(/\btip:|safety:/i.test(`${s.title} ${s.body || ''}`)) && (
+            <Text style={{ marginTop: 6, backgroundColor:'#FFF7ED', padding:8, borderRadius:8, color:'#92400E' }}>
+              💡 Tip noted in this step
+            </Text>
+          )}
+        </View>
+      ))}
+      <View style={{ flexDirection:'row', gap:12, marginTop: 8 }}>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('DetailedInstructions', { projectId: project.id, section: 'steps' })}
+          style={{ backgroundColor:'#EDE9FE', paddingHorizontal:12, paddingVertical:8, borderRadius:10 }}
+        >
+          <Text style={{ color:'#6D28D9', fontWeight:'700' }}>Open full steps</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => copyText(planObj.steps.map((s, i) => `${i+1}. ${s.title || s.text}`).join('\n'))}
+          style={{ backgroundColor:'#EEF2FF', paddingHorizontal:12, paddingVertical:8, borderRadius:10 }}
+        >
+          <Text style={{ color:'#4F46E5', fontWeight:'700' }}>Copy steps</Text>
+        </TouchableOpacity>
+      </View>
+    </>
+  ) : <Text style={{ color:'#6B7280' }}>No steps yet.</Text>}
+</SectionCard>
+
+{/* MATERIALS */}
+<SectionCard
+  icon={<MaterialCommunityIcons name="cube-outline" size={22} color="#6D28D9" />}
+  title="Materials"
+  summary={`${planObj?.materials?.length ?? 0} items`}
+  countBadge={planObj?.materials?.length}
+  onHeaderPress={() => navigation.navigate('DetailedInstructions', { projectId: project.id, section: 'materials' })}
+>
+  {planObj?.materials?.length ? (
+    <>
+      {planObj.materials.map((m, i) => (
+        <Text key={i} style={{ marginBottom: 6 }}>
+          • {m.name}{fmtQty(m.qty, m.unit) ? ` — ${fmtQty(m.qty, m.unit)}` : ''}
+        </Text>
+      ))}
+      <TouchableOpacity
+        onPress={() => copyText(planObj.materials.map(m => `• ${m.name}${fmtQty(m.qty, m.unit) ? ` — ${fmtQty(m.qty, m.unit)}` : ''}`).join('\n'))}
+        style={{ alignSelf:'flex-start', backgroundColor:'#EEF2FF', paddingHorizontal:12, paddingVertical:8, borderRadius:10, marginTop:8 }}
+      >
+        <Text style={{ color:'#4F46E5', fontWeight:'700' }}>Copy list</Text>
+      </TouchableOpacity>
+    </>
+  ) : <Text style={{ color:'#6B7280' }}>No materials listed.</Text>}
+</SectionCard>
+
+{/* TOOLS */}
+<SectionCard
+  icon={<MaterialCommunityIcons name="hammer-wrench" size={22} color="#6D28D9" />}
+  title="Tools"
+  summary={`${planObj?.tools?.length ?? 0} tools`}
+  countBadge={planObj?.tools?.length}
+  onHeaderPress={() => navigation.navigate('DetailedInstructions', { projectId: project.id, section: 'tools' })}
+>
+  <Text style={{ marginBottom: 8, color:'#92400E', backgroundColor:'#FFF7ED', padding:8, borderRadius:8 }}>
+    Wear eye & hearing protection.
+  </Text>
+  {planObj?.tools?.length ? (
+    planObj.tools.map((t, i) => <Text key={i} style={{ marginBottom: 6 }}>• {t}</Text>)
+  ) : <Text style={{ color:'#6B7280' }}>No tools listed.</Text>}
+</SectionCard>
+
+{/* CUTS */}
+<SectionCard
+  icon={<MaterialCommunityIcons name="content-cut" size={22} color="#6D28D9" />}
+  title="Cuts"
+  summary={`${planObj?.cuts?.length ?? 0} cuts`}
+  countBadge={planObj?.cuts?.length}
+  onHeaderPress={() => navigation.navigate('DetailedInstructions', { projectId: project.id, section: 'cuts' })}
+>
+  {planObj?.cuts?.length ? (
+    planObj.cuts.map((c, i) => (
+      <View key={i} style={{ flexDirection:'row', justifyContent:'space-between', paddingVertical:6, borderBottomWidth: i===planObj.cuts.length-1?0:1, borderBottomColor:'#E5E7EB' }}>
+        <Text style={{ fontWeight:'600' }}>{c.part || c.name}</Text>
+        <Text style={{ fontVariant: ['tabular-nums'] }}>
+          {c.width}×{c.length}{c.qty ? ` ×${c.qty}` : ''}
+        </Text>
+      </View>
+    ))
+  ) : <Text style={{ color:'#6B7280' }}>No cut list.</Text>}
+</SectionCard>
+
+{/* TIME & COST */}
+<SectionCard
+  icon={<Ionicons name="time-outline" size={22} color="#6D28D9" />}
+  title="Time & Cost"
+  onHeaderPress={() => navigation.navigate('DetailedInstructions', { projectId: project.id, section: 'time' })}
+>
+  <View style={{ flexDirection:'row', gap:10, flexWrap:'wrap' }}>
+    <View style={{ backgroundColor:'#EDE9FE', borderRadius:999, paddingHorizontal:12, paddingVertical:8 }}>
+      <Text style={{ color:'#6D28D9', fontWeight:'700' }}>⏱ {planObj?.time?.hours ?? '—'} hrs</Text>
+    </View>
+    <View style={{ backgroundColor:'#EDE9FE', borderRadius:999, paddingHorizontal:12, paddingVertical:8 }}>
+      <Text style={{ color:'#6D28D9', fontWeight:'700' }}>💵 {planObj?.cost?.usd ? `$${planObj.cost.usd}` : '—'}</Text>
+    </View>
+  </View>
+</SectionCard>
+
+
+Important: Ensure any prior PlanTabs rendering on ProjectDetails is removed so only this summary appears.
+
+Done criteria
+
+Top gradient CTA navigates to DetailedInstructions.
+
+Section cards have depth, rotate chevron, smooth expand/collapse.
+
+Each section shows actual parsed content with copy actions.
+
+Tapping a section header opens DetailedInstructions scrolled to that section (pass { section } param; DetailedInstructions already supports scrolling by section id, if not, scroll to anchor ids).

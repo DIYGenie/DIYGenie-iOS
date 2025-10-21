@@ -1,0 +1,81 @@
+Fix the “How it works” row on Home so all four chips always fit on one line on iPhone sizes.
+
+Changes (HomeScreen / HowItWorks row & styles):
+
+Use equal-width chip slots:
+
+import { useWindowDimensions } from 'react-native';
+
+const { width } = useWindowDimensions();
+const isCompact = width < 380; // iPhone 16/Pro and smaller
+
+<View style={[styles.howRow, { paddingHorizontal: 16, gap: 8 }]}>
+  {[
+    { icon:'edit-3', label:'Describe' },
+    { icon:'image',  label:'Scan' },
+    { icon:'sparkles', label:'Preview' },
+    { icon:'list',  label:'Build' },
+  ].map((item, i) => (
+    <View key={item.label} style={styles.howSlot}>
+      <TouchableOpacity style={[styles.chip, isCompact && styles.chipCompact]}>
+        {/* icon + label as you already render */}
+        <Text style={[styles.chipLabel, isCompact && styles.chipLabelCompact]}
+              numberOfLines={1}
+              ellipsizeMode="clip"
+              allowFontScaling={false}>
+          {item.label}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  ))}
+  {/* remove trailing separators; show arrows only when !isCompact */}
+</View>
+
+
+Styles:
+
+howRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+},
+howSlot: {
+  flex: 1,        // 4 equal columns
+  minWidth: 0,    // allow label to clip instead of growing
+},
+chip: {
+  borderRadius: 12,
+  paddingVertical: 10,
+  paddingHorizontal: 12,
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+chipCompact: {
+  paddingVertical: 8,
+  paddingHorizontal: 8,
+},
+chipLabel: {
+  fontSize: 13,
+  fontWeight: '600',
+},
+chipLabelCompact: {
+  fontSize: 12,
+}
+
+
+Arrows between chips:
+
+Remove the separate arrow elements entirely when isCompact === true.
+
+If you keep them for larger screens, render them absolutely and do not consume horizontal space, e.g. a small › positioned between chips.
+
+Copy:
+
+Chip labels must be exactly: Describe · Scan · Preview · Build.
+
+Acceptance
+
+On iPhone 16/Pro simulators, all 4 chips fit in one line with left/right padding, no clipping, and the “Build” chip is fully visible.
+
+Arrows are hidden on compact widths; visible only on roomier widths.
+
+No changes to the CTA button or Recent Projects spacing.

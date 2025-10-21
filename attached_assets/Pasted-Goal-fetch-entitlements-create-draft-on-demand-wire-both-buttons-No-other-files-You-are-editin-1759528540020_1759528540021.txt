@@ -1,0 +1,59 @@
+Goal: fetch entitlements, create draft on demand, wire both buttons. No other files.
+
+You are editing the Expo app. Make all changes ONLY in app/screens/NewProject.tsx.
+
+Requirements
+- Use BASE = process.env.EXPO_PUBLIC_BASE_URL || 'http://localhost:5000'
+- Always use user_id: "auto" when calling the API (backend maps it to TEST_USER_ID)
+- Keep the inline photo picker we already have
+- Do NOT navigate to NewProjectMedia or upload the image to the server on this screen
+
+Add state
+- draftId: string | null
+- ents: { previewAllowed: boolean, remaining?: number } | null
+- busy: boolean
+- canPreview: boolean (derived from ents?.previewAllowed)
+
+Add helper
+async function api(path, opts={}) { 12s timeout, JSON parse with safe error text, throw on !res.ok }
+function hasValidForm() => description length >=10 AND budget selected AND skill selected
+
+Fetch entitlements
+- on mount, call GET `${BASE}/me/entitlements?user_id=auto`
+- set ents from `{ previewAllowed, remaining }` and canPreview = !!previewAllowed
+- also add an AppState 'active' listener to refresh entitlements when returning to foreground
+
+Create draft lazily
+async function ensureDraft() {
+  if (draftId) return draftId;
+  const body = { user_id:'auto', name: description, budget, skill: skillLevel };
+  const res = await api('/api/projects', { method:'POST', body: JSON.stringify(body) });
+  setDraftId(res.item.id); return res.item.id;
+}
+
+Wire buttons
+- “Generate AI Preview” button:
+  - enabled when hasValidForm() && photoUri && canPreview && !busy
+  - onPress: set busy; const id = await ensureDraft();
+    await api(`/api/projects/${id}/preview`, { method:'POST', body: JSON.stringify({ user_id:'auto' })});
+    show toast “Preview requested”; set busy false; navigate to 'ProjectPreview' passing { id }
+
+- “Build Plan Without Preview” button:
+  - enabled when hasValidForm() && !busy
+  - onPress: set busy; const id = await ensureDraft();
+    await api(`/api/projects/${id}/build-without-preview`, { method:'POST', body: JSON.stringify({ user_id:'auto' })});
+    show toast “Plan requested”; set busy false; navigate to 'ProjectDetail' passing { id }
+
+UI tweaks
+- If !canPreview, keep the button disabled and show the small “Upgrade” link exactly as it is
+- If canPreview, hide the “Upgrade” hint
+
+Smart Suggestions
+- Keep the existing suggestions UI if present; if missing, create a small local generator that returns 4–6 bullets from description/budget/skill (no network calls). Render right above the buttons.
+
+Testing hooks
+- Add testIDs:
+  - 'np-generate-preview' on preview button
+  - 'np-build-plan' on build-without-preview button
+
+Do not modify other screens or any networking outside this file.

@@ -1,0 +1,106 @@
+Bind DetailedInstructions to GET /api/projects/:id/plan (read-only render)
+
+Repo: DIYGenieTheme
+Autonomy: Medium
+App Testing: ON
+
+Scope: Frontend only. Do not rename routes. Leave BuildPlanScreen.tsx as legacy.
+
+What to do
+
+Types
+
+Create folder app/types/.
+
+Add app/types/plan.ts exporting interfaces that match the frozen backend schema:
+
+PlanResponse, PlanSummary, PlanPreview, PlanMaterial, PlanTools, PlanCutList, PlanCutItem, PlanStep, PlanSafety, PlanPermits, PlanQuota.
+
+API client
+
+In app/lib/api.ts, add:
+
+export async function fetchProjectPlan(projectId: string): Promise<PlanResponse> {
+  // use existing base URL/auth header patterns already used elsewhere
+}
+
+
+Follow existing error handling (throw on non-2xx or return { ok:false, error } pattern—match current codebase).
+
+Wire the screen
+
+File: app/screens/DetailedInstructions.tsx
+
+Keep the current route name DetailedInstructions.
+
+Read id from route params (useRoute) → call fetchProjectPlan(id) on mount.
+
+Add minimal loading and error UI.
+
+Render sections in this order using the fetched data (basic styling; no redesign):
+
+Summary: summary.title, summary.heroImageUrl?, summary.estTimeHours, summary.estCostUsd.
+
+Preview: preview.beforeUrl?, preview.afterUrl? (stacked is fine).
+
+Materials: rows of qty unit · name and subtotalUsd?.
+
+Tools: Required list, Optional list.
+
+Cut List: simple table (board, dims, qty); if layoutSvgUrl exists, show an image or a “View layout” link.
+
+Steps: numbered list n. title + text; show diagramUrl? if present. Read-only (checkboxes later).
+
+Safety: bullet notes if present.
+
+Permits: if needed or note present, show a small callout panel.
+
+If quota indicates blocking, show a small inline banner that mirrors your existing gating copy (no new logic).
+
+Preserve existing share/export buttons on this screen if present, but they can stay no-ops for now.
+
+Keep legacy fallback (temporary)
+
+If the API call fails with 404/500 and you still receive a project object elsewhere, you may fall back to the current local builder (buildPlanFromProject) so the screen doesn’t break during transition. Prefer API when available.
+
+Navigation
+
+The “Open Detailed Build Plan” button call in ProjectDetails.tsx (navigate('DetailedInstructions', { id: projectId })) must remain unchanged.
+
+Testing (App Testing = ON)
+
+Test with:
+
+A project that returns a full plan.
+
+A project with partial plan (missing preview or materials).
+
+A bogus id (error state visible).
+
+A quota-blocked response (banner visible).
+
+Add 3–4 screenshots (loading, happy path, partial, error/quota) to the PR description.
+
+Deliverables
+
+app/types/plan.ts with exported interfaces.
+
+fetchProjectPlan in app/lib/api.ts.
+
+Updated app/screens/DetailedInstructions.tsx rendering Plan API data (read-only).
+
+PR description listing:
+
+The exact route used (DetailedInstructions) and param shape ({ id: string }).
+
+Example projectId used in testing.
+
+Screenshots of the four states above.
+
+Any assumptions made.
+
+Stop conditions (ask me before proceeding)
+
+If app/lib/api.ts uses a different auth/header pattern than other endpoints.
+
+If DetailedInstructions is mounted in multiple navigators or receives different param names in other places.

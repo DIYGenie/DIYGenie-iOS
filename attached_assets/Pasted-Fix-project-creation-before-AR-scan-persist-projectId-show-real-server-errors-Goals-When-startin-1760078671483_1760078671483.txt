@@ -1,0 +1,119 @@
+Fix project creation before AR scan; persist projectId; show real server errors
+
+Goals
+
+When starting AR scan, if the draft has no projectId, create the project with strict validation.
+
+On success, save projectId into both screen state and AsyncStorage draft.
+
+On failure, show the exact server error (no more generic “422”).
+
+Do not clear the draft at any point.
+
+1) Replace ensureProjectForDraft with robust version
+
+Create/overwrite app/lib/draft.ts exports:
+
+// app/lib/draft.ts
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { base } from './api'; // existing base URL helper
+
+const DRAFT_KEY = 'newProjectDraft:v1';
+
+export type NewProjectDraft = {
+  projectId?: string | null;
+  name?: string;
+  description?: string;
+  budget?: string | null;          // '$' | '$$' | '$$$'
+  skill_level?: string | null;     // 'Beginner' | 'Intermediate' | 'Advanced'
+};
+
+export async function loadNewProjectDraft(): Promise<NewProjectDraft | null> {
+  try {
+    const raw = await AsyncStorage.getItem(DRAFT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveNewProjectDraft(draft: NewProjectDraft): Promise<void> {
+  await AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(draft ?? {}));
+}
+
+export async function clearNewProjectDraft(): Promise<void> {
+  await AsyncStorage.removeItem(DRAFT_KEY);
+}
+
+// ---------- NEW: strong validation + project create ----------
+function validateDraftForCreate(d: NewProjectDraft) {
+  const errs: string[] = [];
+  const name = (d.name ?? '').trim();
+  const description = (d.description ?? '').trim();
+  const budget = (d.budget ?? '').trim();
+  const skill = (d.skill_level ?? '').trim();
+
+  if (name.length < 3) errs.push('Title must be at least 3 characters.');
+  if (description.length < 10) errs.push('Description must be at least 10 characters.');
+  if (!['$', '$$', '$$$'].includes(budget)) errs.push('Choose a budget ($, $$, $$$).');
+  if (!['Beginner', 'Intermediate', 'Advanced'].includes(skill)) errs.push('Choose a skill level.');
+  return { ok: errs.length === 0, errs, name, description, budget, skill };
+}
+
+/**
+ * Ensure a server project exists for this draft.
+ * Returns projectId. Never clears the draft.
+ */
+export async function ensureProjectForDraft(draft: NewProjectDraft): Promise<string> {
+  if (draft?.projectId) return draft.projectId as string;
+
+  const v = validateDraftForCreate(draft ?? {});
+  if (!v.ok) {
+    const message = v.errs.join('\n');
+    const e: any = new Error('VALIDATION_FAILED');
+    e.userMessage = message;
+    throw e;
+  }
+
+  // Build payload that the API expects
+  const payload = {
+    name: v.name,
+    description: v.description,
+    budget: v.budget,
+    skill_level: v.skill,
+  };
+
+  console.log('[project create] payload', payload);
+
+  const res = await fetch(`${base}/api/projects`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  const text = await res.text().catch(() => '');
+  let body: any = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+
+  if (!res.ok) {
+    console.log('[project create] failed', { status: res.status, body });
+    const msg = (body && (body.message || body.error || body.detail)) || String(text || 'Unknown error');
+    const e: any = new Error(`PROJECT_CREATE_FAILED:${res.status}`);
+    e.userMessage = msg;
+    throw e;
+  }
+
+  const id = body?.id || body?.project?.id || body?.data?.id;
+  if (!id) {
+    const e: any = new Error('PROJECT_CREATE_FAILED:NO_ID');
+    e.userMessage = 'Server did not return a project id.';
+    throw e;
+  }
+
+  // Persist back into draft storage
+  const nextDraft: NewProjectDraft = { ...(draft ?? {}), projectId: id };
+  await saveNewProjectDraft(nextDraft);
+  console.log('[project create] success', { id });
+
+  return id;
+}

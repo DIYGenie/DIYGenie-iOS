@@ -1,0 +1,95 @@
+Add a simple, working suggestions UI to the New Project screen.
+
+Do:
+
+Create components/SuggestionsBox.tsx
+
+import React from 'react';
+import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+
+type Props = {
+  title?: string;
+  items: string[];
+  loading?: boolean;
+  onSelect?: (text: string) => void;
+  onRefresh?: () => void;
+};
+
+export default function SuggestionsBox({ title="Suggestions", items, loading, onSelect, onRefresh }: Props) {
+  return (
+    <View style={{ marginTop: 12 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <Text style={{ fontWeight: '700', fontSize: 16 }}>{title}</Text>
+        <TouchableOpacity onPress={onRefresh} accessibilityRole="button">
+          <Text style={{ fontSize: 14, textDecorationLine: 'underline' }}>{loading ? 'Loading…' : 'Refresh'}</Text>
+        </TouchableOpacity>
+      </View>
+      {loading ? (
+        <ActivityIndicator />
+      ) : items.length === 0 ? (
+        <Text style={{ opacity: 0.6 }}>No suggestions yet</Text>
+      ) : (
+        <View>
+          {items.map((s, i) => (
+            <TouchableOpacity key={i} onPress={() => onSelect?.(s)} style={{ paddingVertical: 8 }}>
+              <Text>• {s}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+
+Mount it in app/screens/NewProject.tsx below your goal/description input:
+
+Add state:
+
+const [sugs, setSugs] = React.useState<string[]>([
+  "Try 4 shelves instead of 3 for better vertical balance",
+  "Consider 10–12\" depth if you’ll store books or baskets",
+  "Use hidden brackets for a cleaner floating look",
+  "Match shelf stain to the lightest wood tone in the room",
+]);
+const [sugsLoading, setSugsLoading] = React.useState(false);
+
+
+Add a small fetch that hits your existing server route after ensureDraft():
+
+async function refreshSuggestions() {
+  try {
+    setSugsLoading(true);
+    const id = await ensureDraft();
+    if (!id) return;
+    const r = await api(`/api/projects/${id}/suggestions`, { method: 'POST', body: JSON.stringify({ user_id: USER_ID }) });
+    if (r?.suggestions?.length) setSugs(r.suggestions);
+  } finally {
+    setSugsLoading(false);
+  }
+}
+
+
+In the JSX (just under the description field), render:
+
+<SuggestionsBox
+  items={sugs}
+  loading={sugsLoading}
+  onRefresh={refreshSuggestions}
+  onSelect={(text) => {
+    // Append to description or replace—keep it simple: append with a space
+    const next = (description || '').trim();
+    setDescription(next ? `${next}. ${text}` : text);
+  }}
+/>
+
+
+Acceptance:
+
+New Project screen shows a Suggestions section with 4 starter tips.
+
+Tapping Refresh calls /api/projects/:id/suggestions and updates the list.
+
+Tapping a tip appends it to your description field.
+
+No new warnings.
