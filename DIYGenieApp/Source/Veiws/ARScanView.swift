@@ -4,6 +4,8 @@ import RoomPlan
 
 @available(iOS 16.0, *)
 struct ARScanView: UIViewControllerRepresentable {
+    typealias UIViewControllerType = <#type#>
+    
     typealias UIViewControllerType = RoomCaptureViewController
     @Environment(\.dismiss) private var dismiss
 
@@ -59,6 +61,14 @@ struct ARScanView: UIViewControllerRepresentable {
     }
 
     @objc(_TtCV11DIYGenieApp10ARScanView11Coordinator)final class Coordinator: NSObject, RoomCaptureViewDelegate, RoomCaptureSessionDelegate {
+        func encode(with coder: NSCoder) {
+            <#code#>
+        }
+        
+        init?(coder: NSCoder) {
+            <#code#>
+        }
+        
         private let dismiss: DismissAction
         weak var progressView: UIProgressView?
 

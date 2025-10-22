@@ -277,6 +277,11 @@
 				DEVELOPMENT_TEAM = M73Z26R72W;
 				ENABLE_PREVIEWS = YES;
 				FRAMEWORK_SEARCH_PATHS = "";
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"$(SDKROOT)/System/Library/Frameworks",
+					/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk/System/Library/Frameworks,
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "DIYGenieApp-Info.plist";
 				INFOPLIST_KEY_NSCameraUsageDescription = "DIY Genie uses your camera and LiDAR to scan and measure your room for projects.";
@@ -319,6 +324,11 @@
 				DEVELOPMENT_TEAM = M73Z26R72W;
 				ENABLE_PREVIEWS = YES;
 				FRAMEWORK_SEARCH_PATHS = "";
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = (
+					/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk/System/Library/Frameworks,
+					"$(inherited)",
+					"$(SDKROOT)/System/Library/Frameworks",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "DIYGenieApp-Info.plist";
 				INFOPLIST_KEY_NSCameraUsageDescription = "DIY Genie uses your camera and LiDAR to scan and measure your room for projects.";
