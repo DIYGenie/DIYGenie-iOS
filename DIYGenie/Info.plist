@@ -17,7 +17,7 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>NSCameraUsageDescription</key>
-	<string>DIY Genie needs access to your camera for AR room scanning.</string>
+	<string>DIY Genie needs access to your camera for AR room scanning and photos.</string>
 	<key>NSUserTrackingUsageDescription</key>
 	<string>DIYGenie uses your device identifier to improve analytics and personalize content.</string>
 	<key>UILaunchScreen</key>

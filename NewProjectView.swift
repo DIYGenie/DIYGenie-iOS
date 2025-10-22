@@ -1,7 +1,24 @@
 // NewProjectView.swift
 import SwiftUI
 import PhotosUI
+import AVFoundation
 
+func ensureCameraPermission() async -> Bool {
+    let status = AVCaptureDevice.authorizationStatus(for: .video)
+    switch status {
+    case .authorized:
+        return true
+    case .notDetermined:
+        return await AVCaptureDevice.requestAccess(for: .video)
+    default:
+        return false
+    }
+}
+extension View {
+    func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
 struct NewProjectView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -62,10 +79,20 @@ struct NewProjectView: View {
                         .onChange(of: pickedPhoto) { _ in
                             Task { pickedPhotoData = try? await pickedPhoto?.loadTransferable(type: Data.self) }
                         }
-
-                    Button {
-                        showMeasure = true
-                    } label: {
+                    
+                    Button("Scan Room") {
+                        hideKeyboard()
+                        Task {
+                            let ok = await ensureCameraPermission()
+                            if ok {
+                                showMeasure = true
+                            } else {
+                                errorMessage = "Camera access is required for AR scanning. Enable it in Settings > DIYGenie > Camera."
+                            }
+                        }
+                    }
+                    
+                
                         Label("Scan room (RoomPlan / fallback)", systemImage: "arkit")
                     }
                 }
@@ -105,7 +132,7 @@ struct NewProjectView: View {
             }
         }
     }
-}
+
 
 // MARK: - Actions
 extension NewProjectView {
