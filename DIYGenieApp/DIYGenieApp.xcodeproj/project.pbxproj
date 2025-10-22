@@ -8,6 +8,7 @@
 
 /* Begin PBXFileReference section */
 		E24CE0572EA89EF10036185A /* DIYGenieApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DIYGenieApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E2AF0F882EA92B3700B0FBE4 /* DIYGenieApp-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "DIYGenieApp-Info.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -32,6 +33,7 @@
 		E24CE04E2EA89EF10036185A = {
 			isa = PBXGroup;
 			children = (
+				E2AF0F882EA92B3700B0FBE4 /* DIYGenieApp-Info.plist */,
 				E24CE0592EA89EF10036185A /* Source */,
 				E24CE0582EA89EF10036185A /* Products */,
 			);
@@ -256,6 +258,8 @@
 				DEVELOPMENT_TEAM = M73Z26R72W;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "DIYGenieApp-Info.plist";
+				INFOPLIST_KEY_NSCameraUsageDescription = "DIY Genie uses your camera and LiDAR to scan and measure your room for projects.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -292,6 +296,8 @@
 				DEVELOPMENT_TEAM = M73Z26R72W;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "DIYGenieApp-Info.plist";
+				INFOPLIST_KEY_NSCameraUsageDescription = "DIY Genie uses your camera and LiDAR to scan and measure your room for projects.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

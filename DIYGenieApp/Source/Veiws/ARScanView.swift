@@ -3,19 +3,18 @@ import RoomPlan
 
 struct ARScanView: UIViewControllerRepresentable {
 
-    // MARK: - Make UIViewController
     func makeUIViewController(context: Context) -> UIViewController {
-        let viewController = UIViewController()
-
-        // Create RoomCaptureView
+        // Create capture view and set delegates
         let captureView = RoomCaptureView(frame: .zero)
         captureView.delegate = context.coordinator
+        captureView.captureSession.delegate = context.coordinator
 
-        // Start a capture session
+        // Start the capture session
         let configuration = RoomCaptureSession.Configuration()
         captureView.captureSession.run(configuration: configuration)
 
-        // Add to controller
+        // Host in a view controller
+        let viewController = UIViewController()
         viewController.view = captureView
         return viewController
     }
@@ -23,20 +22,24 @@ struct ARScanView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) { }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(coder: <#NSCoder#>) ?? <#default value#>
+        Coordinator()
     }
 
     // MARK: - Coordinator
     @objc(_TtCV11DIYGenieApp10ARScanView11Coordinator)class Coordinator: NSObject, RoomCaptureViewDelegate, RoomCaptureSessionDelegate {
+        
+        override init() {
+            super.init()
+        }
+        
         func encode(with coder: NSCoder) {
-            <#code#>
+            // No-op
         }
         
         required init?(coder: NSCoder) {
-            <#code#>
+            super.init()
         }
         
-
         // Called continuously while scanning
         func captureSession(_ session: RoomCaptureSession, didUpdate room: CapturedRoom) {
             print("📏 Scanning... \(room.walls.count) walls detected.")
