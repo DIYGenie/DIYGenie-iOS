@@ -1,6 +1,6 @@
 import SwiftUI
 import ARKit
-@_exported import RoomPlan
+import RoomPlan
 
 @available(iOS 16.0, *)
 struct ARScanView: UIViewControllerRepresentable {
@@ -58,7 +58,7 @@ struct ARScanView: UIViewControllerRepresentable {
         Coordinator(dismiss: dismiss)
     }
 
-    final class Coordinator: NSObject, RoomCaptureViewDelegate, RoomCaptureSessionDelegate {
+    @objc(_TtCV11DIYGenieApp10ARScanView11Coordinator)final class Coordinator: NSObject, RoomCaptureViewDelegate, RoomCaptureSessionDelegate {
         private let dismiss: DismissAction
         weak var progressView: UIProgressView?
 
