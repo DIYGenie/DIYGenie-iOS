@@ -14,7 +14,7 @@ struct ARMeasureView: UIViewRepresentable {
         arView.session.delegate = context.coordinator
 
         // Configure ARKit for plane detection
-        var configuration = ARWorldTrackingConfiguration()
+        let configuration = ARWorldTrackingConfiguration()
         configuration.planeDetection = [.horizontal, .vertical]
         arView.session.run(configuration, options: [.removeExistingAnchors, .resetTracking])
 
