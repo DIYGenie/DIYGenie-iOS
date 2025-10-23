@@ -10,6 +10,10 @@ struct NewProjectView: View {
     @State private var showScanView: Bool = false
     @State private var showMeasureView: Bool = false
     @State private var showPhotoPicker: Bool = false
+    @State private var isSubmitting: Bool = false
+    
+    // Projects service instance - replace "YOUR_USER_ID" with the actual user id.
+    let projectsService = ProjectsService(userId: "YOUR_USER_ID")
 
     var body: some View {
         ScrollView {
@@ -120,6 +124,28 @@ struct NewProjectView: View {
                                 .stroke(Color.purple, lineWidth: 2)
                         )
                     }
+                    
+                    // Button to create project using the service
+                    Button(action: {
+                        Task {
+                            do {
+                                isSubmitting = true
+                                let _ = try await projectsService.createProject(name: title, goal: goal.isEmpty ? nil : goal, budget: budget)
+                                // Reset form or provide feedback
+                                isSubmitting = false
+                            } catch {
+                                print("Error creating project: \(error)")
+                                isSubmitting = false
+                            }
+                        }
+                    }) {
+                        Text(isSubmitting ? "Creating..." : "Create Project")
+                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .background(isSubmitting ? Color.gray : Color.purple)
+                            .foregroundColor(.white)
+                            .cornerRadius(16)
+                    }
+                    .disabled(isSubmitting || title.isEmpty)
                 }
             }
             .padding()
