@@ -29,12 +29,14 @@ struct HomeView: View {
                 }
                 .padding(.horizontal, 40)
 
-                NavigationLink(destination: ARMeasureView { inches in
-                    print("Measured: \(inches) inches")
-                    // Save the measurement or navigate back if needed
+                NavigationLink(destination: MeasureOverlayView { inches in
+                    print("Measured \(inches) inches")
+                    // Save the measurement
                 }.ignoresSafeArea()) {
                     Text("Measure Area")
-                        .fontWeight(.semibold)
+                    // ...button styling...
+                }
+                .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
                         .padding()
                         .background(Color.purple)
@@ -48,4 +50,4 @@ struct HomeView: View {
             .navigationTitle("Home")
         }
     }
-}
+
