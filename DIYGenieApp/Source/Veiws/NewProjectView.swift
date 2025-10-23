@@ -13,7 +13,7 @@ struct NewProjectView: View {
     @State private var isSubmitting: Bool = false
     
     // Projects service instance - replace "YOUR_USER_ID" with the actual user id.
-    let projectsService = ProjectsService(userId: "YOUR_USER_ID")
+    let projectsService = ProjectsService(userId: "99198c4b-8470-49e2-895c-75593c5aa181")
 
     var body: some View {
         ScrollView {
