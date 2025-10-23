@@ -70,7 +70,10 @@ struct ARMeasureView: UIViewRepresentable {
 
         private func placeDot(at position: SIMD3<Float>) {
             guard let arView = arView else { return }
-            let dot = ModelEntity(mesh: .generateSphere(radius: 0.003), materials: [SimpleMaterial(color: .purple, isMetallic: false)])
+            let dot = ModelEntity(
+                mesh: .generateSphere(radius: 0.01), // 1 cm sphere instead of 3 mm
+                materials: [SimpleMaterial(color: .purple, isMetallic: false)]
+            )
             let anchor = AnchorEntity(world: position)
             anchor.addChild(dot)
             arView.scene.addAnchor(anchor)
