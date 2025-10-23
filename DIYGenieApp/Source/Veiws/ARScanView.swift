@@ -2,6 +2,96 @@ import SwiftUI
 import RoomPlan
 import UIKit
 
+@MainActor
+final class ARScanCoordinator: NSObject, RoomCaptureSessionDelegate, RoomCaptureViewDelegate, NSSecureCoding {
+    
+    private let dismissAction: () -> Void
+    weak var progressView: UIProgressView?
+
+    // MARK: NSSecureCoding
+    static var supportsSecureCoding: Bool { true }
+
+    // Coordinator is not expected to be archived; provide a minimal implementation.
+    func encode(with coder: NSCoder) {
+        // No-op: this object is not intended for archival.
+    }
+
+    required init?(coder: NSCoder) {
+        // Provide a default dismiss action that simply does nothing when decoded.
+        // This path should never be hit in normal operation.
+        self.dismissAction = { }
+        super.init()
+    }
+
+    // Provide a convenience init to satisfy potential ObjC initializers.
+    override init() {
+        self.dismissAction = { }
+        super.init()
+    }
+
+    init(dismiss: DismissAction) {
+        self.dismissAction = { dismiss() }
+    }
+
+    // MARK: RoomCaptureSessionDelegate
+    func captureSession(_ session: RoomCaptureSession, didUpdate room: CapturedRoom) {
+        // Update progress based on the number of detected walls. Adjust the divisor
+        // according to your progress granularity.
+        let totalWalls = max(1, room.walls.count)
+        let progress = min(Float(totalWalls) / 10.0, 1.0)
+        Task { @MainActor in
+            self.progressView?.setProgress(progress, animated: true)
+        }
+        print("📏 Scanning… \(room.walls.count) walls detected.")
+    }
+
+    func captureSession(_ session: RoomCaptureSession, didEndWith data: CapturedRoomData, error: Error?) {
+        // When the session stops, the delegate will also receive the processed
+        // CapturedRoom via captureView(didPresent:). You can process the raw
+        // CapturedRoomData here if needed.
+        if let error {
+            print("❌ Scan ended with error: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: RoomCaptureViewDelegate
+    func captureView(shouldPresent roomDataForProcessing: CapturedRoomData, error: Error?) -> Bool {
+        // Return true to allow RoomPlan to post‑process the captured data and
+        // deliver a CapturedRoom in captureView(didPresent:).
+        return true
+    }
+
+    func captureView(didPresent processedResult: CapturedRoom, error: Error?) {
+        if let error {
+            print("❌ Error processing result: \(error.localizedDescription)")
+            return
+        }
+        print("✅ Post‑processed room available. Exporting to USDZ…")
+        Task { @MainActor in
+            let filename = "scan_\(UUID().uuidString.prefix(8)).usdz"
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+            do {
+                try processedResult.export(to: url)
+                print("💾 Exported scan to: \(url.path)")
+                self.presentShareSheet(for: url)
+                self.dismissAction()
+            } catch {
+                print("❌ Export failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    // Presents a share sheet with the exported USDZ file.
+    private func presentShareSheet(for url: URL) {
+        let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        // Find the root view controller and present the share sheet.
+        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let root = scene.windows.first?.rootViewController {
+            root.present(activityVC, animated: true)
+        }
+    }
+}
+
 /// A SwiftUI wrapper around RoomPlan’s `RoomCaptureView`.
 ///
 /// This implementation avoids using the non‑public `RoomCaptureViewController` type and
@@ -19,7 +109,7 @@ struct ARScanView: UIViewRepresentable {
         let captureView = RoomCaptureView(frame: .zero)
 
         // Configure and start the capture session.
-        var configuration = RoomCaptureSession.Configuration()
+        let configuration = RoomCaptureSession.Configuration()
         captureView.captureSession.delegate = context.coordinator
         captureView.delegate = context.coordinator
         captureView.captureSession.run(configuration: configuration)
@@ -65,78 +155,8 @@ struct ARScanView: UIViewRepresentable {
         // No dynamic updates are needed during the scan.
     }
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(dismiss: dismiss)
-    }
-
-    /// Coordinator that handles scanning events.
-    final class Coordinator: NSObject, RoomCaptureSessionDelegate, RoomCaptureViewDelegate {
-        private let dismiss: DismissAction
-        weak var progressView: UIProgressView?
-
-        init(dismiss: DismissAction) {
-            self.dismiss = dismiss
-        }
-
-        // MARK: RoomCaptureSessionDelegate
-        func captureSession(_ session: RoomCaptureSession, didUpdate room: CapturedRoom) {
-            // Update progress based on the number of detected walls. Adjust the divisor
-            // according to your progress granularity.
-            let totalWalls = max(1, room.walls.count)
-            let progress = min(Float(totalWalls) / 10.0, 1.0)
-            DispatchQueue.main.async { [weak self] in
-                self?.progressView?.setProgress(progress, animated: true)
-            }
-            print("📏 Scanning… \(room.walls.count) walls detected.")
-        }
-
-        func captureSession(_ session: RoomCaptureSession, didEndWith data: CapturedRoomData, error: Error?) {
-            // When the session stops, the delegate will also receive the processed
-            // CapturedRoom via captureView(didPresent:). You can process the raw
-            // CapturedRoomData here if needed.
-            if let error {
-                print("❌ Scan ended with error: \(error.localizedDescription)")
-            }
-        }
-
-        // MARK: RoomCaptureViewDelegate
-        func captureView(shouldPresent roomDataForProcessing: CapturedRoomData, error: Error?) -> Bool {
-            // Return true to allow RoomPlan to post‑process the captured data and
-            // deliver a CapturedRoom in captureView(didPresent:).
-            return true
-        }
-
-        func captureView(didPresent processedResult: CapturedRoom, error: Error?) {
-            if let error {
-                print("❌ Error processing result: \(error.localizedDescription)")
-                return
-            }
-            print("✅ Post‑processed room available. Exporting to USDZ…")
-            Task {
-                let filename = "scan_\(UUID().uuidString.prefix(8)).usdz"
-                let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-                do {
-                    try processedResult.export(to: url)
-                    print("💾 Exported scan to: \(url.path)")
-                    await MainActor.run {
-                        self.presentShareSheet(for: url)
-                        self.dismiss()
-                    }
-                } catch {
-                    print("❌ Export failed: \(error.localizedDescription)")
-                }
-            }
-        }
-
-        // Presents a share sheet with the exported USDZ file.
-        @MainActor
-        private func presentShareSheet(for url: URL) {
-            let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-            // Find the root view controller and present the share sheet.
-            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-               let root = scene.windows.first?.rootViewController {
-                root.present(activityVC, animated: true)
-            }
-        }
+    func makeCoordinator() -> ARScanCoordinator {
+        ARScanCoordinator(dismiss: dismiss)
     }
 }
+
