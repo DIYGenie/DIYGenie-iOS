@@ -114,10 +114,10 @@ struct NewProjectView: View {
                                     .stroke(Color.purple, lineWidth: 1)
                             )
                         }
-                        .onChange(of: selectedItem) { newItem in
+                        .onChange(of: selectedItem) { oldValue, newValue in
                             // Load the selected image's data asynchronously
                             Task {
-                                if let data = try? await newItem?.loadTransferable(type: Data.self) {
+                                if let item = newValue, let data = try? await item.loadTransferable(type: Data.self) {
                                     selectedImageData = data
                                 }
                             }
