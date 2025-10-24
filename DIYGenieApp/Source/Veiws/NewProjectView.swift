@@ -17,7 +17,8 @@ struct NewProjectView: View {
     @State private var navigateToDetails: Bool = false
     @State private var selectedItem: PhotosPickerItem?
     @State private var selectedImageData: Data?
-
+    @State private var showScanner = false
+    @State private var roomScanURL: URL? = nil
     @State private var showAlert: Bool = false
     @State private var alertMessage: String = ""
 
@@ -84,20 +85,31 @@ struct NewProjectView: View {
                     HStack(spacing: 16) {
                         // Button to trigger a room scan (using RoomPlan or ARKit)
                         Button(action: {
-                            // TODO: Present your AR scan view here if needed.
-                            // You might toggle a state variable to show a sheet or full screen cover.
+                            showScanner = true
                         }) {
-                            VStack {
-                                Image(systemName: "viewfinder.circle")
-                                    .font(.largeTitle)
-                                Text("Scan room")
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 120)
-                            .background(Color.purple.opacity(0.15))
-                            .foregroundColor(.purple)
-                            .cornerRadius(14)
+                            Label("Scan Room (AR)", systemImage: "viewfinder.circle")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .padding()
+                                .frame(maxWidth: .infinity)
+                                .background(Color.purple)
+                                .cornerRadius(10)
                         }
-
+                        .sheet(isPresented: $showScanner) {
+                            RoomScanView { fileURL in
+                                if let url = fileURL {
+                                    roomScanURL = url
+                                    print("✅ Room scan saved at: \(url.path)")
+                                } else {
+                                    print("❌ Room scan canceled or failed.")
+                                }
+                            }
+                        }
+                        if let scan = roomScanURL {
+                            Text("Scan saved: \(scan.lastPathComponent)")
+                                .font(.footnote)
+                                .foregroundColor(.secondary)
+                        }
                         // Photos picker for uploading a room photo
                         PhotosPicker(selection: $selectedItem, matching: .images) {
                             VStack {

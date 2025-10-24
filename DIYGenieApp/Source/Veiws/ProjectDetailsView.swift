@@ -97,7 +97,8 @@ struct ProjectDetailsView: View {
                             .foregroundColor(.secondary)
                     } else {
                         ForEach(measurements.indices, id: \.self) { index in
-                            Text(verbatim: <#String#>"Measurement \(index + 1): \(String(format: \"%.2f m\", measurements[index]))")
+                            Text(String(format: "Measurement %d: %.2f m", index + 1, measurements[index]))
+                                .font(.body)
                         }
                     }
                 }
