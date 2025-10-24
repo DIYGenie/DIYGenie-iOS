@@ -3,15 +3,15 @@ import SwiftUI
 
 struct ProjectDetailsView: View {
     let project: Project
-
+    
     @State private var plan: PlanResponse?
     @State private var isLoadingPlan = false
     @State private var showPreview = true
     @State private var alertMessage = ""
     @State private var showAlert = false
-
+    
     private let projectsService = ProjectsService(userId: "99198c4b-8470-49e2-895c-75593c5aa181")
-
+    
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -43,11 +43,11 @@ struct ProjectDetailsView: View {
                     .clipped()
                     .cornerRadius(12)
                 }
-
+                
                 Text(project.name)
                     .font(.title2.bold())
                     .padding(.top, 8)
-
+                
                 if let plan = plan {
                     // Overview (first step as summary)
                     if let firstStep = plan.steps.first {
@@ -57,7 +57,7 @@ struct ProjectDetailsView: View {
                         }
                         .padding(.top, 12)
                     }
-
+                    
                     // Materials + Tools
                     Section(header: Text("Materials + Tools").font(.headline)) {
                         VStack(alignment: .leading, spacing: 4) {
@@ -79,7 +79,7 @@ struct ProjectDetailsView: View {
                         }
                     }
                     .padding(.top, 12)
-
+                    
                     // Steps with numbers
                     Section(header: Text("Steps").font(.headline)) {
                         ForEach(Array(plan.steps.enumerated()), id: \.offset) { index, step in
@@ -102,7 +102,7 @@ struct ProjectDetailsView: View {
                         .foregroundColor(.secondary)
                         .padding(.top, 12)
                 }
-
+                
                 Spacer(minLength: 40)
             }
             .padding()
@@ -116,16 +116,17 @@ struct ProjectDetailsView: View {
             Alert(title: Text("Error"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
         }
     }
-
-    /// Fetch the full plan for this project.
+    
+    // Fetch the full plan for this project.
     @MainActor
     private func loadPlan() async {
         isLoadingPlan = true
         do {
+            // Try to fetch the plan. If it succeeds, update `plan`.
             plan = try await projectsService.fetchPlan(projectId: project.id)
         } catch {
-            alertMessage = error.localizedDescription
-            showAlert = true
+            // If the plan isn’t ready yet (404/empty response), ignore the error and keep `plan` nil.
+            print("Plan not available yet: \(error.localizedDescription)")
         }
         isLoadingPlan = false
     }
