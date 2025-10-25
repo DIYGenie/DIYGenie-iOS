@@ -68,6 +68,15 @@ struct RoomScanView: UIViewControllerRepresentable {
                 print("✅ RoomPlan scan saved at: \(fileURL.path)")
 
                 DispatchQueue.main.async {
+                    SupabaseUploader.uploadRoomScan(localURL: fileURL, projectId: "CURRENT_PROJECT_ID") { result in
+                        switch result {
+                        case .success(let url):
+                            print("✅ Uploaded scan to Supabase: \(url)")
+                        case .failure(let err):
+                            print("❌ Upload failed: \(err.localizedDescription)")
+                        }
+                    }
+
                     self.parent.onCompletion(fileURL)
                     self.parent.dismiss()
                 }

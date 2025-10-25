@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		E216F0212EA97762009AF2B3 /* RoomPlan.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E216F0202EA97761009AF2B3 /* RoomPlan.framework */; };
+		E25A6F322EAC7FC900C384C9 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = E25A6F312EAC7FC900C384C9 /* Supabase */; };
 		E2AF0F902EA9373000B0FBE4 /* ARKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E2AF0F8F2EA9373000B0FBE4 /* ARKit.framework */; };
 /* End PBXBuildFile section */
 
@@ -35,6 +36,7 @@
 			files = (
 				E216F0212EA97762009AF2B3 /* RoomPlan.framework in Frameworks */,
 				E2AF0F902EA9373000B0FBE4 /* ARKit.framework in Frameworks */,
+				E25A6F322EAC7FC900C384C9 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -90,6 +92,7 @@
 			);
 			name = DIYGenieApp;
 			packageProductDependencies = (
+				E25A6F312EAC7FC900C384C9 /* Supabase */,
 			);
 			productName = DIYGenieApp;
 			productReference = E24CE0572EA89EF10036185A /* DIYGenieApp.app */;
@@ -119,6 +122,9 @@
 			);
 			mainGroup = E24CE04E2EA89EF10036185A;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				E25A6F302EAC7C3900C384C9 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E24CE0582EA89EF10036185A /* Products */;
 			projectDirPath = "";
@@ -379,6 +385,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		E25A6F302EAC7C3900C384C9 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase-community/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.5.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		E25A6F312EAC7FC900C384C9 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E25A6F302EAC7C3900C384C9 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = E24CE04F2EA89EF10036185A /* Project object */;
 }
