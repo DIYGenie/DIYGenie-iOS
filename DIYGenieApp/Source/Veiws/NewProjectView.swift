@@ -1,237 +1,91 @@
 import SwiftUI
-import PhotosUI
 
-/// A screen for creating a new DIY Genie project.
-///
-/// This view lets the user enter a project name and description, pick a budget and skill level,
-/// optionally scan the room or upload a photo, and then choose to generate an AI plan with a
-/// visual preview or just create a plan without a preview. After submission the user is
-/// navigated directly to the details page for the created project.
+// MARK: - Local enums (lightweight, no external deps)
+enum Budget: String, CaseIterable {
+    case one = "$", two = "$$", three = "$$$"
+    var label: String { rawValue }
+}
+
+enum Skill: String, CaseIterable {
+    case beginner, intermediate, advanced
+    var label: String { rawValue.capitalized }
+}
+
 struct NewProjectView: View {
-    @State private var title: String = ""
+    @Environment(\.dismiss) private var dismiss
+
+    // MARK: - Form State
+    @State private var name: String = ""
     @State private var goal: String = ""
-    @State private var budget: String = "$"
-    @State private var skillLevel: String = "Beginner"
-    @State private var isSubmitting: Bool = false
-    @State private var createdProject: Project?
-    @State private var navigateToDetails: Bool = false
-    @State private var selectedItem: PhotosPickerItem?
-    @State private var selectedImageData: Data?
-    @State private var showScanner = false
-    @State private var roomScanURL: URL? = nil
-    @State private var showAlert: Bool = false
-    @State private var alertMessage: String = ""
+    @State private var budgetTier: Budget = .two
+    @State private var skill: Skill = .intermediate
 
-    // Replace this UUID with the appropriate user identifier used by your backend.
-    private let projectsService = ProjectsService(userId: "99198c4b-8470-49e2-895c-75593c5aa181")
-
-    private let budgetOptions = ["$", "$$", "$$$"]
-    private let skillOptions = ["Beginner", "Intermediate", "Advanced"]
+    // MARK: - Room Scan
+    @State private var isShowingARScan = false
+    @State private var roomScanURL: URL?
+    @State private var showScanSavedMessage = false
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Create Your New Project")
-                        .font(.title)
-                        .bold()
+            Form {
+                Section("Project Info") {
+                    TextField("Project Name", text: $name)
+                        .textInputAutocapitalization(.words)
+                    TextField("Goal (e.g., repaint walls, add shelves)", text: $goal)
 
-                    // Project title field
-                    TextField("Project Title", text: $title)
-                        .padding()
-                        .background(Color(.systemGray6))
-                        .cornerRadius(10)
-
-                    // Project description field
-                    TextField("Project Description", text: $goal, axis: .vertical)
-                        .lineLimit(4...8)
-                        .padding()
-                        .background(Color(.systemGray6))
-                        .cornerRadius(10)
-
-                    // Budget picker
-                    VStack(alignment: .leading) {
-                        Text("Budget")
-                        Picker("Budget", selection: $budget) {
-                            ForEach(budgetOptions, id: \ .self) { option in
-                                Text(option).tag(option)
-                            }
-                        }
-                        .pickerStyle(MenuPickerStyle())
-                        .padding()
-                        .background(Color(.systemGray6))
-                        .cornerRadius(10)
-                    }
-
-                    // Skill level picker
-                    VStack(alignment: .leading) {
-                        Text("Skill Level")
-                        Picker("Skill Level", selection: $skillLevel) {
-                            ForEach(skillOptions, id: \ .self) { option in
-                                Text(option).tag(option)
-                            }
-                        }
-                        .pickerStyle(MenuPickerStyle())
-                        .padding()
-                        .background(Color(.systemGray6))
-                        .cornerRadius(10)
-                    }
-
-                    // Room photo section
-                    Text("Add your room photo")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-
-                    HStack(spacing: 16) {
-                        // Button to trigger a room scan (using RoomPlan or ARKit)
-                        Button(action: {
-                            showScanner = true
-                        }) {
-                            Label("Scan Room (AR)", systemImage: "viewfinder.circle")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .padding()
-                                .frame(maxWidth: .infinity)
-                                .background(Color.purple)
-                                .cornerRadius(10)
-                        }
-                        .sheet(isPresented: $showScanner) {
-                            RoomScanView { fileURL in
-                                if let url = fileURL {
-                                    roomScanURL = url
-                                    print("✅ Room scan saved at: \(url.path)")
-                                } else {
-                                    print("❌ Room scan canceled or failed.")
-                                }
-                            }
-                        }
-                        if let scan = roomScanURL {
-                            Text("Scan saved: \(scan.lastPathComponent)")
-                                .font(.footnote)
-                                .foregroundColor(.secondary)
-                        }
-                        // Photos picker for uploading a room photo
-                        PhotosPicker(selection: $selectedItem, matching: .images) {
-                            VStack {
-                                Image(systemName: "photo")
-                                    .font(.largeTitle)
-                                Text("Upload Photo")
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 120)
-                            .background(Color.purple.opacity(0.05))
-                            .foregroundColor(.purple)
-                            .cornerRadius(14)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .stroke(Color.purple, lineWidth: 1)
-                            )
-                        }
-                        .onChange(of: selectedItem) { oldValue, newValue in
-                            // Load the selected image's data asynchronously
-                            Task {
-                                if let item = newValue, let data = try? await item.loadTransferable(type: Data.self) {
-                                    selectedImageData = data
-                                }
-                            }
+                    Picker("Budget", selection: $budgetTier) {
+                        ForEach(Budget.allCases, id: \.self) { tier in
+                            Text(tier.label).tag(tier)
                         }
                     }
 
-                    // Button to generate AI plan with preview
-                    Button(action: {
-                        createProject(withPreview: true)
-                    }) {
-                        Text(isSubmitting ? "Submitting…" : "Generate AI Plan + Preview")
-                            .frame(maxWidth: .infinity, minHeight: 50)
-                            .background(isSubmitting ? Color.gray : Color.purple)
-                            .foregroundColor(.white)
-                            .cornerRadius(16)
-                    }
-                    .disabled(isSubmitting || !formIsValid)
-
-                    // Button to create plan only
-                    Button(action: {
-                        createProject(withPreview: false)
-                    }) {
-                        Text(isSubmitting ? "Submitting…" : "Create Plan Only (No Preview)")
-                            .frame(maxWidth: .infinity, minHeight: 50)
-                            .background(isSubmitting ? Color.gray.opacity(0.3) : Color.white)
-                            .foregroundColor(.purple)
-                            .cornerRadius(16)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16)
-                                    .stroke(Color.purple, lineWidth: 1)
-                            )
-                    }
-                    .disabled(isSubmitting || !formIsValid)
-
-                    Spacer(minLength: 20)
-                }
-                .padding()
-                // Hidden navigation link to ProjectDetailsView
-                .navigationDestination(isPresented: $navigateToDetails) {
-                    if let project = createdProject {
-                        ProjectDetailsView(project: project)
-                    } else {
-                        EmptyView()
+                    Picker("Skill Level", selection: $skill) {
+                        ForEach(Skill.allCases, id: \.self) { level in
+                            Text(level.label).tag(level)
+                        }
                     }
                 }
-            }
-            .alert(isPresented: $showAlert) {
-                Alert(title: Text("Error"), message: Text(alertMessage), dismissButton: .default(Text("OK")))
+
+                Section("Room Scan") {
+                    Button {
+                        isShowingARScan = true
+                        showScanSavedMessage = false
+                    } label: {
+                        Label("Start Room Scan", systemImage: "camera.viewfinder")
+                    }
+
+                    if showScanSavedMessage, roomScanURL != nil {
+                        Label("Room scan saved ✅", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    }
+                }
+
+                Section {
+                    Button("Save Project") {
+                        saveProject()
+                    }
+                    .disabled(name.isEmpty || goal.isEmpty)
+                }
             }
             .navigationTitle("New Project")
-            .navigationBarTitleDisplayMode(.inline)
-        }
-    }
-
-    /// Validate that the title and goal meet minimum length requirements.
-    private var formIsValid: Bool {
-        title.trimmingCharacters(in: .whitespacesAndNewlines).count >= 10 &&
-        goal.trimmingCharacters(in: .whitespacesAndNewlines).count >= 10
-    }
-
-    /// Create a project on the backend and navigate to its details page.
-    /// - Parameter withPreview: If `true`, also request an AI preview for the project.
-    private func createProject(withPreview: Bool) {
-        guard !isSubmitting else { return }
-        isSubmitting = true
-        Task {
-            do {
-                // Create the project using the network service
-                let project = try await projectsService.createProject(
-                    name: title,
-                    goal: goal,
-                    budget: budget
-                )
-
-                // If a photo has been selected, upload it to the server
-                if let imageData = selectedImageData {
-                    _ = try await projectsService.uploadPhoto(
-                        projectId: project.id,
-                        imageData: imageData,
-                        fileName: "upload.jpg"
-                    )
+            .sheet(isPresented: $isShowingARScan) {
+                // Match your ARScanView signature that returns URL? only on finish
+                ARScanView { url in
+                    // Finish
+                    roomScanURL = url
+                    showScanSavedMessage = (url != nil)
+                    isShowingARScan = false
                 }
-
-                // If the user requested a preview, kick off the preview generation
-                if withPreview {
-                    _ = try await projectsService.requestPreview(projectId: project.id)
-                }
-
-                // Update state to navigate to the details view for this project
-                createdProject = project
-                navigateToDetails = true
-
-                // Reset form fields for the next project
-                title = ""
-                goal = ""
-                selectedImageData = nil
-            } catch {
-                // Present any network or decoding errors to the user
-                alertMessage = error.localizedDescription
-                showAlert = true
+                // While scanning, keep the sheet up (prevents accidental swipe-down)
+                .interactiveDismissDisabled(true)
             }
-            isSubmitting = false
         }
+    }
+
+    // MARK: - Save Logic (wire this to ProjectsService next)
+    private func saveProject() {
+        // TODO: send name, goal, budgetTier.rawValue, skill.rawValue, and roomScanURL (if present)
+        // to your ProjectsService backend.
+        dismiss()
     }
 }

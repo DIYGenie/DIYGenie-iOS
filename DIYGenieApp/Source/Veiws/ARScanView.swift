@@ -1,162 +1,139 @@
 import SwiftUI
 import RoomPlan
-import UIKit
 
-@MainActor
-final class ARScanCoordinator: NSObject, RoomCaptureSessionDelegate, RoomCaptureViewDelegate, NSSecureCoding {
-    
-    private let dismissAction: () -> Void
-    weak var progressView: UIProgressView?
+/// A SwiftUI wrapper for RoomPlan’s RoomCaptureView.
+/// Provides a real scan workflow using the modern RoomCapture APIs.
+struct ARScanView: UIViewControllerRepresentable {
+    var onFinish: (URL?) -> Void
 
-    // MARK: NSSecureCoding
-    static var supportsSecureCoding: Bool { true }
-
-    // Coordinator is not expected to be archived; provide a minimal implementation.
-    func encode(with coder: NSCoder) {
-        // No-op: this object is not intended for archival.
+    func makeUIViewController(context: Context) -> ARScanViewController {
+        let vc = ARScanViewController()
+        vc.onFinish = onFinish
+        return vc
     }
 
-    required init?(coder: NSCoder) {
-        // Provide a default dismiss action that simply does nothing when decoded.
-        // This path should never be hit in normal operation.
-        self.dismissAction = { }
-        super.init()
+    func updateUIViewController(_ uiViewController: ARScanViewController, context: Context) {}
+}
+
+final class ARScanViewController: UIViewController, RoomCaptureViewDelegate {
+    var onFinish: ((URL?) -> Void)?
+    private let captureView = RoomCaptureView(frame: .zero)
+    private var captureSessionConfig = RoomCaptureSession.Configuration()
+    private var isScanning = false
+    private var captureResult: CapturedRoom?
+
+    private lazy var startButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Start Scan", for: .normal)
+        button.backgroundColor = .systemPurple
+        button.tintColor = .white
+        button.layer.cornerRadius = 12
+        button.addTarget(self, action: #selector(startScan), for: .touchUpInside)
+        return button
+    }()
+
+    private lazy var finishButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Finish Scan", for: .normal)
+        button.backgroundColor = .systemGreen
+        button.tintColor = .white
+        button.layer.cornerRadius = 12
+        button.isHidden = true
+        button.addTarget(self, action: #selector(finishScan), for: .touchUpInside)
+        return button
+    }()
+
+    private lazy var cancelButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle("Cancel", for: .normal)
+        button.backgroundColor = .systemGray5
+        button.tintColor = .black
+        button.layer.cornerRadius = 12
+        button.addTarget(self, action: #selector(cancelScan), for: .touchUpInside)
+        return button
+    }()
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .systemBackground
+
+        captureView.delegate = self
+        captureView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(captureView)
+        NSLayoutConstraint.activate([
+            captureView.topAnchor.constraint(equalTo: view.topAnchor),
+            captureView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            captureView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            captureView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
+        let buttonStack = UIStackView(arrangedSubviews: [startButton, finishButton, cancelButton])
+        buttonStack.axis = .horizontal
+        buttonStack.distribution = .fillEqually
+        buttonStack.spacing = 16
+        buttonStack.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(buttonStack)
+
+        NSLayoutConstraint.activate([
+            buttonStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            buttonStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            buttonStack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            buttonStack.heightAnchor.constraint(equalToConstant: 50)
+        ])
     }
 
-    // Provide a convenience init to satisfy potential ObjC initializers.
-    override init() {
-        self.dismissAction = { }
-        super.init()
+    // MARK: - Actions
+    @objc private func startScan() {
+        guard !isScanning else { return }
+        isScanning = true
+        startButton.isHidden = true
+        finishButton.isHidden = false
+
+        captureView.captureSession.run(configuration: captureSessionConfig)
     }
 
-    init(dismiss: DismissAction) {
-        self.dismissAction = { dismiss() }
-    }
+    @objc private func finishScan() {
+        guard isScanning else { return }
+        isScanning = false
+        captureView.captureSession.stop()
 
-    // MARK: RoomCaptureSessionDelegate
-    func captureSession(_ session: RoomCaptureSession, didUpdate room: CapturedRoom) {
-        // Update progress based on the number of detected walls. Adjust the divisor
-        // according to your progress granularity.
-        let totalWalls = max(1, room.walls.count)
-        let progress = min(Float(totalWalls) / 10.0, 1.0)
-        Task { @MainActor in
-            self.progressView?.setProgress(progress, animated: true)
-        }
-        print("📏 Scanning… \(room.walls.count) walls detected.")
-    }
-
-    func captureSession(_ session: RoomCaptureSession, didEndWith data: CapturedRoomData, error: Error?) {
-        // When the session stops, the delegate will also receive the processed
-        // CapturedRoom via captureView(didPresent:). You can process the raw
-        // CapturedRoomData here if needed.
-        if let error {
-            print("❌ Scan ended with error: \(error.localizedDescription)")
-        }
-    }
-
-    // MARK: RoomCaptureViewDelegate
-    func captureView(shouldPresent roomDataForProcessing: CapturedRoomData, error: Error?) -> Bool {
-        // Return true to allow RoomPlan to post‑process the captured data and
-        // deliver a CapturedRoom in captureView(didPresent:).
-        return true
-    }
-
-    func captureView(didPresent processedResult: CapturedRoom, error: Error?) {
-        if let error {
-            print("❌ Error processing result: \(error.localizedDescription)")
+        // Grab the latest capture result
+        guard let result = captureView.captureResult else {
+            print("❌ No captured room data found.")
+            onFinish?(nil)
             return
         }
-        print("✅ Post‑processed room available. Exporting to USDZ…")
-        Task { @MainActor in
-            let filename = "scan_\(UUID().uuidString.prefix(8)).usdz"
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-            do {
-                try processedResult.export(to: url)
-                print("💾 Exported scan to: \(url.path)")
-                self.presentShareSheet(for: url)
-                self.dismissAction()
-            } catch {
-                print("❌ Export failed: \(error.localizedDescription)")
-            }
+
+        // Export the room as a USDZ file
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("RoomScan_\(UUID().uuidString).usdz")
+        do {
+            try result.export(to: tempURL)
+            print("✅ Room scan saved at \(tempURL.path)")
+            onFinish?(tempURL)
+        } catch {
+            print("❌ Export failed: \(error.localizedDescription)")
+            onFinish?(nil)
         }
     }
 
-    // Presents a share sheet with the exported USDZ file.
-    private func presentShareSheet(for url: URL) {
-        let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-        // Find the root view controller and present the share sheet.
-        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let root = scene.windows.first?.rootViewController {
-            root.present(activityVC, animated: true)
+    @objc private func cancelScan() {
+        if isScanning {
+            captureView.captureSession.stop()
         }
+        onFinish?(nil)
+    }
+
+    // MARK: - RoomCaptureViewDelegate
+    func captureView(_ view: RoomCaptureView, didUpdate session: RoomCaptureSession, with data: CapturedRoomData) {
+        // Optional: handle real-time updates (e.g., progress)
+    }
+
+    func captureView(_ view: RoomCaptureView, didEndWith data: CapturedRoomData, error: Error?) {
+        if let error = error {
+            print("❌ Capture ended with error: \(error.localizedDescription)")
+            onFinish?(nil)
+            return
+        }
+        captureResult = data.room
     }
 }
-
-/// A SwiftUI wrapper around RoomPlan’s `RoomCaptureView`.
-///
-/// This implementation avoids using the non‑public `RoomCaptureViewController` type and
-/// instead embeds the framework’s provided `RoomCaptureView` inside a SwiftUI view.
-/// It displays a progress bar and a finish button, exports the final room model
-/// to a USDZ file, and presents a share sheet when the scan completes.  The
-/// coordinator conforms to both `RoomCaptureSessionDelegate` and
-/// `RoomCaptureViewDelegate` to receive live updates and post‑processed results.
-@available(iOS 16.0, *)
-struct ARScanView: UIViewRepresentable {
-    @Environment(\.dismiss) private var dismiss
-
-    func makeUIView(context: Context) -> RoomCaptureView {
-        // Create the capture view provided by RoomPlan.
-        let captureView = RoomCaptureView(frame: .zero)
-
-        // Configure and start the capture session.
-        let configuration = RoomCaptureSession.Configuration()
-        captureView.captureSession.delegate = context.coordinator
-        captureView.delegate = context.coordinator
-        captureView.captureSession.run(configuration: configuration)
-
-        // Add a progress bar to visualize scanning progress.
-        let progressView = UIProgressView(progressViewStyle: .bar)
-        progressView.trackTintColor = UIColor.systemGray5
-        progressView.progressTintColor = UIColor.systemPurple
-        progressView.translatesAutoresizingMaskIntoConstraints = false
-        captureView.addSubview(progressView)
-        NSLayoutConstraint.activate([
-            progressView.topAnchor.constraint(equalTo: captureView.safeAreaLayoutGuide.topAnchor, constant: 10),
-            progressView.leadingAnchor.constraint(equalTo: captureView.leadingAnchor, constant: 16),
-            progressView.trailingAnchor.constraint(equalTo: captureView.trailingAnchor, constant: -16),
-            progressView.heightAnchor.constraint(equalToConstant: 6)
-        ])
-        context.coordinator.progressView = progressView
-
-        // Add a finish button to stop scanning early.
-        let finishButton = UIButton(type: .system)
-        finishButton.setTitle("Finish Scan", for: .normal)
-        finishButton.titleLabel?.font = .systemFont(ofSize: 18, weight: .semibold)
-        finishButton.backgroundColor = UIColor.systemPurple.withAlphaComponent(0.9)
-        finishButton.setTitleColor(.white, for: .normal)
-        finishButton.layer.cornerRadius = 12
-        finishButton.translatesAutoresizingMaskIntoConstraints = false
-        finishButton.addAction(UIAction { [weak captureView] _ in
-            // Stop the scan when the user taps the button.
-            captureView?.captureSession.stop()
-        }, for: .touchUpInside)
-        captureView.addSubview(finishButton)
-        NSLayoutConstraint.activate([
-            finishButton.bottomAnchor.constraint(equalTo: captureView.safeAreaLayoutGuide.bottomAnchor, constant: -30),
-            finishButton.centerXAnchor.constraint(equalTo: captureView.centerXAnchor),
-            finishButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 160),
-            finishButton.heightAnchor.constraint(equalToConstant: 44)
-        ])
-
-        return captureView
-    }
-
-    func updateUIView(_ uiView: RoomCaptureView, context: Context) {
-        // No dynamic updates are needed during the scan.
-    }
-
-    func makeCoordinator() -> ARScanCoordinator {
-        ARScanCoordinator(dismiss: dismiss)
-    }
-}
-

@@ -19,7 +19,7 @@ struct SupabaseUploader {
 
                 // Upload to the "room-scans" bucket
                 let path = "room-scans/\(projectId)/\(fileName)"
-                try await client.storage.from("room-scans").upload(path: path, file: fileData)
+                try await client.storage.from("room-scans").upload(path, data: fileData)
 
                 // Get public URL
                 let publicURL = try client.storage.from("room-scans").getPublicURL(path: path)

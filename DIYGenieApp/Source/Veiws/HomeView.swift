@@ -1,53 +1,117 @@
 import SwiftUI
-import ARKit
-@_exported import RoomPlan
 
-
+/// The main home screen for DIY Genie — welcoming the user and showcasing project templates.
 struct HomeView: View {
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                Text("Welcome to DIY Genie.")
-                    .font(.title2)
-                    .multilineTextAlignment(.center)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 24) {
+
+                    // MARK: - Greeting
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Welcome back, Tye")
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundColor(Color.primary)
+
+                        Text("Ready to start your next DIY project?")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
                     .padding(.horizontal)
 
-                Text("Plan, preview, and build your next project — all with the power of AI and AR.")
-                    .font(.subheadline)
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(.secondary)
+                    // MARK: - Hero Image Card
+                    VStack(alignment: .leading, spacing: 0) {
+                        ZStack(alignment: .bottomLeading) {
+                            Image("forest")
+                                .resizable()
+                                .scaledToFill()
+                                .frame(height: 200)
+                                .clipped()
+                                .cornerRadius(16)
+                            
+                            LinearGradient(
+                                gradient: Gradient(colors: [Color.black.opacity(0.4), Color.clear]),
+                                startPoint: .bottom,
+                                endPoint: .center
+                            )
+                            .cornerRadius(16)
+
+                            Text("See your space transform")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .padding()
+                        }
+
+                        // Step Indicator
+                        HStack(spacing: 6) {
+                            Circle().fill(Color.purple).frame(width: 8, height: 8)
+                            Circle().fill(Color.gray.opacity(0.4)).frame(width: 8, height: 8)
+                            Circle().fill(Color.gray.opacity(0.4)).frame(width: 8, height: 8)
+                            Circle().fill(Color.gray.opacity(0.4)).frame(width: 8, height: 8)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 8)
+
+                        Text("1 Describe • 2 Scan • 3 Preview • 4 Build")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 4)
+                    }
                     .padding(.horizontal)
 
-                NavigationLink(destination: ARScanView().ignoresSafeArea()) {
-                    Text("Start AR Scan")
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.purple)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                }
-                .padding(.horizontal, 40)
+                    // MARK: - Template Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Start with a template")
+                            .font(.headline)
+                            .foregroundColor(.purple)
+                            .padding(.horizontal)
 
-                NavigationLink(destination: MeasureOverlayView { inches in
-                    print("Measured \(inches) inches")
-                    // Save the measurement
-                }.ignoresSafeArea()) {
-                    Text("Measure Area")
-                    // ...button styling...
-                }
-                .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.purple)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                }
-                .padding(.horizontal, 40)
+                        VStack(spacing: 12) {
+                            TemplateRow(title: "Shelf", subtitle: "Clean, modern storage")
+                            TemplateRow(title: "Accent Wall", subtitle: "Add depth and contrast")
+                            TemplateRow(title: "Mudroom Bench", subtitle: "Entryway organization")
+                        }
+                        .padding(.horizontal)
+                    }
 
-                Spacer()
+                    Spacer()
+                }
+                .padding(.top, 24)
             }
             .navigationTitle("Home")
+            .navigationBarTitleDisplayMode(.inline)
+            .background(Color(.systemBackground))
         }
     }
+}
 
+// MARK: - Template Row Component
+struct TemplateRow: View {
+    var title: String
+    var subtitle: String
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            Text("Create")
+                .font(.headline)
+                .foregroundColor(.purple)
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(14)
+    }
+}
+
+#Preview {
+    HomeView()
+}
