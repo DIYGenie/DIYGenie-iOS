@@ -1,40 +1,73 @@
-// SupabaseUploader.swift
-// DIYGenieApp
-//
-// Handles file uploads to Supabase storage (rooms-scans or uploads bucket)
-
 import Foundation
-import Supabase
 
 struct SupabaseUploader {
-    static let client = SupabaseClient(
-        supabaseURL: URL(string: "https://qnevigmqyuxfzyczmctc.supabase.co")!,
-        supabaseKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFuZXZpZ21xeXV4Znp5Y3ptY3RjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg5NDc5MjUsImV4cCI6MjA3NDUyMzkyNX0.5wKtzwtNDZt6jjE5gYqNqqWATTdd7g2zVdHB231Z1wQ"    )
 
-    static func uploadRoomScan(localURL: URL, projectId: String, completion: @escaping (Result<String, Error>) -> Void) {
-        Task {
-            do {
-                let fileName = localURL.lastPathComponent
-                let fileData = try Data(contentsOf: localURL)
+    enum UploadError: Error {
+        case invalidFile
+        case uploadFailed
+        case missingEnv
+    }
 
-                // Upload to the "room-scans" bucket
-                let path = "room-scans/\(projectId)/\(fileName)"
-                try await client.storage.from("room-scans").upload(path, data: fileData)
+    static func upload(fileURL: URL, userID: String, completion: @escaping (Result<String, Error>) -> Void) {
+        guard let supabaseURL = ProcessInfo.processInfo.environment["SUPABASE_URL"],
+              let supabaseKey = ProcessInfo.processInfo.environment["SUPABASE_SERVICE_KEY"] else {
+            completion(.failure(UploadError.missingEnv))
+            return
+        }
 
-                // Get public URL
-                let publicURL = try client.storage.from("room-scans").getPublicURL(path: path)
+        let fileName = fileURL.lastPathComponent
+        let fileExt = fileURL.pathExtension.lowercased()
+        let bucket = fileExt == "usdz" ? "roomscans" : "uploads"
 
-                // Optionally update your projects table with the scan URL
-                try await client
-                    .from("projects")
-                    .update(["scan_url": publicURL.absoluteString])
-                    .eq("id", value: projectId)
-                    .execute()
+        let boundary = UUID().uuidString
+        let url = URL(string: "\(supabaseURL)/storage/v1/object/\(bucket)/\(userID)/\(fileName)")!
 
-                completion(.success(publicURL.absoluteString))
-            } catch {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(supabaseKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        // Build multipart body
+        var body = Data()
+        body.append("--\(boundary)\r\n")
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n")
+        body.append("Content-Type: application/octet-stream\r\n\r\n")
+
+        do {
+            let fileData = try Data(contentsOf: fileURL)
+            body.append(fileData)
+        } catch {
+            completion(.failure(UploadError.invalidFile))
+            return
+        }
+
+        body.append("\r\n--\(boundary)--\r\n")
+        request.httpBody = body
+
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error = error {
                 completion(.failure(error))
+                return
             }
+
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200...299).contains(httpResponse.statusCode) else {
+                completion(.failure(UploadError.uploadFailed))
+                return
+            }
+
+            let publicURL = "\(supabaseURL)/storage/v1/object/public/\(bucket)/\(userID)/\(fileName)"
+            completion(.success(publicURL))
+        }
+        task.resume()
+    }
+}
+
+// MARK: - Helper extension
+private extension Data {
+    mutating func append(_ string: String) {
+        if let data = string.data(using: .utf8) {
+            append(data)
         }
     }
 }
