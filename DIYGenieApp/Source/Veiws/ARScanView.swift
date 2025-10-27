@@ -1,8 +1,7 @@
 import SwiftUI
+import UIKit
 import RoomPlan
 
-/// A SwiftUI wrapper for RoomPlan’s RoomCaptureView.
-/// Provides a real scan workflow using the modern RoomCapture APIs.
 struct ARScanView: UIViewControllerRepresentable {
     var onFinish: (URL?) -> Void
 
@@ -15,125 +14,112 @@ struct ARScanView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: ARScanViewController, context: Context) {}
 }
 
-final class ARScanViewController: UIViewController, RoomCaptureViewDelegate {
+// MARK: - Controller
+final class ARScanViewController: UIViewController, RoomCaptureSessionDelegate {
+
     var onFinish: ((URL?) -> Void)?
-    private let captureView = RoomCaptureView(frame: .zero)
-    private var captureSessionConfig = RoomCaptureSession.Configuration()
-    private var isScanning = false
-    private var captureResult: CapturedRoom?
-
-    private lazy var startButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Start Scan", for: .normal)
-        button.backgroundColor = .systemPurple
-        button.tintColor = .white
-        button.layer.cornerRadius = 12
-        button.addTarget(self, action: #selector(startScan), for: .touchUpInside)
-        return button
-    }()
-
-    private lazy var finishButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Finish Scan", for: .normal)
-        button.backgroundColor = .systemGreen
-        button.tintColor = .white
-        button.layer.cornerRadius = 12
-        button.isHidden = true
-        button.addTarget(self, action: #selector(finishScan), for: .touchUpInside)
-        return button
-    }()
-
-    private lazy var cancelButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.setTitle("Cancel", for: .normal)
-        button.backgroundColor = .systemGray5
-        button.tintColor = .black
-        button.layer.cornerRadius = 12
-        button.addTarget(self, action: #selector(cancelScan), for: .touchUpInside)
-        return button
-    }()
+    private var captureSession: RoomCaptureSession!
+    private let configuration = RoomCaptureSession.Configuration()
+    private var captureView: RoomCaptureView!
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
+        setupCapture()
+        setupControls()
+    }
 
-        captureView.delegate = self
-        captureView.translatesAutoresizingMaskIntoConstraints = false
+    private func setupCapture() {
+        // In your SDK, RoomCaptureView automatically owns its own session.
+        // We’ll grab that and assign its delegate.
+        captureView = RoomCaptureView(frame: view.bounds)
+        captureView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(captureView)
-        NSLayoutConstraint.activate([
-            captureView.topAnchor.constraint(equalTo: view.topAnchor),
-            captureView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            captureView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            captureView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
 
-        let buttonStack = UIStackView(arrangedSubviews: [startButton, finishButton, cancelButton])
-        buttonStack.axis = .horizontal
-        buttonStack.distribution = .fillEqually
-        buttonStack.spacing = 16
-        buttonStack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(buttonStack)
+        // Use the view’s built-in session instead of creating a separate one.
+        captureSession = captureView.captureSession
+        captureSession.delegate = self
+    }
+
+    private func setupControls() {
+        let stack = UIStackView()
+        stack.axis = .horizontal
+        stack.spacing = 12
+        stack.distribution = .fillEqually
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        let start = makeButton("Start", color: .systemBlue, action: #selector(startScan))
+        let finish = makeButton("Finish", color: .systemGreen, action: #selector(finishScan))
+        let cancel = makeButton("Cancel", color: .systemRed, action: #selector(cancelScan))
+
+        [start, finish, cancel].forEach(stack.addArrangedSubview)
+        view.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            buttonStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            buttonStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            buttonStack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
-            buttonStack.heightAnchor.constraint(equalToConstant: 50)
+            stack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            stack.heightAnchor.constraint(equalToConstant: 44),
+            stack.widthAnchor.constraint(equalToConstant: 300)
         ])
     }
 
-    // MARK: - Actions
-    @objc private func startScan() {
-        guard !isScanning else { return }
-        isScanning = true
-        startButton.isHidden = true
-        finishButton.isHidden = false
+    private func makeButton(_ title: String, color: UIColor, action: Selector) -> UIButton {
+        let b = UIButton(type: .system)
+        b.setTitle(title, for: .normal)
+        b.backgroundColor = color
+        b.tintColor = .white
+        b.layer.cornerRadius = 8
+        b.addTarget(self, action: action, for: .touchUpInside)
+        return b
+    }
 
-        captureView.captureSession.run(configuration: captureSessionConfig)
+    // MARK: Actions
+    @objc private func startScan() {
+        do {
+            try captureSession.run(configuration: configuration)
+            print("✅ RoomPlan session started")
+        } catch {
+            print("❌ Could not start RoomPlan: \(error)")
+        }
     }
 
     @objc private func finishScan() {
-        guard isScanning else { return }
-        isScanning = false
-        captureView.captureSession.stop()
-
-        // Grab the latest capture result
-        guard let result = captureView.captureResult else {
-            print("❌ No captured room data found.")
-            onFinish?(nil)
-            return
-        }
-
-        // Export the room as a USDZ file
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("RoomScan_\(UUID().uuidString).usdz")
-        do {
-            try result.export(to: tempURL)
-            print("✅ Room scan saved at \(tempURL.path)")
-            onFinish?(tempURL)
-        } catch {
-            print("❌ Export failed: \(error.localizedDescription)")
-            onFinish?(nil)
-        }
+        captureSession.stop()
+        // When stopped, delegate below fires with captured data
     }
 
     @objc private func cancelScan() {
-        if isScanning {
-            captureView.captureSession.stop()
-        }
+        captureSession.stop()
         onFinish?(nil)
+        dismiss(animated: true)
     }
 
-    // MARK: - RoomCaptureViewDelegate
-    func captureView(_ view: RoomCaptureView, didUpdate session: RoomCaptureSession, with data: CapturedRoomData) {
-        // Optional: handle real-time updates (e.g., progress)
-    }
-
-    func captureView(_ view: RoomCaptureView, didEndWith data: CapturedRoomData, error: Error?) {
-        if let error = error {
+    // MARK: Delegate
+    func captureSession(_ session: RoomCaptureSession, didEndWith data: CapturedRoom?, error: Error?) {
+        if let error {
             print("❌ Capture ended with error: \(error.localizedDescription)")
             onFinish?(nil)
             return
         }
-        captureResult = data.room
+        guard let room = data else {
+            print("⚠️ No room data captured")
+            onFinish?(nil)
+            return
+        }
+        export(room)
+    }
+
+    // MARK: Export
+    private func export(_ room: CapturedRoom) {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RoomScan_\(UUID().uuidString).usdz")
+        do {
+            try room.export(to: url)  // works across all versions
+            print("✅ Exported .usdz to \(url)")
+            onFinish?(url)
+        } catch {
+            print("❌ Export failed: \(error.localizedDescription)")
+            onFinish?(nil)
+        }
     }
 }
