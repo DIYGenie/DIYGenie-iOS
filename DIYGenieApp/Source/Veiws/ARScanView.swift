@@ -1,6 +1,7 @@
 import SwiftUI
 import RoomPlan
 import UIKit
+import Supabase
 
 struct ARScanView: UIViewControllerRepresentable {
     var onFinish: (URL?) -> Void
@@ -19,31 +20,39 @@ final class ARScanViewController: UIViewController, RoomCaptureViewDelegate {
     private var captureView: RoomCaptureView!
     private var configuration = RoomCaptureSession.Configuration()
     private var isScanning = false
+    private var hasShownInstructions = false
+    private let accent = UIColor(red: 164/255, green: 90/255, blue: 255/255, alpha: 1)
+    private let client = SupabaseClient(
+        supabaseURL: URL(string: "https://YOUR_SUPABASE_PROJECT_URL")!,
+        supabaseKey: "YOUR_SUPABASE_ANON_KEY"
+    )
 
-    override func viewDidLoad() {
-        super.viewDidLoad()
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
         view.backgroundColor = .systemBackground
-        showInstructions()
+        if !hasShownInstructions {
+            hasShownInstructions = true
+            showInstructions()
+        }
     }
 
     private func showInstructions() {
         let alert = UIAlertController(
             title: "📐 Room Scan",
-            message: "Move slowly around the room.\n• Capture corners and walls.\n• Tap Finish when done.",
+            message: "Move slowly around the room:\n• Capture corners and walls.\n• Tap Finish when done.",
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "Start Scan", style: .default) { _ in
-            self.startScan()
-        })
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
             self.dismiss(animated: true) {
                 self.onFinish?(nil)
             }
         })
+        alert.addAction(UIAlertAction(title: "Start Scan", style: .default) { _ in
+            self.startScan()
+        })
         present(alert, animated: true)
     }
 
-    // MARK: - Start Scan
     private func startScan() {
         captureView = RoomCaptureView(frame: view.bounds)
         captureView.delegate = self
@@ -57,13 +66,13 @@ final class ARScanViewController: UIViewController, RoomCaptureViewDelegate {
             captureView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
 
-        let finishButton = makeButton(title: "Finish", color: .systemBlue, action: #selector(finishScan))
-        let cancelButton = makeButton(title: "Cancel", color: .systemRed, action: #selector(cancelScan))
+        let finishButton = makeButton(title: "Finish", color: accent, action: #selector(finishScan))
+        let cancelButton = makeButton(title: "Cancel", color: .systemGray, action: #selector(cancelScan))
         view.addSubview(finishButton)
         view.addSubview(cancelButton)
 
         NSLayoutConstraint.activate([
-            finishButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            finishButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
             finishButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
             cancelButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
             cancelButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24)
@@ -73,15 +82,12 @@ final class ARScanViewController: UIViewController, RoomCaptureViewDelegate {
         captureView.captureSession.run(configuration: configuration)
     }
 
-    // MARK: - Finish Scan
     @objc private func finishScan() {
         guard isScanning else { return }
         isScanning = false
         captureView.captureSession.stop()
-        // The delegate method will handle exporting when scanning ends
     }
 
-    // MARK: - Cancel
     @objc private func cancelScan() {
         captureView.captureSession.stop()
         dismiss(animated: true) {
@@ -101,28 +107,48 @@ final class ARScanViewController: UIViewController, RoomCaptureViewDelegate {
 
         do {
             try data.export(to: fileURL)
-            uploadScan(fileURL: fileURL)
+
+            // ✅ Show result for 2 seconds, then upload & confirm
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                self.uploadAndConfirm(fileURL: fileURL)
+            }
         } catch {
             showError(message: "Export failed: \(error.localizedDescription)")
         }
     }
 
-    // MARK: - Upload (stub)
-    private func uploadScan(fileURL: URL) {
-        let publicURL = "https://uploads.supabase.co/roomscans/\(fileURL.lastPathComponent)"
-        showSuccessAlert(publicURL: publicURL)
+    // MARK: - Upload & Confirm
+    private func uploadAndConfirm(fileURL: URL) {
+        Task {
+            do {
+                let data = try Data(contentsOf: fileURL)
+                let filePath = "roomscans/\(fileURL.lastPathComponent)"
+                try await client.storage.from("roomscans").upload(
+                    path: filePath,
+                    file: data,
+                    options: FileOptions(contentType: "model/vnd.usdz+zip")
+                )
+
+                DispatchQueue.main.async {
+                    self.showFinishAlert(fileURL: fileURL)
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.showError(message: "Upload failed: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
-    // MARK: - Alerts
-    private func showSuccessAlert(publicURL: String) {
+    private func showFinishAlert(fileURL: URL) {
         let alert = UIAlertController(
             title: "✅ Scan Saved",
-            message: "Your room scan has been uploaded.",
+            message: "Your room scan has been saved and uploaded successfully.",
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
             self.dismiss(animated: true) {
-                self.onFinish?(URL(string: publicURL))
+                self.onFinish?(fileURL)
             }
         })
         present(alert, animated: true)
@@ -134,7 +160,6 @@ final class ARScanViewController: UIViewController, RoomCaptureViewDelegate {
         present(alert, animated: true)
     }
 
-    // MARK: - UI Helper
     private func makeButton(title: String, color: UIColor, action: Selector) -> UIButton {
         let button = UIButton(type: .system)
         button.setTitle(title, for: .normal)
