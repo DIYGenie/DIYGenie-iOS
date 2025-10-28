@@ -9,8 +9,6 @@ struct NewProjectView: View {
     @State private var goal = ""
     @State private var budgetTier: Budget = .two
     @State private var skill: Skill = .intermediate
-
-    // MARK: - Media / AR
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var roomScanURL: URL?
     @State private var showScanSaved = false
@@ -19,11 +17,11 @@ struct NewProjectView: View {
     // MARK: - Validation
     private var isFormValid: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty &&
-        !goal.trimmingCharacters(in: .whitespaces).isEmpty
+        goal.count >= 10
     }
 
     // MARK: - Theme
-    private let accent = Color(red: 113/255, green: 66/255, blue: 255/255)
+    private let accent = Color(red: 98/255, green: 70/255, blue: 255/255)
 
     var body: some View {
         ZStack {
@@ -36,7 +34,7 @@ struct NewProjectView: View {
 
             ScrollView {
                 VStack(spacing: 24) {
-                    // MARK: - Header
+                    // Header
                     HStack {
                         Button(action: { presentationMode.wrappedValue.dismiss() }) {
                             Image(systemName: "chevron.left")
@@ -56,95 +54,64 @@ struct NewProjectView: View {
                         .font(.system(.subheadline, design: .rounded))
                         .foregroundColor(.secondary)
 
-                    // MARK: - Project Details
+                    // Project Details
                     VStack(alignment: .leading, spacing: 16) {
-                        Group {
-                            Text("Project Name")
-                                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                            TextField("Enter name", text: $name)
-                                .padding(10)
-                                .background(Color(.systemGray6))
-                                .cornerRadius(8)
-                                .submitLabel(.next)
-
-                            Text("Goal / Description")
-                                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                            TextField("What are you building?", text: $goal)
-                                .padding(10)
-                                .background(Color(.systemGray6))
-                                .cornerRadius(8)
-                                .submitLabel(.done)
-                                .onSubmit { hideKeyboard() }
-                        }
-                    }
-                    .padding()
-                    .background(Color(.systemGray6))
-                    .cornerRadius(14)
-                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
-
-                    // MARK: - Budget Dropdown
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Budget")
+                        Text("Project Name")
                             .font(.system(.subheadline, design: .rounded, weight: .semibold))
-
-                        Menu {
-                            Button("Budget-Friendly ($)") { budgetTier = .one }
-                            Button("Mid-Range ($$)") { budgetTier = .two }
-                            Button("Premium ($$$)") { budgetTier = .three }
-                        } label: {
-                            HStack {
-                                Text(budgetTier.description)
-                                    .foregroundColor(.primary)
-                                Spacer()
-                                Image(systemName: "chevron.down")
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding()
+                        TextField("Enter project name", text: $name)
+                            .padding(10)
                             .background(Color(.systemGray6))
                             .cornerRadius(10)
-                        }
 
-                        Text("Choose your price range.")
-                            .font(.system(.footnote, design: .rounded))
-                            .foregroundColor(.secondary)
-                    }
-                    .padding()
-                    .background(Color(.systemGray6))
-                    .cornerRadius(14)
-                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
-
-                    // MARK: - Skill Level Dropdown
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Skill Level")
+                        Text("Goal / Description")
                             .font(.system(.subheadline, design: .rounded, weight: .semibold))
-
-                        Menu {
-                            Button("Beginner") { skill = .beginner }
-                            Button("Intermediate") { skill = .intermediate }
-                            Button("Advanced") { skill = .advanced }
-                        } label: {
-                            HStack {
-                                Text(skill.label)
-                                    .foregroundColor(.primary)
-                                Spacer()
-                                Image(systemName: "chevron.down")
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding()
+                        TextEditor(text: $goal)
+                            .frame(minHeight: 100)
+                            .padding(10)
                             .background(Color(.systemGray6))
-                            .cornerRadius(10)
-                        }
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(goal.count < 10 ? Color.red.opacity(0.25) : Color.gray.opacity(0.2), lineWidth: 1)
+                            )
+                            .scrollContentBackground(.hidden)
 
-                        Text("Select your experience level.")
-                            .font(.system(.footnote, design: .rounded))
-                            .foregroundColor(.secondary)
+                        Text("\(goal.count)/10 characters minimum")
+                            .font(.caption2)
+                            .foregroundColor(goal.count < 10 ? .red.opacity(0.6) : .gray.opacity(0.6))
                     }
                     .padding()
                     .background(Color(.systemGray6))
                     .cornerRadius(14)
                     .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
 
-                    // MARK: - Room Setup
+                    // Budget Dropdown
+                    dropdownCard(
+                        title: "Budget",
+                        hint: "Choose your price range.",
+                        selectionText: budgetTier.description,
+                        options: [
+                            ("Budget-Friendly ($)", Budget.one),
+                            ("Mid-Range ($$)", Budget.two),
+                            ("Premium ($$$)", Budget.three)
+                        ],
+                        currentSelection: $budgetTier
+                    )
+
+                    // Skill Level Dropdown
+                    dropdownCard(
+                        title: "Skill Level",
+                        hint: "Select your experience level.",
+                        selectionText: skill.label,
+                        options: [
+                            ("Beginner", Skill.beginner),
+                            ("Intermediate", Skill.intermediate),
+                            ("Advanced", Skill.advanced)
+                        ],
+                        currentSelection: $skill
+                    )
+
+                    // Room Scan / Upload
                     VStack(spacing: 12) {
                         Button {
                             isShowingARScan = true
@@ -179,7 +146,7 @@ struct NewProjectView: View {
                     .cornerRadius(14)
                     .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
 
-                    // MARK: - Action Buttons
+                    // Action Buttons
                     VStack(spacing: 12) {
                         Button {
                             generatePlan(withPreview: true)
@@ -222,6 +189,47 @@ struct NewProjectView: View {
         }
     }
 
+    // MARK: - Helper Views
+    private func dropdownCard<T: Identifiable>(
+        title: String,
+        hint: String,
+        selectionText: String,
+        options: [(String, T)],
+        currentSelection: Binding<T>
+    ) -> some View where T: Equatable {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+
+            Menu {
+                ForEach(options, id: \.1.id) { label, value in
+                    Button(label) {
+                        currentSelection.wrappedValue = value
+                    }
+                }
+            } label: {
+                HStack {
+                    Text(selectionText)
+                        .foregroundColor(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                .background(Color(.systemGray6))
+                .cornerRadius(10)
+            }
+
+            Text(hint)
+                .font(.system(.footnote, design: .rounded))
+                .foregroundColor(.secondary)
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(14)
+        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+    }
+
     private func generatePlan(withPreview: Bool) {
         print("Generate plan tapped. With preview: \(withPreview)")
     }
@@ -231,7 +239,6 @@ struct NewProjectView: View {
 enum Budget: String, CaseIterable, Identifiable {
     case one = "$", two = "$$", three = "$$$"
     var id: String { rawValue }
-    var label: String { rawValue }
     var description: String {
         switch self {
         case .one: return "Budget-Friendly ($)"
