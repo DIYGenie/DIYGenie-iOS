@@ -1,263 +1,200 @@
 import SwiftUI
 import PhotosUI
+import Supabase
+import AVFoundation
 
 struct NewProjectView: View {
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) private var dismiss
+    @State private var name: String = ""
+    @State private var description: String = ""
+    @State private var showingCamera = false
+    @State private var showingMeasurePrompt = false
+    @State private var showingARMeasure = false
+    @State private var capturedImage: UIImage? = nil
+    @State private var showingToast = false
+    @State private var toastMessage = ""
+    @State private var isUploading = false
+    @FocusState private var focusedField: Bool
 
-    // MARK: - Form State
-    @State private var name = ""
-    @State private var goal = ""
-    @State private var budgetTier: Budget = .two
-    @State private var skill: Skill = .intermediate
-    @State private var selectedPhoto: PhotosPickerItem?
-    @State private var roomScanURL: URL?
-    @State private var showScanSaved = false
-    @State private var isShowingARScan = false
-
-    // MARK: - Validation
-    private var isFormValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty &&
-        goal.count >= 10
-    }
-
-    // MARK: - Theme
-    private let accent = Color(red: 98/255, green: 70/255, blue: 255/255)
+    private let supabase = SupabaseClient(
+        supabaseURL: URL(string: Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String ?? "")!,
+        supabaseKey: Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String ?? ""
+    )
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                gradient: Gradient(colors: [Color(.systemGray6), Color.white]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            LinearGradient(colors: [Color.black, Color.purple.opacity(0.4)], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea()
 
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Header
-                    HStack {
-                        Button(action: { presentationMode.wrappedValue.dismiss() }) {
-                            Image(systemName: "chevron.left")
-                                .font(.title3.weight(.semibold))
-                                .foregroundColor(accent)
+            VStack(spacing: 22) {
+                Text("New Project")
+                    .font(.custom("Manrope-Bold", size: 30))
+                    .foregroundColor(.white)
+                    .padding(.top, 20)
+
+                VStack(spacing: 16) {
+                    TextField("e.g. Bathroom Vanity Remodel", text: $name)
+                        .padding()
+                        .font(.custom("Inter-Regular", size: 16))
+                        .foregroundColor(.white)
+                        .background(Color.white.opacity(0.1))
+                        .cornerRadius(10)
+                        .focused($focusedField)
+                        .disableAutocorrection(true)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .strokeBorder(Color.white.opacity(0.2))
+                        )
+
+                    TextField("Describe your DIY goal...", text: $description, axis: .vertical)
+                        .lineLimit(3...6)
+                        .padding()
+                        .font(.custom("Inter-Regular", size: 16))
+                        .foregroundColor(.white)
+                        .background(Color.white.opacity(0.1))
+                        .cornerRadius(10)
+                        .disableAutocorrection(true)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .strokeBorder(Color.white.opacity(0.2))
+                        )
+                }
+                .padding(.horizontal)
+
+                Spacer()
+
+                if let image = capturedImage {
+                    VStack(spacing: 10) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: 250, maxHeight: 180)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .shadow(radius: 6)
+
+                        Button("Retake Photo") {
+                            showingCamera = true
                         }
-                        Spacer()
-                        Text("New Project")
-                            .font(.system(.title2, design: .rounded, weight: .bold))
-                            .foregroundColor(.primary)
-                        Spacer()
-                        Image(systemName: "chevron.left").opacity(0)
+                        .font(.custom("Inter-Medium", size: 15))
+                        .foregroundColor(.white.opacity(0.8))
                     }
-                    .padding(.top, 16)
-
-                    Text("Plan your next project like a pro 🔨")
-                        .font(.system(.subheadline, design: .rounded))
-                        .foregroundColor(.secondary)
-
-                    // Project Details
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Project Name")
-                            .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                        TextField("Enter project name", text: $name)
-                            .padding(10)
-                            .background(Color(.systemGray6))
-                            .cornerRadius(10)
-
-                        Text("Goal / Description")
-                            .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                        TextEditor(text: $goal)
-                            .frame(minHeight: 100)
-                            .padding(10)
-                            .background(Color(.systemGray6))
+                } else {
+                    Button {
+                        showingCamera = true
+                    } label: {
+                        Text("📸 Take Photo & Measure Room")
+                            .font(.custom("Manrope-SemiBold", size: 18))
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.purple)
+                            .foregroundColor(.white)
                             .cornerRadius(12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(goal.count < 10 ? Color.red.opacity(0.25) : Color.gray.opacity(0.2), lineWidth: 1)
-                            )
-                            .scrollContentBackground(.hidden)
-
-                        Text("\(goal.count)/10 characters minimum")
-                            .font(.caption2)
-                            .foregroundColor(goal.count < 10 ? .red.opacity(0.6) : .gray.opacity(0.6))
+                            .shadow(radius: 4)
                     }
-                    .padding()
-                    .background(Color(.systemGray6))
-                    .cornerRadius(14)
-                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
-
-                    // Budget Dropdown
-                    dropdownCard(
-                        title: "Budget",
-                        hint: "Choose your price range.",
-                        selectionText: budgetTier.description,
-                        options: [
-                            ("Budget-Friendly ($)", Budget.one),
-                            ("Mid-Range ($$)", Budget.two),
-                            ("Premium ($$$)", Budget.three)
-                        ],
-                        currentSelection: $budgetTier
-                    )
-
-                    // Skill Level Dropdown
-                    dropdownCard(
-                        title: "Skill Level",
-                        hint: "Select your experience level.",
-                        selectionText: skill.label,
-                        options: [
-                            ("Beginner", Skill.beginner),
-                            ("Intermediate", Skill.intermediate),
-                            ("Advanced", Skill.advanced)
-                        ],
-                        currentSelection: $skill
-                    )
-
-                    // Room Scan / Upload
-                    VStack(spacing: 12) {
-                        Button {
-                            isShowingARScan = true
-                        } label: {
-                            Label("Scan Room (AR)", systemImage: "camera.viewfinder")
-                                .font(.system(.headline, design: .rounded))
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(accent)
-                                .foregroundColor(.white)
-                                .cornerRadius(10)
-                        }
-
-                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                            Label("Upload Photo", systemImage: "photo.on.rectangle.angled")
-                                .font(.system(.headline, design: .rounded))
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.gray.opacity(0.15))
-                                .foregroundColor(.primary)
-                                .cornerRadius(10)
-                        }
-
-                        if showScanSaved, roomScanURL != nil {
-                            Label("Room scan saved ✅", systemImage: "checkmark.circle.fill")
-                                .foregroundColor(.green)
-                                .font(.system(.subheadline, design: .rounded))
-                        }
-                    }
-                    .padding()
-                    .background(Color(.systemGray6))
-                    .cornerRadius(14)
-                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
-
-                    // Action Buttons
-                    VStack(spacing: 12) {
-                        Button {
-                            generatePlan(withPreview: true)
-                        } label: {
-                            Label("Generate AI Plan + Preview", systemImage: "bolt.fill")
-                                .font(.system(.headline, design: .rounded))
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(isFormValid ? accent : accent.opacity(0.3))
-                                .foregroundColor(.white)
-                                .cornerRadius(10)
-                        }
-                        .disabled(!isFormValid)
-
-                        Button {
-                            generatePlan(withPreview: false)
-                        } label: {
-                            Label("Create Plan Only (No Preview)", systemImage: "list.bullet.clipboard")
-                                .font(.system(.headline, design: .rounded))
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(isFormValid ? Color.gray : Color.gray.opacity(0.3))
-                                .foregroundColor(.white)
-                                .cornerRadius(10)
-                        }
-                        .disabled(!isFormValid)
-                    }
-                    .padding(.bottom, 40)
+                    .padding(.horizontal, 40)
                 }
-                .padding(.horizontal, 20)
-            }
-            .onTapGesture { hideKeyboard() }
-        }
-        .sheet(isPresented: $isShowingARScan) {
-            ARScanView { url in
-                roomScanURL = url
-                showScanSaved = (url != nil)
-                isShowingARScan = false
-            }
-        }
-    }
 
-    // MARK: - Helper Views
-    private func dropdownCard<T: Identifiable>(
-        title: String,
-        hint: String,
-        selectionText: String,
-        options: [(String, T)],
-        currentSelection: Binding<T>
-    ) -> some View where T: Equatable {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                Spacer()
+            }
+            .padding(.bottom, 60)
 
-            Menu {
-                ForEach(options, id: \.1.id) { label, value in
-                    Button(label) {
-                        currentSelection.wrappedValue = value
-                    }
-                }
-            } label: {
-                HStack {
-                    Text(selectionText)
-                        .foregroundColor(.primary)
+            if showingToast {
+                VStack {
                     Spacer()
-                    Image(systemName: "chevron.down")
-                        .foregroundColor(.secondary)
+                    Text(toastMessage)
+                        .font(.custom("Inter-Medium", size: 15))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(Color.black.opacity(0.8))
+                        .cornerRadius(20)
+                        .padding(.bottom, 30)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .animation(.easeInOut(duration: 0.4), value: showingToast)
                 }
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(10)
             }
-
-            Text(hint)
-                .font(.system(.footnote, design: .rounded))
-                .foregroundColor(.secondary)
         }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(14)
-        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
-    }
-
-    private func generatePlan(withPreview: Bool) {
-        print("Generate plan tapped. With preview: \(withPreview)")
-    }
-}
-
-// MARK: - Enums
-enum Budget: String, CaseIterable, Identifiable {
-    case one = "$", two = "$$", three = "$$$"
-    var id: String { rawValue }
-    var description: String {
-        switch self {
-        case .one: return "Budget-Friendly ($)"
-        case .two: return "Mid-Range ($$)"
-        case .three: return "Premium ($$$)"
+        .sheet(isPresented: $showingCamera) {
+            CameraView(onPhotoCaptured: { image in
+                capturedImage = image
+                showingCamera = false
+                showingMeasurePrompt = true
+                uploadPhoto(image)
+            })
+        }
+        .alert("Would you like to measure your room now?", isPresented: $showingMeasurePrompt) {
+            Button("Yes") { showingARMeasure = true }
+            Button("Skip", role: .cancel) { showingARMeasure = false }
+        }
+        .sheet(isPresented: $showingARMeasure) {
+            ARMeasureView { _ in
+                showingARMeasure = false
+            }
         }
     }
+
+    private func uploadPhoto(_ image: UIImage) {
+        guard let data = image.jpegData(compressionQuality: 0.8) else { return }
+        isUploading = true
+        Task {
+            do {
+                let fileName = "roomphoto_\(UUID().uuidString).jpg"
+                try await supabase.storage.from("uploads").upload(fileName, data: data, options: FileOptions(contentType: "image/jpeg"))
+                await MainActor.run {
+                    showToast("Room photo saved ✅")
+                }
+            } catch {
+                await MainActor.run {
+                    showToast("Upload failed: \(error.localizedDescription)")
+                }
+            }
+            isUploading = false
+        }
+    }
+
+    private func showToast(_ message: String) {
+        toastMessage = message
+        withAnimation {
+            showingToast = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            withAnimation {
+                showingToast = false
+            }
+        }
+    }
 }
 
-enum Skill: String, CaseIterable, Identifiable {
-    case beginner, intermediate, advanced
-    var id: String { rawValue }
-    var label: String { rawValue.capitalized }
-}
+// MARK: - CameraView
+struct CameraView: UIViewControllerRepresentable {
+    var onPhotoCaptured: (UIImage) -> Void
 
-// MARK: - Keyboard Dismiss Helper
-extension View {
-    func hideKeyboard() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
-                                        to: nil, from: nil, for: nil)
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let parent: CameraView
+        init(_ parent: CameraView) { self.parent = parent }
+
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            if let image = info[.originalImage] as? UIImage {
+                parent.onPhotoCaptured(image)
+            }
+            picker.dismiss(animated: true)
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true)
+        }
     }
 }
