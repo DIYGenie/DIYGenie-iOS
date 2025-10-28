@@ -98,7 +98,11 @@ final class ARScanViewController: UIViewController, RoomCaptureViewDelegate {
     // MARK: - RoomCaptureViewDelegate
     func captureView(_ view: RoomCaptureView, didEndWith data: CapturedRoom, error: Error?) {
         if let error = error {
-            showError(message: "Scan failed: \(error.localizedDescription)")
+            print("❌ Scan failed:", error.localizedDescription)
+            DispatchQueue.main.async {
+                self.onFinish?(nil)
+                self.dismiss(animated: true)
+            }
             return
         }
 
@@ -107,16 +111,38 @@ final class ARScanViewController: UIViewController, RoomCaptureViewDelegate {
 
         do {
             try data.export(to: fileURL)
+            print("✅ Scan exported successfully:", fileURL)
 
-            // ✅ Show result for 2 seconds, then upload & confirm
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            let hud = UIActivityIndicatorView(style: .large)
+            hud.color = .white
+            hud.center = view.center
+            view.addSubview(hud)
+            hud.startAnimating()
+
+            // ✅ Delay to ensure RoomCaptureView teardown completes fully
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                hud.stopAnimating()
+                hud.removeFromSuperview()
+
+                print("✅ Upload and dismiss starting…")
                 self.uploadAndConfirm(fileURL: fileURL)
+
+                // ✅ Make absolutely sure dismissal happens on main thread after upload starts
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.dismiss(animated: true) {
+                        self.onFinish?(fileURL)
+                        print("✅ Dismiss complete, returning to New Project")
+                    }
+                }
             }
         } catch {
-            showError(message: "Export failed: \(error.localizedDescription)")
+            print("❌ Export failed:", error.localizedDescription)
+            DispatchQueue.main.async {
+                self.onFinish?(nil)
+                self.dismiss(animated: true)
+            }
         }
     }
-
     // MARK: - Upload & Confirm
     private func uploadAndConfirm(fileURL: URL) {
         Task {
@@ -124,11 +150,10 @@ final class ARScanViewController: UIViewController, RoomCaptureViewDelegate {
                 let data = try Data(contentsOf: fileURL)
                 let filePath = "roomscans/\(fileURL.lastPathComponent)"
                 try await client.storage.from("roomscans").upload(
-                    path: filePath,
-                    file: data,
+                    filePath,
+                    data: data,
                     options: FileOptions(contentType: "model/vnd.usdz+zip")
                 )
-
                 DispatchQueue.main.async {
                     self.showFinishAlert(fileURL: fileURL)
                 }
