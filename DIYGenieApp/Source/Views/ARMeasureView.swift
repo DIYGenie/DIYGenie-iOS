@@ -12,12 +12,12 @@ struct ARMeasureView: View {
     let projectId: String
     let scanId: String
     var onComplete: ((Double, Double) -> Void)? = nil
-    // ..
+
     @Environment(\.dismiss) private var dismiss
     @State private var roi: CGRect = CGRect(x: 0.3, y: 0.4, width: 0.4, height: 0.25)
     @State private var isSaving = false
-    @State private var statusMessage: String?
-    @State private var cancellables = Set<AnyCancellable>()
+    @State private var statusMessage: String? = nil
+    @State private var showBanner = false
 
     var body: some View {
         ZStack {
@@ -48,30 +48,41 @@ struct ARMeasureView: View {
 
             VStack {
                 Spacer()
-                if let msg = statusMessage {
+                if showBanner, let msg = statusMessage {
                     Text(msg)
+                        .font(.headline)
                         .foregroundColor(.white)
-                        .padding(.bottom, 8)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.black.opacity(0.65))
+                        .cornerRadius(12)
                         .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.35), value: showBanner)
                 }
 
                 HStack {
-                    Button("Cancel") { dismiss() }
-                        .foregroundColor(.white)
-                        .padding()
-                        .background(Color.black.opacity(0.5))
-                        .cornerRadius(8)
+                    Button(action: { dismiss() }) {
+                        Text("Cancel")
+                            .foregroundColor(.white)
+                            .padding()
+                            .frame(maxWidth: 140)
+                            .background(Color.black.opacity(0.5))
+                            .cornerRadius(10)
+                    }
 
                     Spacer()
 
-                    Button(isSaving ? "Saving…" : "Save Measurement") {
+                    Button(action: {
                         Task { await saveMeasurement() }
+                    }) {
+                        Text(isSaving ? "Saving…" : "Save Measurement")
+                            .foregroundColor(.white)
+                            .padding()
+                            .frame(maxWidth: 200)
+                            .background(isSaving ? Color.gray : Color.purple.opacity(0.9))
+                            .cornerRadius(10)
                     }
                     .disabled(isSaving)
-                    .foregroundColor(.white)
-                    .padding()
-                    .background(Color.purple.opacity(0.9))
-                    .cornerRadius(8)
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 25)
@@ -83,13 +94,17 @@ struct ARMeasureView: View {
         guard !isSaving else { return }
         isSaving = true
         statusMessage = "Saving measurement…"
+        showBanner = true
 
-        guard let userId = UserDefaults.standard.string(forKey: "user_id") else {
-            statusMessage = "Missing user ID"
+        // ✅ Retrieve user_id safely
+        guard let userId = UserDefaults.standard.string(forKey: "user_id"),
+              !userId.isEmpty else {
+            await showTempBanner("❌ Missing user ID — please sign in again")
             isSaving = false
             return
         }
 
+        // ✅ Construct request body
         let body: [String: Any] = [
             "user_id": userId,
             "roi": [
@@ -101,20 +116,20 @@ struct ARMeasureView: View {
         ]
 
         guard let jsonData = try? JSONSerialization.data(withJSONObject: body) else {
-            statusMessage = "Encoding failed"
+            await showTempBanner("⚠️ Encoding failed")
             isSaving = false
             return
         }
 
         guard let url = URL(string: "https://api.diygenieapp.com/api/projects/\(projectId)/scans/\(scanId)/measure") else {
-            statusMessage = "Invalid URL"
+            await showTempBanner("⚠️ Invalid API URL")
             isSaving = false
             return
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = jsonData
 
         do {
@@ -122,20 +137,29 @@ struct ARMeasureView: View {
             if let http = response as? HTTPURLResponse, http.statusCode == 200 {
                 if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    json["ok"] as? Bool == true {
-                    statusMessage = "Measurement saved ✅"
-                    try? await Task.sleep(nanoseconds: 1_200_000_000)
+                    await showTempBanner("✅ Measurement saved successfully")
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
                     dismiss()
+                    return
                 } else {
-                    statusMessage = "Server returned unexpected data"
+                    await showTempBanner("⚠️ Server returned unexpected data")
                 }
             } else {
-                statusMessage = "Server error"
+                await showTempBanner("❌ Server error (\((response as? HTTPURLResponse)?.statusCode ?? 0))")
             }
         } catch {
-            statusMessage = "Network error: \(error.localizedDescription)"
+            await showTempBanner("🌐 Network error: \(error.localizedDescription)")
         }
 
         isSaving = false
+    }
+
+    @MainActor
+    private func showTempBanner(_ message: String) async {
+        statusMessage = message
+        withAnimation { showBanner = true }
+        try? await Task.sleep(nanoseconds: 1_800_000_000)
+        withAnimation { showBanner = false }
     }
 }
 
