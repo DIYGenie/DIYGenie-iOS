@@ -13,7 +13,7 @@ struct ARMeasureView: View {
     let scanId: String
     var onComplete: ((Double, Double) -> Void)? = nil
     // ..
-
+    @Environment(\.dismiss) private var dismiss
     @State private var roi: CGRect = CGRect(x: 0.3, y: 0.4, width: 0.4, height: 0.25)
     @State private var isSaving = false
     @State private var statusMessage: String?
