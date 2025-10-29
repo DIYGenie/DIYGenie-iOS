@@ -17,22 +17,20 @@ struct SupabaseUploader {
         client = SupabaseClient(supabaseURL: supabaseUrl, supabaseKey: supabaseKey)
     }
 
-    /// Uploads a UIImage to Supabase Storage and returns the public URL
     func uploadImage(_ image: UIImage, toFolder folder: String) async throws -> String {
-        // ✅ Corrected error case — must be .cannotEncodeContentData
         guard let imageData = image.jpegData(compressionQuality: 0.8) else {
-            throw URLError(.cannotEncodeContentData)
+            throw URLError(.dataNotAllowed)
         }
 
         let fileName = "photo-\(UUID().uuidString).jpg"
         let filePath = "\(folder)/\(fileName)"
 
-        // ✅ Remove the deprecated contentType param; Supabase infers it automatically
+        // ✅ Correct Supabase v2.5.1 upload
         _ = try await client.storage
             .from("uploads")
-            .upload(path: filePath, file: imageData)
+            .upload(filePath, data: imageData)
 
-        // ✅ Return the public URL (throws)
+        // ✅ Get public URL
         let publicURL = try client.storage
             .from("uploads")
             .getPublicURL(path: filePath)
