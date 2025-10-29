@@ -1,181 +1,374 @@
 import SwiftUI
 import PhotosUI
-import Supabase
 
-@available(iOS 15.0, *)
+// MARK: - UI enums
+enum Budget: String, CaseIterable, Identifiable {
+    case one = "$", two = "$$", three = "$$$"
+    var id: String { rawValue }
+    var label: String { rawValue }
+}
+
+enum Skill: String, CaseIterable, Identifiable {
+    case beginner, intermediate, advanced
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .beginner: return "Beginner"
+        case .intermediate: return "Intermediate"
+        case .advanced: return "Advanced"
+        }
+    }
+}
+
+// MARK: - Color / Style
+extension Color {
+    static let geniePurpleDarkTop = Color(red: 28/255, green: 26/255, blue: 40/255)     // near-black violet
+    static let geniePurpleDarkBottom = Color(red: 58/255, green: 35/255, blue: 110/255)  // deep purple
+    static let genieAccent = Color(red: 146/255, green: 86/255, blue: 255/255)           // darker purple (less pink)
+    static let genieAccent2 = Color(red: 115/255, green: 73/255, blue: 224/255)
+    static let actionGreen = Color(red: 52/255, green: 199/255, blue: 89/255)            // Apple green
+}
+
 struct NewProjectView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var projectName = ""
-    @State private var projectDescription = ""
+
+    // Form
+    @State private var name: String = ""
+    @State private var goal: String = ""
+    @State private var budget: Budget = .two
+    @State private var skill: Skill = .intermediate
+
+    // Media + measure
     @State private var showingImagePicker = false
     @State private var selectedImage: UIImage?
     @State private var showingMeasureView = false
-    @State private var measuredWidth: Double?
-    @State private var measuredHeight: Double?
-    @State private var isUploading = false
+    @State private var measuredWidthInches: Double = 0
+    @State private var measuredHeightInches: Double = 0
+
+    // UI
     @State private var showingAlert = false
     @State private var alertMessage = ""
+    @FocusState private var isFocused: Bool
+
+    // Flags for pipelines
+    @State private var isSaving: Bool = false
 
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [Color.black, Color(.systemGray6)],
+                colors: [.geniePurpleDarkTop, .geniePurpleDarkBottom],
                 startPoint: .top, endPoint: .bottom
             )
             .ignoresSafeArea()
 
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(alignment: .leading, spacing: 16) {
+
+                    // Back
+                    HStack {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.9))
+                        }
+                        Spacer()
+                    }
+                    .padding(.top, 8)
+
+                    // Title
                     Text("New Project")
-                        .font(.largeTitle.bold())
+                        .font(.system(size: 34, weight: .bold))
                         .foregroundColor(.white)
-                        .padding(.top, 30)
+                        .padding(.top, 4)
 
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Project Name")
-                            .font(.headline)
-                            .foregroundColor(.white.opacity(0.8))
-                        TextField("e.g. Floating Shelves", text: $projectName)
-                            .padding()
-                            .background(Color.white)
-                            .cornerRadius(10)
+                    Text("Plan your next project like a pro 🔧")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundColor(.white.opacity(0.7))
 
-                        Text("Goal / Description")
-                            .font(.headline)
-                            .foregroundColor(.white.opacity(0.8))
-                        TextField("Describe what you’d like to build...", text: $projectDescription, axis: .vertical)
-                            .lineLimit(3...6)
-                            .padding()
-                            .background(Color.white)
-                            .cornerRadius(10)
+                    // Project Name
+                    card {
+                        VStack(alignment: .leading, spacing: 8) {
+                            label("Project Name")
+                            TextField("e.g. Floating Shelves", text: $name)
+                                .textInputAutocapitalization(.words)
+                                .submitLabel(.done)
+                                .focused($isFocused)
+                                .onSubmit { isFocused = false }
+                                .padding(12)
+                                .background(.black.opacity(0.2))
+                                .cornerRadius(12)
+                                .foregroundColor(.white)
+                        }
                     }
-                    .padding(.horizontal)
 
-                    if let image = selectedImage {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFit()
-                            .cornerRadius(12)
-                            .padding(.horizontal)
-                            .overlay(
-                                VStack {
-                                    Spacer()
-                                    if let w = measuredWidth, let h = measuredHeight {
-                                        Text(String(format: "Measured: %.1f\" × %.1f\"", w, h))
-                                            .font(.caption.bold())
-                                            .padding(6)
-                                            .background(Color.black.opacity(0.6))
-                                            .cornerRadius(8)
-                                            .foregroundColor(.white)
-                                            .padding(8)
-                                    }
+                    // Description
+                    card {
+                        VStack(alignment: .leading, spacing: 8) {
+                            label("Goal / Description")
+                            ZStack(alignment: .topLeading) {
+                                TextEditor(text: $goal)
+                                    .frame(minHeight: 120)
+                                    .padding(8)
+                                    .background(.black.opacity(0.2))
+                                    .cornerRadius(12)
+                                    .foregroundColor(.white)
+                                    .focused($isFocused)
+
+                                if goal.isEmpty {
+                                    Text("Describe what you'd like to build…")
+                                        .foregroundColor(.white.opacity(0.35))
+                                        .padding(.top, 16)
+                                        .padding(.leading, 14)
                                 }
-                            )
+                            }
+                            Text("\(max(0, 10 - goal.count)) more characters to enable actions")
+                                .font(.footnote)
+                                .foregroundColor(.white.opacity(0.45))
+                                .opacity(goal.count < 10 ? 1 : 0)
+                        }
                     }
 
-                    Button {
+                    // Budget
+                    card {
+                        VStack(alignment: .leading, spacing: 10) {
+                            label("Budget")
+                            Picker("", selection: $budget) {
+                                ForEach(Budget.allCases) { tier in
+                                    Text(tier.label).tag(tier)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .tint(.white)
+                            Text("Choose your price range.")
+                                .font(.footnote)
+                                .foregroundColor(.white.opacity(0.45))
+                        }
+                    }
+
+                    // Skill
+                    card {
+                        VStack(alignment: .leading, spacing: 10) {
+                            label("Skill Level")
+                            Picker("", selection: $skill) {
+                                ForEach(Skill.allCases) { lvl in
+                                    Text(lvl.label).tag(lvl)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .tint(.white)
+                            Text(skillHelpText)
+                                .font(.footnote)
+                                .foregroundColor(.white.opacity(0.45))
+                        }
+                    }
+
+                    // Capture Button (photo + measure)
+                    Button(action: {
+                        isFocused = false
                         showingImagePicker = true
-                    } label: {
-                        Label("Take Photo & Measure Room", systemImage: "camera.viewfinder")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .foregroundColor(.white)
-                            .background(Color(red: 113/255, green: 66/255, blue: 255/255))
-                            .cornerRadius(12)
-                            .padding(.horizontal)
+                    }) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "viewfinder")
+                                .font(.system(size: 20, weight: .semibold))
+                            Text(selectedImage == nil
+                                 ? "Take Photo & Measure Room"
+                                 : "Retake Photo & Re-Measure")
+                                .font(.system(size: 18, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(
+                            LinearGradient(colors: [.genieAccent2, .genieAccent],
+                                           startPoint: .leading, endPoint: .trailing)
+                        )
+                        .foregroundColor(.white)
+                        .cornerRadius(16)
+                        .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 8)
+                    }
+                    .padding(.top, 4)
+
+                    // Thumbnail + dims (if available)
+                    if let img = selectedImage, (measuredWidthInches > 0 && measuredHeightInches > 0) {
+                        HStack(spacing: 12) {
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 64, height: 64)
+                                .clipped()
+                                .cornerRadius(12)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Room photo saved")
+                                    .foregroundColor(.white)
+                                    .font(.subheadline).bold()
+                                Text("Measured: \(formatted(measuredWidthInches))\" × \(formatted(measuredHeightInches))\"")
+                                    .foregroundColor(.white.opacity(0.8))
+                                    .font(.footnote)
+                            }
+                            Spacer()
+                        }
+                        .padding(.top, 4)
                     }
 
-                    if isUploading {
-                        ProgressView("Uploading...")
-                            .tint(Color.purple)
+                    // Action CTAs (only after photo + measurement exist)
+                    if canShowActions {
+                        VStack(spacing: 12) {
+                            // Pro/Casual: Plan + Preview
+                            Button {
+                                runPipeline(wantsPreview: true)
+                            } label: {
+                                Text("Generate AI Plan + Preview")
+                                    .font(.system(size: 18, weight: .bold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16)
+                                    .background(
+                                        LinearGradient(colors: [.genieAccent2, .genieAccent],
+                                                       startPoint: .leading, endPoint: .trailing)
+                                    )
+                                    .foregroundColor(.white)
+                                    .cornerRadius(16)
+                                    .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 8)
+                            }
+                            .disabled(isSaving)
+
+                            // Free: Plan only
+                            Button {
+                                runPipeline(wantsPreview: false)
+                            } label: {
+                                Text("Create Plan Only (No Preview)")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 15)
+                                    .background(Color.white.opacity(0.08))
+                                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.18), lineWidth: 1))
+                                    .foregroundColor(.white)
+                                    .cornerRadius(14)
+                            }
+                            .disabled(isSaving)
+                        }
+                        .padding(.top, 8)
                     }
 
-                    Button(action: saveProject) {
-                        Label("Save Project", systemImage: "tray.and.arrow.down.fill")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .foregroundColor(.white)
-                            .background(Color.green)
-                            .cornerRadius(12)
-                            .padding(.horizontal)
-                    }
-                    .disabled(projectName.isEmpty || projectDescription.count < 5 || selectedImage == nil)
-                    .opacity((projectName.isEmpty || projectDescription.count < 5 || selectedImage == nil) ? 0.6 : 1)
+                    Spacer(minLength: 40)
                 }
+                .padding(.horizontal, 20)
                 .padding(.bottom, 40)
             }
+            .onTapGesture { isFocused = false } // dismiss keyboard
         }
+        // Image picker → after select, open measurement
         .sheet(isPresented: $showingImagePicker) {
             ImagePicker { image in
-                selectedImage = image
-                showingImagePicker = false
-                // Auto open measure view
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    showingMeasureView = true
+                if let image = image {
+                    self.selectedImage = image
+                    // auto-open measurement overlay after slight delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        self.showingMeasureView = true
+                    }
                 }
             }
+            .preferredColorScheme(.dark)
         }
+        // Rect measurement overlay
         .sheet(isPresented: $showingMeasureView) {
-            MeasureOverlayView { width, height in
-                measuredWidth = width
-                measuredHeight = height
-                showingMeasureView = false
+            // IMPORTANT: your MeasureOverlayView must expose `init(onComplete: @escaping (Double, Double)->Void)`
+            MeasureOverlayView { widthIn, heightIn in
+                self.measuredWidthInches = max(0, widthIn)
+                self.measuredHeightInches = max(0, heightIn)
+                self.showingMeasureView = false
             }
+            .preferredColorScheme(.dark)
         }
         .alert("Upload Status", isPresented: $showingAlert) {
-            Button("OK", role: .cancel) { dismiss() }
+            Button("OK", role: .cancel) { }
         } message: {
             Text(alertMessage)
         }
     }
 
-    private func saveProject() {
-        guard let image = selectedImage else { return }
-        isUploading = true
+    // MARK: - Derived State
+    private var canShowActions: Bool {
+        let baseOk = !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                     goal.trimmingCharacters(in: .whitespacesAndNewlines).count >= 10
+        let mediaOk = (selectedImage != nil) && measuredWidthInches > 0 && measuredHeightInches > 0
+        return baseOk && mediaOk
+    }
+
+    private var skillHelpText: String {
+        switch skill {
+        case .beginner: return "Simple tools and steps."
+        case .intermediate: return "Moderate tools and precision."
+        case .advanced: return "Complex builds and advanced tools."
+        }
+    }
+
+    // MARK: - Actions
+    private func runPipeline(wantsPreview: Bool) {
+        guard canShowActions, let image = selectedImage else { return }
+        isSaving = true
 
         Task {
             do {
-                guard let imageData = image.jpegData(compressionQuality: 0.8) else { return }
-                let filename = "uploads/\(UUID().uuidString).jpg"
+                // 1) Upload image to Supabase (uploads bucket)
+                //    Adjust to your existing uploader signature if needed.
+                //    Expecting it returns a public path or URL.
+                let uploader = SupabaseUploader()
+                let path = try await uploader.uploadImage(image, toFolder: "uploads")
 
-                // ✅ Updated Supabase Swift API call
-                try await client.storage.from("uploads").upload(filename, data: imageData)
+                // 2) Create project via your backend service
+                //    Adjust to your ProjectsService as needed.
+                let projectId = try await ProjectsService.shared.createProject(
+                    name: name,
+                    goal: goal,
+                    budget: budget.label,
+                    skillLevel: skill.label,
+                    imagePath: path,
+                    measuredWidthInches: measuredWidthInches,
+                    measuredHeightInches: measuredHeightInches,
+                    wantsPreview: wantsPreview
+                )
 
-                alertMessage = "✅ Project saved with measurements and photo!"
+                // 3) Navigate to Project Details
+                //    If you use a NavigationPath or tab routing, call it here.
+                //    For now, just show a toast and pop; your list should refresh.
+                alertMessage = "Project created!"
+                showingAlert = true
+                isSaving = false
+                dismiss()
+
+                // TODO: If you prefer a push, replace dismiss() with a route
+                // to ProjectDetailsView(projectId: projectId)
+
             } catch {
-                alertMessage = "Upload failed: \(error.localizedDescription)"
+                isSaving = false
+                alertMessage = "Failed to create project: \(error.localizedDescription)"
+                showingAlert = true
             }
-
-            isUploading = false
-            showingAlert = true
         }
     }
-}
 
-// MARK: - Simple Image Picker
-struct ImagePicker: UIViewControllerRepresentable {
-    var onPick: (UIImage) -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.delegate = context.coordinator
-        picker.sourceType = .camera
-        return picker
+    // MARK: - Helpers
+    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack { content() }
+            .padding(16)
+            .background(Color.white.opacity(0.07))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.16), lineWidth: 1))
+            .cornerRadius(16)
     }
 
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    private func label(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundColor(.white.opacity(0.9))
+    }
 
-    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        var parent: ImagePicker
-        init(_ parent: ImagePicker) { self.parent = parent }
-
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
-            if let image = info[.originalImage] as? UIImage {
-                parent.onPick(image)
-            }
-            picker.dismiss(animated: true)
-        }
+    private func formatted(_ inches: Double) -> String {
+        let n = NSNumber(value: inches)
+        let f = NumberFormatter()
+        f.maximumFractionDigits = 1
+        f.minimumFractionDigits = 0
+        return f.string(from: n) ?? String(format: "%.1f", inches)
     }
 }
