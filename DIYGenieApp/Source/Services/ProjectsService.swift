@@ -70,3 +70,28 @@ final class ProjectsService {
         return try JSONDecoder().decode([Project].self, from: response.data)
     }
 }
+// MARK: - Fetch Single Plan
+struct PlanResponse: Codable {
+    let id: String
+    let project_id: String?
+    let tools: [String]?
+    let materials: [String]?
+    let steps: [String]?
+    let estimatedCost: Double?
+    let created_at: String?
+}
+
+extension ProjectsService {
+    func fetchPlan(projectId: String) async throws -> PlanResponse {
+        // Adjust endpoint if using your webhook API instead of Supabase directly:
+        // Example: https://api.diygenieapp.com/api/plans/:id
+        let response = try await client
+            .from("plans")
+            .select()
+            .eq("project_id", value: projectId)
+            .single()
+            .execute()
+
+        return try JSONDecoder().decode(PlanResponse.self, from: response.data)
+    }
+}
