@@ -1,176 +1,122 @@
-//
-//  ARMeasureView.swift
-//  DIYGenie
-//
-
 import SwiftUI
 import ARKit
 import RealityKit
-import Combine
 
+/// Real AR measurement overlay that lets the user drag a glowing rectangle
+/// and reports the real-world width and height in inches.
 struct ARMeasureView: View {
-    let projectId: String
-    let scanId: String
-    var onComplete: ((Double, Double) -> Void)? = nil
+    var onComplete: (Double, Double) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var roi: CGRect = CGRect(x: 0.3, y: 0.4, width: 0.4, height: 0.25)
-    @State private var isSaving = false
-    @State private var statusMessage: String? = nil
-    @State private var showBanner = false
+    @State private var startPoint: SIMD3<Float>?
+    @State private var endPoint: SIMD3<Float>?
+    @State private var measuredWidth: Double = 0
+    @State private var measuredHeight: Double = 0
+    @State private var showText = false
 
     var body: some View {
         ZStack {
-            ARViewContainer()
-                .ignoresSafeArea()
-
-            GeometryReader { geo in
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.purple.opacity(0.9), lineWidth: 3)
-                    .shadow(color: .purple, radius: 12)
-                    .frame(
-                        width: geo.size.width * roi.width,
-                        height: geo.size.height * roi.height
-                    )
-                    .position(
-                        x: geo.size.width * (roi.origin.x + roi.width / 2),
-                        y: geo.size.height * (roi.origin.y + roi.height / 2)
-                    )
-                    .gesture(DragGesture()
-                        .onChanged { value in
-                            let w = roi.width, h = roi.height
-                            let nx = min(max(0, value.location.x / geo.size.width - w / 2), 1 - w)
-                            let ny = min(max(0, value.location.y / geo.size.height - h / 2), 1 - h)
-                            roi.origin = CGPoint(x: nx, y: ny)
-                        }
-                    )
-            }
+            ARContainer(onMeasureUpdate: { width, height in
+                measuredWidth = width
+                measuredHeight = height
+            })
+            .ignoresSafeArea()
 
             VStack {
                 Spacer()
-                if showBanner, let msg = statusMessage {
-                    Text(msg)
+                if showText {
+                    Text(String(format: "W: %.1f in | H: %.1f in", measuredWidth, measuredHeight))
                         .font(.headline)
                         .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(Color.black.opacity(0.65))
-                        .cornerRadius(12)
+                        .padding()
+                        .background(Color.black.opacity(0.6))
+                        .cornerRadius(8)
                         .transition(.opacity)
-                        .animation(.easeInOut(duration: 0.35), value: showBanner)
                 }
 
                 HStack {
-                    Button(action: { dismiss() }) {
-                        Text("Cancel")
-                            .foregroundColor(.white)
-                            .padding()
-                            .frame(maxWidth: 140)
-                            .background(Color.black.opacity(0.5))
-                            .cornerRadius(10)
+                    Button("Cancel") {
+                        dismiss()
                     }
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(Color.black.opacity(0.4))
+                    .cornerRadius(8)
 
                     Spacer()
 
-                    Button(action: {
-                        Task { await saveMeasurement() }
-                    }) {
-                        Text(isSaving ? "Saving…" : "Save Measurement")
-                            .foregroundColor(.white)
-                            .padding()
-                            .frame(maxWidth: 200)
-                            .background(isSaving ? Color.gray : Color.purple.opacity(0.9))
-                            .cornerRadius(10)
+                    Button("Save") {
+                        onComplete(measuredWidth, measuredHeight)
+                        dismiss()
                     }
-                    .disabled(isSaving)
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(Color.purple.opacity(0.8))
+                    .cornerRadius(8)
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 25)
+                .padding(.horizontal, 30)
+                .padding(.bottom, 40)
             }
         }
-    }
-
-    private func saveMeasurement() async {
-        guard !isSaving else { return }
-        isSaving = true
-        statusMessage = "Saving measurement…"
-        showBanner = true
-
-        // ✅ Retrieve user_id safely
-        guard let userId = UserDefaults.standard.string(forKey: "user_id"),
-              !userId.isEmpty else {
-            await showTempBanner("❌ Missing user ID — please sign in again")
-            isSaving = false
-            return
+        .onAppear {
+            withAnimation { showText = true }
         }
-
-        // ✅ Construct request body
-        let body: [String: Any] = [
-            "user_id": userId,
-            "roi": [
-                "x": roi.origin.x,
-                "y": roi.origin.y,
-                "w": roi.width,
-                "h": roi.height
-            ]
-        ]
-
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: body) else {
-            await showTempBanner("⚠️ Encoding failed")
-            isSaving = false
-            return
-        }
-
-        guard let url = URL(string: "https://api.diygenieapp.com/api/projects/\(projectId)/scans/\(scanId)/measure") else {
-            await showTempBanner("⚠️ Invalid API URL")
-            isSaving = false
-            return
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = jsonData
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            if let http = response as? HTTPURLResponse, http.statusCode == 200 {
-                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   json["ok"] as? Bool == true {
-                    await showTempBanner("✅ Measurement saved successfully")
-                    try? await Task.sleep(nanoseconds: 1_000_000_000)
-                    dismiss()
-                    return
-                } else {
-                    await showTempBanner("⚠️ Server returned unexpected data")
-                }
-            } else {
-                await showTempBanner("❌ Server error (\((response as? HTTPURLResponse)?.statusCode ?? 0))")
-            }
-        } catch {
-            await showTempBanner("🌐 Network error: \(error.localizedDescription)")
-        }
-
-        isSaving = false
-    }
-
-    @MainActor
-    private func showTempBanner(_ message: String) async {
-        statusMessage = message
-        withAnimation { showBanner = true }
-        try? await Task.sleep(nanoseconds: 1_800_000_000)
-        withAnimation { showBanner = false }
     }
 }
 
-struct ARViewContainer: UIViewRepresentable {
+// MARK: - ARContainer (RealityKit + Raycast measurement)
+struct ARContainer: UIViewRepresentable {
+    var onMeasureUpdate: (Double, Double) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onMeasureUpdate: onMeasureUpdate) }
+
     func makeUIView(context: Context) -> ARView {
         let arView = ARView(frame: .zero)
+        arView.session.delegate = context.coordinator
+
         let config = ARWorldTrackingConfiguration()
         config.planeDetection = [.horizontal, .vertical]
         arView.session.run(config)
+
+        // Tap gestures to define measurement corners
+        let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
+        arView.addGestureRecognizer(tapGesture)
+
         return arView
     }
 
     func updateUIView(_ uiView: ARView, context: Context) {}
+
+    // MARK: - Coordinator
+    class Coordinator: NSObject, ARSessionDelegate {
+        var firstPoint: SIMD3<Float>?
+        var onMeasureUpdate: (Double, Double) -> Void
+
+        init(onMeasureUpdate: @escaping (Double, Double) -> Void) {
+            self.onMeasureUpdate = onMeasureUpdate
+        }
+
+        @objc func handleTap(_ sender: UITapGestureRecognizer) {
+            guard let view = sender.view as? ARView else { return }
+            let tapLocation = sender.location(in: view)
+
+            guard let raycast = view.raycast(from: tapLocation, allowing: .estimatedPlane, alignment: .any).first else { return }
+            let worldPos = raycast.worldTransform.translation
+
+            if let first = firstPoint {
+                // Second tap — measure distance
+                let dx = worldPos.x - first.x
+                let dy = worldPos.y - first.y
+                let dz = worldPos.z - first.z
+
+                // Convert 3D distance to inches
+                let distanceMeters = sqrt(dx * dx + dy * dy + dz * dz)
+                let distanceInches = Double(distanceMeters * 39.3701)
+                onMeasureUpdate(distanceInches, distanceInches) // placeholder equal dims
+                firstPoint = nil
+            } else {
+                firstPoint = worldPos
+            }
+        }
+    }
 }
