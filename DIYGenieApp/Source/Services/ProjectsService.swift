@@ -4,94 +4,115 @@
 //
 
 import Foundation
-import Supabase
 
+// MARK: - ProjectsService
 final class ProjectsService {
-    static let shared = ProjectsService(userId: "temp") // Replace with real user ID dynamically if needed
-
-    private let client: SupabaseClient
+    private let baseURL = URL(string: "https://api.diygenieapp.com")!
     private let userId: String
+    private let session: URLSession
 
-    // MARK: - Init
-    init(userId: String) {
+    init(userId: String, session: URLSession = .shared) {
         self.userId = userId
-        self.client = SupabaseClient(
-            supabaseURL: URL(string: SupabaseConfig.url)!,
-            supabaseKey: SupabaseConfig.key
-        )
+        self.session = session
     }
 
     // MARK: - Create Project
-    struct NewProject: Encodable {
-        let name: String
-        let goal: String
-        let budget: String
-        let skill_level: String
-        let input_image_url: String
-        let user_id: String
-    }
+    func createProject(name: String, goal: String, budget: String, skillLevel: String) async throws -> Project {
+        let url = baseURL.appendingPathComponent("/api/projects")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
 
-    func createProject(
-        name: String,
-        goal: String,
-        budget: String,
-        skillLevel: String,
-        imagePath: String
-    ) async throws -> String {
-        let newProject = NewProject(
-            name: name,
-            goal: goal,
-            budget: budget,
-            skill_level: skillLevel,
-            input_image_url: imagePath,
-            user_id: userId
-        )
+        let payload: [String: Any] = [
+            "user_id": userId,
+            "name": name,
+            "goal": goal,
+            "budget": budget,
+            "skill_level": skillLevel
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
-        let response = try await client
-            .from("projects")
-            .insert(newProject)
-            .select("id")
-            .single()
-            .execute()
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
 
-        struct InsertResponse: Codable { let id: String }
-        let decoded = try JSONDecoder().decode(InsertResponse.self, from: response.data)
-        return decoded.id
+        struct CreateResponse: Codable { let ok: Bool; let item: Project }
+        let decoded = try JSONDecoder().decode(CreateResponse.self, from: data)
+        return decoded.item
     }
 
     // MARK: - Fetch All Projects
     func fetchProjects() async throws -> [Project] {
-        let response = try await client
-            .from("projects")
-            .select()
-            .eq("user_id", value: userId)
-            .execute()
+        var comps = URLComponents(url: baseURL.appendingPathComponent("/api/projects"), resolvingAgainstBaseURL: false)!
+        comps.queryItems = [URLQueryItem(name: "user_id", value: userId)]
+        guard let url = comps.url else { throw URLError(.badURL) }
 
-        return try JSONDecoder().decode([Project].self, from: response.data)
+        let (data, response) = try await session.data(from: url)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+
+        struct ProjectsResponse: Codable { let ok: Bool; let items: [Project] }
+        let decoded = try JSONDecoder().decode(ProjectsResponse.self, from: data)
+        return decoded.items
     }
-}
-// MARK: - Fetch Single Plan
-struct PlanResponse: Codable {
-    let id: String
-    let project_id: String?
-    let tools: [String]?
-    let materials: [String]?
-    let steps: [String]?
-    let estimatedCost: Double?
-    let created_at: String?
-}
 
-extension ProjectsService {
+    // MARK: - Fetch Plan
     func fetchPlan(projectId: String) async throws -> PlanResponse {
-        // Adjust endpoint if using your webhook API instead of Supabase directly:
-        // Example: https://api.diygenieapp.com/api/plans/:id
-        let response = try await client
-            .from("plans")
-            .select()
-            .eq("project_id", value: projectId)
-            .single()
-            .execute()
+        let url = baseURL.appendingPathComponent("/api/projects/\(projectId)/plan")
+        let (data, response) = try await session.data(from: url)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode(PlanResponse.self, from: data)
+    }
 
-        return try JSONDecoder().decode(PlanResponse.self, from: response.data)
+    // MARK: - Upload AR Scan (width/height/depth)
+    func uploadRoomScan(projectId: String, width: Double, height: Double, depth: Double) async throws {
+        let url = baseURL.appendingPathComponent("/api/projects/\(projectId)/scan")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let payload: [String: Any] = [
+            "roomplan": ["width": width, "height": height, "depth": depth, "objects": []]
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+    }
+
+    // MARK: - Post Measurement ROI
+    func uploadMeasurement(projectId: String, scanId: String, roi: CGRect) async throws {
+        let url = baseURL.appendingPathComponent("/api/projects/\(projectId)/scans/\(scanId)/measure")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "user_id": userId,
+            "roi": ["x": roi.origin.x, "y": roi.origin.y, "w": roi.size.width, "h": roi.size.height]
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+    }
+
+    // MARK: - Delete Project
+    func deleteProject(projectId: String) async throws {
+        let url = baseURL.appendingPathComponent("/api/projects/\(projectId)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
     }
 }
