@@ -7,11 +7,13 @@ import Foundation
 import Supabase
 
 final class ProjectsService {
+    static let shared = ProjectsService(userId: "temp") // Replace with real user ID dynamically if needed
+
     private let client: SupabaseClient
     private let userId: String
 
     // MARK: - Init
-    public init(userId: String) {
+    init(userId: String) {
         self.userId = userId
         self.client = SupabaseClient(
             supabaseURL: URL(string: SupabaseConfig.url)!,
@@ -19,40 +21,52 @@ final class ProjectsService {
         )
     }
 
-    // MARK: - Fetch all projects
+    // MARK: - Create Project
+    struct NewProject: Encodable {
+        let name: String
+        let goal: String
+        let budget: String
+        let skill_level: String
+        let input_image_url: String
+        let user_id: String
+    }
+
+    func createProject(
+        name: String,
+        goal: String,
+        budget: String,
+        skillLevel: String,
+        imagePath: String
+    ) async throws -> String {
+        let newProject = NewProject(
+            name: name,
+            goal: goal,
+            budget: budget,
+            skill_level: skillLevel,
+            input_image_url: imagePath,
+            user_id: userId
+        )
+
+        let response = try await client
+            .from("projects")
+            .insert(newProject)
+            .select("id")
+            .single()
+            .execute()
+
+        struct InsertResponse: Codable { let id: String }
+        let decoded = try JSONDecoder().decode(InsertResponse.self, from: response.data)
+        return decoded.id
+    }
+
+    // MARK: - Fetch All Projects
     func fetchProjects() async throws -> [Project] {
-        let response: [Project] = try await client
+        let response = try await client
             .from("projects")
             .select()
             .eq("user_id", value: userId)
             .execute()
-            .value
 
-        return response
-    }
-
-    // MARK: - Update project
-    func updateProject(_ project: Project) async throws {
-        _ = try await client
-            .from("projects")
-            .update([
-                "preview_url": project.previewURL ?? "",
-                "input_image_url": project.inputImageURL ?? "",
-                "output_image_url": project.outputImageURL ?? ""
-            ])
-            .eq("id", value: project.id)
-            .execute()
-    }
-
-    // MARK: - Fetch build plan (from DIY Genie backend)
-    func fetchPlan(projectId: String) async throws -> PlanResponse {
-        guard let url = URL(string: "\(SupabaseConfig.baseURL)/api/plan/\(projectId)") else {
-            throw URLError(.badURL)
-        }
-        let (data, response) = try await URLSession.shared.data(from: url)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw URLError(.badServerResponse)
-        }
-        return try JSONDecoder().decode(PlanResponse.self, from: data)
+        return try JSONDecoder().decode([Project].self, from: response.data)
     }
 }
