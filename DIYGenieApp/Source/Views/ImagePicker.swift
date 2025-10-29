@@ -4,49 +4,54 @@
 //
 
 import SwiftUI
-import PhotosUI
+import UIKit
 
 struct ImagePicker: UIViewControllerRepresentable {
+    enum SourceType {
+        case camera
+        case photoLibrary
+
+        var uiKitType: UIImagePickerController.SourceType {
+            switch self {
+            case .camera: return .camera
+            case .photoLibrary: return .photoLibrary
+            }
+        }
+    }
+
+    var sourceType: SourceType
     var onImagePicked: (UIImage?) -> Void
 
-    func makeUIViewController(context: Context) -> PHPickerViewController {
-        var config = PHPickerConfiguration()
-        config.filter = .images
-        let picker = PHPickerViewController(configuration: config)
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
         picker.delegate = context.coordinator
+        picker.sourceType = sourceType.uiKitType
+        picker.allowsEditing = false
         return picker
     }
 
-    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
 
-    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
-        private let parent: ImagePicker
+    class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let parent: ImagePicker
 
         init(_ parent: ImagePicker) {
             self.parent = parent
         }
 
-        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
             picker.dismiss(animated: true)
+            let image = info[.originalImage] as? UIImage
+            parent.onImagePicked(image)
+        }
 
-            guard let provider = results.first?.itemProvider else {
-                parent.onImagePicked(nil)
-                return
-            }
-
-            if provider.canLoadObject(ofClass: UIImage.self) {
-                provider.loadObject(ofClass: UIImage.self) { image, _ in
-                    DispatchQueue.main.async {
-                        self.parent.onImagePicked(image as? UIImage)
-                    }
-                }
-            } else {
-                parent.onImagePicked(nil)
-            }
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true)
+            parent.onImagePicked(nil)
         }
     }
 }

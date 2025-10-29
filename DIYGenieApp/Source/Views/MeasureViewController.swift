@@ -1,3 +1,4 @@
+
 import Foundation
 import UIKit
 import SwiftUI
@@ -14,11 +15,17 @@ final class MeasureViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        let measureView = ARMeasureView { [weak self] width, height in
-            self?.onComplete?(width, height)
-            self?.dismiss(animated: true)
-        }
+        // ✅ Create ARMeasureView with placeholders (safe defaults)
+        let measureView = ARMeasureView(
+            projectId: "temp-project-id",
+            scanId: "temp-scan-id",
+            onComplete: { [weak self] width, height in
+                self?.onComplete?(width, height)
+                self?.dismiss(animated: true)
+            }
+        )
 
+        // ✅ Host it inside UIKit
         let hosting = UIHostingController(rootView: measureView)
         addChild(hosting)
         hosting.view.frame = view.bounds
