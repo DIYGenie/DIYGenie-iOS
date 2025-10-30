@@ -6,172 +6,183 @@
 import SwiftUI
 
 struct HomeView: View {
-    @State private var currentSlide = 0
-    private let slides = ["room1", "room2", "room3"] // Replace with your real image assets
-    
+    @Environment(\.colorScheme) var colorScheme
+    @State private var recentProjects: [Project] = []
+
     var body: some View {
-        NavigationView {
-            ZStack {
-                LinearGradient(
-                    colors: [
-                        Color(hex: "#5B1FFF").opacity(0.15),
-                        Color(hex: "#8C4BFF").opacity(0.10),
-                        Color.white
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 28) {
+
+                // MARK: - Header
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Welcome back, Tye")
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                    Text("Ready to start your next DIY project?")
+                        .font(.system(size: 16))
+                        .foregroundColor(.white.opacity(0.7))
+                }
+                .padding(.horizontal)
+
+                // MARK: - Hero Section
+                VStack(spacing: 14) {
+                    Text("Bring your ideas to life")
+                        .font(.title3.bold())
+                        .foregroundColor(.white)
+
+                    Text("Describe your project or start with a template → Take a photo of your space → Get your custom step-by-step plan.")
+                        .font(.system(size: 14))
+                        .foregroundColor(.white.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+
+                    Button(action: {
+                        // Navigate to NewProjectView
+                        // Example: RootTabsView().selectedTab = .new
+                    }) {
+                        Text("Start New Project")
+                            .font(.system(size: 16, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(
+                                LinearGradient(colors: [Color.purple, Color(hue: 0.78, saturation: 0.9, brightness: 1.0)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                            )
+                            .foregroundColor(.white)
+                            .cornerRadius(16)
+                            .shadow(color: Color.purple.opacity(0.4), radius: 12, x: 0, y: 6)
+                    }
+                    .padding(.horizontal, 40)
+                }
+                .padding(.vertical, 26)
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 24)
+                        .fill(
+                            LinearGradient(colors: [Color.black.opacity(0.4), Color.purple.opacity(0.3)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        )
                 )
-                .ignoresSafeArea()
-                
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 28) {
-                        
-                        // MARK: - Header
-                        HStack {
-                            Image("DIYGenieIcon")
-                                .resizable()
-                                .frame(width: 36, height: 36)
-                                .cornerRadius(8)
-                                .shadow(radius: 2)
-                            
-                            Spacer()
-                        }
-                        .padding(.top, 12)
-                        .padding(.horizontal, 20)
-                        
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Welcome back, Tye")
-                                .font(.system(size: 26, weight: .bold, design: .rounded))
-                                .foregroundColor(.black)
-                            
-                            Text("Ready to start your next DIY project?")
-                                .font(.system(size: 16, weight: .regular))
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.horizontal, 20)
-                        
-                        // MARK: - Hero Section
-                        VStack(spacing: 10) {
-                            TabView(selection: $currentSlide) {
-                                ForEach(slides.indices, id: \.self) { index in
-                                    Image(slides[index])
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(height: 180)
-                                        .cornerRadius(14)
-                                        .clipped()
-                                        .overlay(
-                                            Text("See your space transform")
-                                                .font(.system(size: 16, weight: .semibold))
-                                                .foregroundColor(.white)
-                                                .shadow(radius: 4)
-                                                .padding(.bottom, 12),
-                                            alignment: .bottom
-                                        )
-                                        .tag(index)
-                                }
+                .padding(.horizontal)
+
+                // MARK: - Template Carousel
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Not sure where to begin? Start with a template.")
+                        .font(.headline)
+                        .foregroundColor(Color.purple)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 16) {
+                            ForEach(templateProjects) { template in
+                                TemplateCard(template: template)
                             }
-                            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-                            .frame(height: 180)
-                            
-                            // Progress dots
-                            HStack(spacing: 6) {
-                                ForEach(slides.indices, id: \.self) { index in
-                                    Circle()
-                                        .fill(index == currentSlide ? Color.purple : Color.gray.opacity(0.4))
-                                        .frame(width: 6, height: 6)
-                                }
-                            }
-                            
-                            // Step indicator
-                            Text("1 Describe • 2 Scan • 3 Preview • 4 Build")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.gray)
                         }
-                        .padding(.horizontal, 20)
-                        
-                        // MARK: - Templates Section
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Start with a template")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundColor(Color(hex: "#5B1FFF"))
-                                .padding(.horizontal, 20)
-                            
-                            VStack(spacing: 14) {
-                                TemplateCard(title: "Shelf", subtitle: "Clean, modern storage")
-                                TemplateCard(title: "Accent Wall", subtitle: "Add depth and contrast")
-                                TemplateCard(title: "Mudroom Bench", subtitle: "Entryway organization")
-                            }
-                            .padding(.horizontal, 20)
-                        }
-                        .padding(.bottom, 60)
+                        .padding(.horizontal)
                     }
                 }
+                .padding(.top, 10)
+
+                // MARK: - Recent Projects
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Your Recent Projects")
+                        .font(.headline)
+                        .foregroundColor(Color.purple)
+
+                    if recentProjects.isEmpty {
+                        VStack(spacing: 10) {
+                            Text("No projects yet — your next idea starts here!")
+                                .font(.system(size: 15))
+                                .foregroundColor(.white.opacity(0.6))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 40)
+                                .padding(.vertical, 40)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color.white.opacity(0.05))
+                        )
+                        .padding(.horizontal)
+                    } else {
+                        VStack(spacing: 16) {
+                            ForEach(recentProjects) { project in
+                                ProjectCard(project: project)
+                            }
+                        }
+                        .padding(.horizontal)
+                    }
+                }
+                .padding(.bottom, 80)
             }
-            .navigationBarHidden(true)
+            .padding(.top, 32)
         }
-        .navigationViewStyle(StackNavigationViewStyle())
+        .background(LinearGradient(colors: [Color(red: 0.05, green: 0.03, blue: 0.1), Color(red: 0.1, green: 0.08, blue: 0.18)], startPoint: .top, endPoint: .bottom).ignoresSafeArea())
+        .onAppear {
+            loadRecentProjects()
+        }
+    }
+
+    // MARK: - Load Recent Projects
+    func loadRecentProjects() {
+        // TODO: Integrate Supabase fetch later
+        // currently showing demo data placeholder
+        self.recentProjects = []
     }
 }
 
-// MARK: - Template Card
+// MARK: - Template Model & Card
+struct TemplateProject: Identifiable {
+    let id = UUID()
+    let title: String
+    let subtitle: String
+    let imageName: String
+}
+
+let templateProjects: [TemplateProject] = [
+    TemplateProject(title: "Floating Shelves", subtitle: "Clean, modern storage that fits any space.", imageName: "shelves"),
+    TemplateProject(title: "Entryway Bench with Hooks", subtitle: "Simple storage meets design.", imageName: "bench"),
+    TemplateProject(title: "Laundry Room Refresh", subtitle: "Brighten and organize your utility space.", imageName: "laundry")
+]
+
 struct TemplateCard: View {
-    var title: String
-    var subtitle: String
-    
+    let template: TemplateProject
+
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.black)
-                Text(subtitle)
-                    .font(.system(size: 14))
-                    .foregroundColor(.gray)
-            }
-            Spacer()
-            NavigationLink(destination: NewProjectView()) {
+        VStack(alignment: .leading, spacing: 10) {
+            Rectangle()
+                .fill(Color.white.opacity(0.1))
+                .overlay(
+                    Image(template.imageName)
+                        .resizable()
+                        .scaledToFill()
+                )
+                .frame(width: 240, height: 130)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+
+            Text(template.title)
+                .font(.headline)
+                .foregroundColor(.white)
+
+            Text(template.subtitle)
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.7))
+                .lineLimit(2)
+
+            Button(action: {
+                // Navigate to NewProjectView with pre-filled name/desc
+            }) {
                 Text("Create")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
                     .padding(.vertical, 8)
-                    .padding(.horizontal, 18)
-                    .background(
-                        LinearGradient(colors: [Color.purple, Color(hex: "#8C4BFF")],
-                                       startPoint: .topLeading, endPoint: .bottomTrailing)
-                            .cornerRadius(20)
-                    )
-                    .shadow(color: .purple.opacity(0.3), radius: 3, x: 0, y: 2)
+                    .frame(maxWidth: .infinity)
+                    .background(LinearGradient(colors: [Color.purple, Color(hue: 0.78, saturation: 0.9, brightness: 1.0)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .cornerRadius(12)
+                    .foregroundColor(.white)
             }
         }
-        .padding()
-        .background(Color.white)
-        .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 2)
-    }
-}
-
-// MARK: - Hex Color Extension
-extension Color {
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hex.count {
-        case 3: // RGB (12-bit)
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6: // RGB (24-bit)
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: // ARGB (32-bit)
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            (a, r, g, b) = (255, 0, 0, 0)
-        }
-        self.init(.sRGB,
-                  red: Double(r) / 255,
-                  green: Double(g) / 255,
-                  blue: Double(b) / 255,
-                  opacity: Double(a) / 255)
+        .frame(width: 240)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color.white.opacity(0.05))
+        )
     }
 }
