@@ -19,10 +19,10 @@
 		E216F01E2EA97375009AF2B3 /* Developer.app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; name = Developer.app; path = ../../../../../Applications/Developer.app; sourceTree = "<group>"; };
 		E216F0202EA97761009AF2B3 /* RoomPlan.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = RoomPlan.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk/System/Library/Frameworks/RoomPlan.framework; sourceTree = DEVELOPER_DIR; };
 		E24CE0572EA89EF10036185A /* DIYGenieApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DIYGenieApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		E27DC60F2EB2A55A00DDB9B1 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = SOURCE_ROOT; };
+		E27DC60F2EB2A55A00DDB9B1 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Assets.xcassets; path = Assets.xcassets/Assets.xcassets; sourceTree = SOURCE_ROOT; };
 		E27DC6102EB2A55A00DDB9B1 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		E27DC6112EB2A55A00DDB9B1 /* DIYGenieApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DIYGenieApp.swift; sourceTree = "<group>"; };
-		E2AF0F882EA92B3700B0FBE4 /* DIYGenieApp-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "DIYGenieApp-Info.plist"; sourceTree = "<group>"; };
+		E2AF0F882EA92B3700B0FBE4 /* DIYGenieApp-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "DIYGenieApp-Info.plist"; sourceTree = "<group>"; };
 		E2AF0F8A2EA9360E00B0FBE4 /* RoomPlan.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = RoomPlan.framework; path = System/Library/Frameworks/RoomPlan.framework; sourceTree = SDKROOT; };
 		E2AF0F8F2EA9373000B0FBE4 /* ARKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ARKit.framework; path = System/Library/Frameworks/ARKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
