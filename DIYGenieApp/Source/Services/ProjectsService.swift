@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import UIKit
 
 // MARK: - ProjectsService
 final class ProjectsService {
@@ -42,6 +43,66 @@ final class ProjectsService {
         return decoded.item
     }
 
+    // MARK: - Upload Image
+    func uploadImage(projectId: String, image: UIImage) async throws {
+        guard let data = image.jpegData(compressionQuality: 0.8) else { return }
+
+        let boundary = UUID().uuidString
+        let url = baseURL.appendingPathComponent("/api/projects/\(projectId)/image")
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        let lineBreak = "\r\n"
+
+        body.append("--\(boundary)\(lineBreak)")
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"photo.jpg\"\(lineBreak)")
+        body.append("Content-Type: image/jpeg\(lineBreak + lineBreak)")
+        body.append(data)
+        body.append("\(lineBreak)--\(boundary)--\(lineBreak)")
+
+        request.httpBody = body
+
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+    }
+
+    // MARK: - Generate Preview
+    func generatePreview(projectId: String) async throws {
+        let url = baseURL.appendingPathComponent("/api/projects/\(projectId)/preview")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = ["user_id": userId]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+    }
+
+    // MARK: - Generate Plan Only (No Preview)
+    func generatePlanOnly(projectId: String) async throws {
+        let url = baseURL.appendingPathComponent("/api/projects/\(projectId)/plan")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = ["user_id": userId]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+    }
+
     // MARK: - Fetch All Projects
     func fetchProjects() async throws -> [Project] {
         var comps = URLComponents(url: baseURL.appendingPathComponent("/api/projects"), resolvingAgainstBaseURL: false)!
@@ -58,7 +119,7 @@ final class ProjectsService {
         return decoded.items
     }
 
-    // MARK: - Fetch Plan
+    // MARK: - Fetch Plan (for details view)
     func fetchPlan(projectId: String) async throws -> PlanResponse {
         let url = baseURL.appendingPathComponent("/api/projects/\(projectId)/plan")
         let (data, response) = try await session.data(from: url)
@@ -68,7 +129,7 @@ final class ProjectsService {
         return try JSONDecoder().decode(PlanResponse.self, from: data)
     }
 
-    // MARK: - Upload AR Scan (width/height/depth)
+    // MARK: - Upload AR Scan (legacy RoomPlan support)
     func uploadRoomScan(projectId: String, width: Double, height: Double, depth: Double) async throws {
         let url = baseURL.appendingPathComponent("/api/projects/\(projectId)/scan")
         var request = URLRequest(url: url)
@@ -79,25 +140,6 @@ final class ProjectsService {
             "roomplan": ["width": width, "height": height, "depth": depth, "objects": []]
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-
-        let (_, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw URLError(.badServerResponse)
-        }
-    }
-
-    // MARK: - Post Measurement ROI
-    func uploadMeasurement(projectId: String, scanId: String, roi: CGRect) async throws {
-        let url = baseURL.appendingPathComponent("/api/projects/\(projectId)/scans/\(scanId)/measure")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body: [String: Any] = [
-            "user_id": userId,
-            "roi": ["x": roi.origin.x, "y": roi.origin.y, "w": roi.size.width, "h": roi.size.height]
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (_, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
