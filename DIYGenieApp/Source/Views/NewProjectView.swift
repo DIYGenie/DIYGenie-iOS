@@ -10,20 +10,17 @@ struct NewProjectView: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isFocused: Bool
 
-    // MARK: - Form State
     @State private var name = ""
     @State private var goal = ""
     @State private var budget = "$$"
     @State private var skill = "intermediate"
 
-    // MARK: - Media + Flow
     @State private var showingCamera = false
     @State private var showingPicker = false
     @State private var showingOverlay = false
     @State private var capturedImage: UIImage?
     @State private var projectId: String?
 
-    // MARK: - UI Flags
     @State private var showAlert = false
     @State private var alertMessage = ""
     @State private var isLoading = false
@@ -32,21 +29,21 @@ struct NewProjectView: View {
         userId: UserDefaults.standard.string(forKey: "user_id") ?? "demo"
     )
 
-    // MARK: - Body
     var body: some View {
         ZStack {
+            // Background gradient
             LinearGradient(
                 colors: [
                     Color(red: 28/255, green: 26/255, blue: 40/255),
-                    Color(red: 58/255, green: 35/255, blue: 110/255)
+                    Color(red: 60/255, green: 35/255, blue: 126/255)
                 ],
-                startPoint: .top,
-                endPoint: .bottom
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 24) {
                     // Header
                     HStack {
                         Button(action: { dismiss() }) {
@@ -57,118 +54,112 @@ struct NewProjectView: View {
                         Spacer()
                     }
 
-                    Text("New Project")
-                        .font(.system(size: 34, weight: .bold))
-                        .foregroundColor(.white)
-                    Text("Plan your next project like a pro")
-                        .foregroundColor(.white.opacity(0.7))
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("New Project")
+                            .font(.system(size: 36, weight: .heavy))
+                            .foregroundStyle(.white)
+                            .shadow(color: .white.opacity(0.08), radius: 6, x: 0, y: 1)
 
-                    // Project Name
-                    groupBox {
+                        Text("Get everything you need to bring your next DIY idea to life.")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundColor(.white.opacity(0.8))
+                            .lineSpacing(2)
+                    }
+
+                    // Name
+                    glassField(label: "Project Name") {
                         TextField("e.g. Floating Shelves", text: $name)
+                            .italic()
                             .focused($isFocused)
                             .padding(12)
-                            .background(.black.opacity(0.2))
-                            .cornerRadius(12)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
                             .foregroundColor(.white)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.words)
-                    } label: {
-                        label("Project Name")
                     }
 
-                    // Goal / Description
-                    groupBox {
+                    // Goal
+                    glassField(label: "Goal / Description") {
                         ZStack(alignment: .topLeading) {
                             TextEditor(text: $goal)
                                 .focused($isFocused)
                                 .frame(minHeight: 120)
                                 .padding(8)
-                                .background(.black.opacity(0.2))
-                                .cornerRadius(12)
+                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
                                 .foregroundColor(.white)
                             if goal.isEmpty {
                                 Text("Describe what you'd like to build…")
+                                    .italic()
                                     .foregroundColor(.white.opacity(0.35))
                                     .padding(.top, 16)
                                     .padding(.leading, 12)
                             }
                         }
-                    } label: {
-                        label("Goal / Description")
                     }
 
-                    // Budget Picker
-                    groupBox {
-                        Picker("Budget", selection: $budget) {
-                            Text("$").tag("$")
-                            Text("$$").tag("$$")
-                            Text("$$$").tag("$$$")
+                    // Budget
+                    glassField(label: "Budget") {
+                        VStack(spacing: 6) {
+                            Picker("Budget", selection: $budget) {
+                                Text("$").tag("$")
+                                Text("$$").tag("$$")
+                                Text("$$$").tag("$$$")
+                            }
+                            .pickerStyle(.segmented)
+                            .tint(Color.purple.opacity(0.9))
+                            Text("Your project budget range.")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.6))
                         }
-                        .pickerStyle(.segmented)
-                        Text("Estimated project cost level.")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.5))
-                    } label: {
-                        label("Budget")
                     }
 
-                    // Skill Picker
-                    groupBox {
-                        Picker("Skill", selection: $skill) {
-                            Text("Beginner").tag("beginner")
-                            Text("Intermediate").tag("intermediate")
-                            Text("Advanced").tag("advanced")
+                    // Skill
+                    glassField(label: "Skill Level") {
+                        VStack(spacing: 6) {
+                            Picker("Skill", selection: $skill) {
+                                Text("Beginner").tag("beginner")
+                                Text("Intermediate").tag("intermediate")
+                                Text("Advanced").tag("advanced")
+                            }
+                            .pickerStyle(.segmented)
+                            .tint(Color.purple.opacity(0.9))
+                            Text("Your current DIY experience.")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.6))
                         }
-                        .pickerStyle(.segmented)
-                        Text("Your current DIY experience.")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.5))
-                    } label: {
-                        label("Skill Level")
                     }
 
-                    // MARK: - Photo Area
+                    // Photo Section
                     if capturedImage == nil {
                         VStack(spacing: 14) {
-                            Button {
-                                isFocused = false
-                                showingCamera = true
-                            } label: {
-                                heroButton("Take Photo for Measurements")
+                            Button { showingCamera = true } label: {
+                                primaryButton("Take Photo for Measurements")
                             }
-
-                            Button {
-                                isFocused = false
-                                showingPicker = true
-                            } label: {
+                            Button { showingPicker = true } label: {
                                 secondaryButton("Upload Photo")
                             }
                         }
                     } else {
-                        photoPreviewSection
+                        photoPreview
                     }
 
-                    Spacer(minLength: 40)
+                    Spacer(minLength: 60)
                 }
                 .padding(.horizontal, 20)
-                .padding(.bottom, 60)
+                .padding(.bottom, 80)
             }
             .onTapGesture { hideKeyboard() }
         }
 
-        // MARK: - Camera
+        // Sheets
         .sheet(isPresented: $showingCamera) {
             ImagePicker(sourceType: .camera) { image in
                 if let image = image {
-                    showingCamera = false
                     capturedImage = image
                     showingOverlay = true
                 }
             }
         }
-
-        // MARK: - Photo Library
         .sheet(isPresented: $showingPicker) {
             ImagePicker(sourceType: .photoLibrary) { image in
                 if let image = image {
@@ -177,8 +168,6 @@ struct NewProjectView: View {
                 }
             }
         }
-
-        // MARK: - Overlay
         .fullScreenCover(isPresented: $showingOverlay) {
             if let image = capturedImage {
                 RectangleOverlayView(
@@ -186,28 +175,27 @@ struct NewProjectView: View {
                     projectId: projectId ?? "",
                     userId: UserDefaults.standard.string(forKey: "user_id") ?? "",
                     onCancel: { showingOverlay = false },
-                    onComplete: { roi in
+                    onComplete: { _ in
                         showingOverlay = false
                         Task { await createProjectAndUpload(image) }
                     },
                     onError: { error in
                         showingOverlay = false
-                        alertMessage = "Error: \(error.localizedDescription)"
+                        alertMessage = error.localizedDescription
                         showAlert = true
                     }
                 )
             }
         }
-
         .alert("Status", isPresented: $showAlert) {
-            Button("OK", role: .cancel) { }
+            Button("OK", role: .cancel) {}
         } message: {
             Text(alertMessage)
         }
     }
 
-    // MARK: - Components
-    private var photoPreviewSection: some View {
+    // MARK: - Image Preview
+    private var photoPreview: some View {
         VStack(spacing: 14) {
             HStack(spacing: 14) {
                 Image(uiImage: capturedImage!)
@@ -237,56 +225,35 @@ struct NewProjectView: View {
                 Button {
                     Task {
                         if let id = projectId {
-                            isLoading = true
                             try? await api.generatePreview(projectId: id)
-                            isLoading = false
-                            alertMessage = "Preview request sent successfully."
-                            showAlert = true
                         }
                     }
                 } label: {
-                    heroButton("Generate AI Plan + Preview")
-                        .overlay(buttonDetail("Visual mockup of your space + step-by-step plan, materials, tools, cuts, time & cost."))
+                    primaryButton("Generate AI Plan + Preview")
                 }
-                .disabled(projectId == nil || isLoading)
-
                 Button {
                     Task {
                         if let id = projectId {
-                            isLoading = true
                             try? await api.generatePlanOnly(projectId: id)
-                            isLoading = false
-                            alertMessage = "Plan request sent successfully."
-                            showAlert = true
                         }
                     }
                 } label: {
                     secondaryButton("Create Plan Only")
-                        .overlay(buttonDetail("Full DIY plan without visual preview."))
                 }
-                .disabled(projectId == nil || isLoading)
             }
         }
     }
 
-    // MARK: - Networking
+    // Networking
     private func createProjectAndUpload(_ image: UIImage) async {
         guard !name.isEmpty, goal.count >= 15 else {
-            alertMessage = "Please fill all required fields before continuing."
+            alertMessage = "Please fill all required fields."
             showAlert = true
             return
         }
-
-        isLoading = true
-        defer { isLoading = false }
-
         do {
             let project = try await api.createProject(
-                name: name,
-                goal: goal,
-                budget: budget,
-                skillLevel: skill
-            )
+                name: name, goal: goal, budget: budget, skillLevel: skill)
             projectId = project.id
             try await api.uploadImage(projectId: project.id, image: image)
         } catch {
@@ -295,24 +262,24 @@ struct NewProjectView: View {
         }
     }
 
-    // MARK: - UI Helpers
-    private func groupBox<Content: View>(@ViewBuilder content: () -> Content, label: () -> Text) -> some View {
+    // UI Helpers
+    private func glassField<Content: View>(label: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            label()
+            Text(label.uppercased())
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.white.opacity(0.9))
             content()
         }
         .padding(16)
-        .background(Color.white.opacity(0.07))
-        .cornerRadius(16)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 3)
     }
 
-    private func label(_ text: String) -> Text {
-        Text(text.uppercased())
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundColor(.white.opacity(0.9))
-    }
-
-    private func heroButton(_ title: String) -> some View {
+    private func primaryButton(_ title: String) -> some View {
         Text(title)
             .font(.system(size: 18, weight: .bold))
             .frame(maxWidth: .infinity)
@@ -325,7 +292,7 @@ struct NewProjectView: View {
             )
             .foregroundColor(.white)
             .cornerRadius(16)
-            .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 8)
+            .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
     }
 
     private func secondaryButton(_ title: String) -> some View {
@@ -334,24 +301,16 @@ struct NewProjectView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 15)
             .background(Color.white.opacity(0.08))
-            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.18), lineWidth: 1))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+            )
             .foregroundColor(.white)
             .cornerRadius(14)
     }
 
-    private func buttonDetail(_ text: String) -> some View {
-        VStack {
-            Spacer()
-            Text(text)
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.6))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 8)
-                .padding(.bottom, 4)
-        }
-    }
-
     private func hideKeyboard() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                        to: nil, from: nil, for: nil)
     }
 }
