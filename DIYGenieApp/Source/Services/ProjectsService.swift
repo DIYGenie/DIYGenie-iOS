@@ -2,159 +2,73 @@
 //  ProjectsService.swift
 //  DIYGenieApp
 //
+//  Created by Tye Kowalski on 10/30/25.
+//
 
 import Foundation
-import UIKit
+import Supabase
+import Foundation
+import Supabase
 
-// MARK: - ProjectsService
-final class ProjectsService {
-    private let baseURL = URL(string: "https://api.diygenieapp.com")!
-    private let userId: String
-    private let session: URLSession
+// MARK: - Helper Type
+struct AnyEncodable: Encodable {
+    private let encode: (Encoder) throws -> Void
 
-    init(userId: String, session: URLSession = .shared) {
-        self.userId = userId
-        self.session = session
+    init<T: Encodable>(_ value: T) {
+        self.encode = value.encode
     }
 
+    func encode(to encoder: Encoder) throws {
+        try encode(encoder)
+    }
+}
+struct ProjectsService {
+    private let client: SupabaseClient
+    private let userId: String
+    
+    init(userId: String) {
+        self.userId = userId
+        self.client = SupabaseConfig.client
+    }
+    
+    // MARK: - Fetch Projects
+    func fetchProjects(completion: @escaping (Result<[Project], Error>) -> Void) {
+        Task {
+            do {
+                let response: [Project] = try await client
+                    .from("projects")
+                    .select()
+                    .eq("user_id", value: userId)
+                    .order("created_at", ascending: false)
+                    .execute()
+                    .value
+                
+                completion(.success(response))
+            } catch {
+                completion(.failure(error))
+            }
+        }
+    }
+    
     // MARK: - Create Project
     func createProject(name: String, goal: String, budget: String, skillLevel: String) async throws -> Project {
-        let url = baseURL.appendingPathComponent("/api/projects")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let payload: [String: Any] = [
-            "user_id": userId,
-            "name": name,
-            "goal": goal,
-            "budget": budget,
-            "skill_level": skillLevel
+        let insertData: [String: AnyEncodable] = [
+            "user_id": AnyEncodable(userId),
+            "name": AnyEncodable(name),
+            "goal": AnyEncodable(goal),
+            "budget": AnyEncodable(budget),
+            "skill_level": AnyEncodable(skillLevel),
+            "created_at": AnyEncodable(ISO8601DateFormatter().string(from: Date()))
         ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw URLError(.badServerResponse)
-        }
-
-        struct CreateResponse: Codable { let ok: Bool; let item: Project }
-        let decoded = try JSONDecoder().decode(CreateResponse.self, from: data)
-        return decoded.item
-    }
-
-    // MARK: - Upload Image
-    func uploadImage(projectId: String, image: UIImage) async throws {
-        guard let data = image.jpegData(compressionQuality: 0.8) else { return }
-
-        let boundary = UUID().uuidString
-        let url = baseURL.appendingPathComponent("/api/projects/\(projectId)/image")
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-
-        var body = Data()
-        let lineBreak = "\r\n"
-
-        body.append("--\(boundary)\(lineBreak)".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"photo.jpg\"\(lineBreak)".data(using: .utf8)!)
-        body.append("Content-Type: image/jpeg\(lineBreak + lineBreak)".data(using: .utf8)!)
-        body.append(data)
-        body.append("\(lineBreak)--\(boundary)--\(lineBreak)".data(using: .utf8)!)
-
-        request.httpBody = body
-
-        let (_, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw URLError(.badServerResponse)
-        }
-    }
-
-    // MARK: - Generate Preview
-    func generatePreview(projectId: String) async throws {
-        let url = baseURL.appendingPathComponent("/api/projects/\(projectId)/preview")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body: [String: Any] = ["user_id": userId]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (_, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw URLError(.badServerResponse)
-        }
-    }
-
-    // MARK: - Generate Plan Only (No Preview)
-    func generatePlanOnly(projectId: String) async throws {
-        let url = baseURL.appendingPathComponent("/api/projects/\(projectId)/plan")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body: [String: Any] = ["user_id": userId]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (_, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw URLError(.badServerResponse)
-        }
-    }
-
-    // MARK: - Fetch All Projects
-    func fetchProjects() async throws -> [Project] {
-        var comps = URLComponents(url: baseURL.appendingPathComponent("/api/projects"), resolvingAgainstBaseURL: false)!
-        comps.queryItems = [URLQueryItem(name: "user_id", value: userId)]
-        guard let url = comps.url else { throw URLError(.badURL) }
-
-        let (data, response) = try await session.data(from: url)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
-
-        struct ProjectsResponse: Codable { let ok: Bool; let items: [Project] }
-        let decoded = try JSONDecoder().decode(ProjectsResponse.self, from: data)
-        return decoded.items
-    }
-
-    // MARK: - Fetch Plan (for details view)
-    func fetchPlan(projectId: String) async throws -> PlanResponse {
-        let url = baseURL.appendingPathComponent("/api/projects/\(projectId)/plan")
-        let (data, response) = try await session.data(from: url)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
-        return try JSONDecoder().decode(PlanResponse.self, from: data)
-    }
-
-    // MARK: - Upload AR Scan (legacy RoomPlan support)
-    func uploadRoomScan(projectId: String, width: Double, height: Double, depth: Double) async throws {
-        let url = baseURL.appendingPathComponent("/api/projects/\(projectId)/scan")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let payload: [String: Any] = [
-            "roomplan": ["width": width, "height": height, "depth": depth, "objects": []]
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-
-        let (_, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw URLError(.badServerResponse)
-        }
-    }
-
-    // MARK: - Delete Project
-    func deleteProject(projectId: String) async throws {
-        let url = baseURL.appendingPathComponent("/api/projects/\(projectId)")
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        let (_, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw URLError(.badServerResponse)
-        }
+        
+        let response: Project = try await client
+            .from("projects")
+            .insert(insertData)
+            .select()
+            .single()
+            .execute()
+            .value
+        
+        return response
     }
 }
