@@ -57,11 +57,11 @@ final class ProjectsService {
         var body = Data()
         let lineBreak = "\r\n"
 
-        body.append("--\(boundary)\(lineBreak)")
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"photo.jpg\"\(lineBreak)")
-        body.append("Content-Type: image/jpeg\(lineBreak + lineBreak)")
+        body.append("--\(boundary)\(lineBreak)".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"photo.jpg\"\(lineBreak)".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\(lineBreak + lineBreak)".data(using: .utf8)!)
         body.append(data)
-        body.append("\(lineBreak)--\(boundary)--\(lineBreak)")
+        body.append("\(lineBreak)--\(boundary)--\(lineBreak)".data(using: .utf8)!)
 
         request.httpBody = body
 
