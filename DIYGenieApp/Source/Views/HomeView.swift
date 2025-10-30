@@ -1,117 +1,177 @@
+//
+//  HomeView.swift
+//  DIYGenieApp
+//
+
 import SwiftUI
 
-/// The main home screen for DIY Genie — welcoming the user and showcasing project templates.
 struct HomeView: View {
+    @State private var currentSlide = 0
+    private let slides = ["room1", "room2", "room3"] // Replace with your real image assets
+    
     var body: some View {
-        NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 24) {
-
-                    // MARK: - Greeting
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Welcome back, Tye")
-                            .font(.system(size: 28, weight: .bold))
-                            .foregroundColor(Color.primary)
-
-                        Text("Ready to start your next DIY project?")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.horizontal)
-
-                    // MARK: - Hero Image Card
-                    VStack(alignment: .leading, spacing: 0) {
-                        ZStack(alignment: .bottomLeading) {
-                            Image("forest")
+        NavigationView {
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(hex: "#5B1FFF").opacity(0.15),
+                        Color(hex: "#8C4BFF").opacity(0.10),
+                        Color.white
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+                
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 28) {
+                        
+                        // MARK: - Header
+                        HStack {
+                            Image("DIYGenieIcon")
                                 .resizable()
-                                .scaledToFill()
-                                .frame(height: 200)
-                                .clipped()
-                                .cornerRadius(16)
+                                .frame(width: 36, height: 36)
+                                .cornerRadius(8)
+                                .shadow(radius: 2)
                             
-                            LinearGradient(
-                                gradient: Gradient(colors: [Color.black.opacity(0.4), Color.clear]),
-                                startPoint: .bottom,
-                                endPoint: .center
-                            )
-                            .cornerRadius(16)
-
-                            Text("See your space transform")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .padding()
+                            Spacer()
                         }
-
-                        // Step Indicator
-                        HStack(spacing: 6) {
-                            Circle().fill(Color.purple).frame(width: 8, height: 8)
-                            Circle().fill(Color.gray.opacity(0.4)).frame(width: 8, height: 8)
-                            Circle().fill(Color.gray.opacity(0.4)).frame(width: 8, height: 8)
-                            Circle().fill(Color.gray.opacity(0.4)).frame(width: 8, height: 8)
+                        .padding(.top, 12)
+                        .padding(.horizontal, 20)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Welcome back, Tye")
+                                .font(.system(size: 26, weight: .bold, design: .rounded))
+                                .foregroundColor(.black)
+                            
+                            Text("Ready to start your next DIY project?")
+                                .font(.system(size: 16, weight: .regular))
+                                .foregroundColor(.secondary)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 8)
-
-                        Text("1 Describe • 2 Scan • 3 Preview • 4 Build")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 4)
+                        .padding(.horizontal, 20)
+                        
+                        // MARK: - Hero Section
+                        VStack(spacing: 10) {
+                            TabView(selection: $currentSlide) {
+                                ForEach(slides.indices, id: \.self) { index in
+                                    Image(slides[index])
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(height: 180)
+                                        .cornerRadius(14)
+                                        .clipped()
+                                        .overlay(
+                                            Text("See your space transform")
+                                                .font(.system(size: 16, weight: .semibold))
+                                                .foregroundColor(.white)
+                                                .shadow(radius: 4)
+                                                .padding(.bottom, 12),
+                                            alignment: .bottom
+                                        )
+                                        .tag(index)
+                                }
+                            }
+                            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+                            .frame(height: 180)
+                            
+                            // Progress dots
+                            HStack(spacing: 6) {
+                                ForEach(slides.indices, id: \.self) { index in
+                                    Circle()
+                                        .fill(index == currentSlide ? Color.purple : Color.gray.opacity(0.4))
+                                        .frame(width: 6, height: 6)
+                                }
+                            }
+                            
+                            // Step indicator
+                            Text("1 Describe • 2 Scan • 3 Preview • 4 Build")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.gray)
+                        }
+                        .padding(.horizontal, 20)
+                        
+                        // MARK: - Templates Section
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Start with a template")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(Color(hex: "#5B1FFF"))
+                                .padding(.horizontal, 20)
+                            
+                            VStack(spacing: 14) {
+                                TemplateCard(title: "Shelf", subtitle: "Clean, modern storage")
+                                TemplateCard(title: "Accent Wall", subtitle: "Add depth and contrast")
+                                TemplateCard(title: "Mudroom Bench", subtitle: "Entryway organization")
+                            }
+                            .padding(.horizontal, 20)
+                        }
+                        .padding(.bottom, 60)
                     }
-                    .padding(.horizontal)
-
-                    // MARK: - Template Section
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Start with a template")
-                            .font(.headline)
-                            .foregroundColor(.purple)
-                            .padding(.horizontal)
-
-                        VStack(spacing: 12) {
-                            TemplateRow(title: "Shelf", subtitle: "Clean, modern storage")
-                            TemplateRow(title: "Accent Wall", subtitle: "Add depth and contrast")
-                            TemplateRow(title: "Mudroom Bench", subtitle: "Entryway organization")
-                        }
-                        .padding(.horizontal)
-                    }
-
-                    Spacer()
                 }
-                .padding(.top, 24)
             }
-            .navigationTitle("Home")
-            .navigationBarTitleDisplayMode(.inline)
-            .background(Color(.systemBackground))
+            .navigationBarHidden(true)
         }
+        .navigationViewStyle(StackNavigationViewStyle())
     }
 }
 
-// MARK: - Template Row Component
-struct TemplateRow: View {
+// MARK: - Template Card
+struct TemplateCard: View {
     var title: String
     var subtitle: String
-
+    
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.headline)
-                    .foregroundColor(.primary)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.black)
                 Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 14))
+                    .foregroundColor(.gray)
             }
             Spacer()
-            Text("Create")
-                .font(.headline)
-                .foregroundColor(.purple)
+            NavigationLink(destination: NewProjectView()) {
+                Text("Create")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 18)
+                    .background(
+                        LinearGradient(colors: [Color.purple, Color(hex: "#8C4BFF")],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing)
+                            .cornerRadius(20)
+                    )
+                    .shadow(color: .purple.opacity(0.3), radius: 3, x: 0, y: 2)
+            }
         }
         .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(14)
+        .background(Color.white)
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 2)
     }
 }
 
-#Preview {
-    HomeView()
+// MARK: - Hex Color Extension
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: // RGB (24-bit)
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // ARGB (32-bit)
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (255, 0, 0, 0)
+        }
+        self.init(.sRGB,
+                  red: Double(r) / 255,
+                  green: Double(g) / 255,
+                  blue: Double(b) / 255,
+                  opacity: Double(a) / 255)
+    }
 }
