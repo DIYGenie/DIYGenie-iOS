@@ -5,17 +5,20 @@
 
 import Foundation
 
-struct Project: Identifiable, Codable {
-    var id: String
-    var userId: String?
-    var name: String?
-    var goal: String?
-    var skillLevel: String?
-    var budget: String?
-    var createdAt: String?
-    
-    // Image fields
-    var inputImageURL: String?
-    var previewURL: String?
-    var outputImageURL: String?
+struct Project: Codable, Identifiable {
+    let id: String
+    let user_id: String?
+    let name: String?
+    let goal: String?
+    let budget: String?
+    let skill_level: String?
+    let plan_text: String?
+    let created_at: String?
+    let original_image_url: String?
+    let preview_image_url: String?
+
+    // MARK: - Swift-safe computed properties
+    var originalImageURL: String? { original_image_url }
+    var previewImageURL: String? { preview_image_url }
 }
+
