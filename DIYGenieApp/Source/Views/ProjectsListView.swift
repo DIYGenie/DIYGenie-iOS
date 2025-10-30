@@ -88,16 +88,20 @@ struct ProjectsListView: View {
     
     private func loadProjects() {
         isLoading = true
-        projectsService.fetchProjects(completion: { result in
-            DispatchQueue.main.async {
-                isLoading = false
-                switch result {
-                case .success(let fetchedProjects):
-                    projects = fetchedProjects
-                case .failure(let error):
-                    alertMessage = error.localizedDescription
+        
+        Task {
+            do {
+                let fetchedProjects = try await projectsService.fetchProjects()
+                DispatchQueue.main.async {
+                    self.projects = fetchedProjects
+                    self.isLoading = false
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    self.alertMessage = "Error loading projects: \(error.localizedDescription)"
                 }
             }
-        })
+        }
     }
 }
