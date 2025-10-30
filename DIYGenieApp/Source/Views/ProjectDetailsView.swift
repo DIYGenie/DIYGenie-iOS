@@ -7,122 +7,209 @@ import SwiftUI
 
 struct ProjectDetailsView: View {
     let project: Project
-    @Environment(\.dismiss) private var dismiss
+    let userId: String
 
-    @State private var isLoading = false
-    @State private var showError: String?
-    @State private var showDetailedPlan = false
+    @State private var plan: PlanResponse?
+    @State private var isLoading = true
+    @State private var showError = false
+    @State private var errorMessage = ""
+    @State private var expandedSection: String? = nil
 
     private let gradientTop = Color(red: 28/255, green: 26/255, blue: 40/255)
-    private let gradientBottom = Color(red: 60/255, green: 35/255, blue: 126/255)
+    private let gradientBottom = Color(red: 58/255, green: 35/255, blue: 110/255)
     private let accentStart = Color(red: 115/255, green: 73/255, blue: 224/255)
     private let accentEnd = Color(red: 146/255, green: 86/255, blue: 255/255)
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                LinearGradient(colors: [gradientTop, gradientBottom],
-                               startPoint: .topLeading,
-                               endPoint: .bottomTrailing)
-                    .ignoresSafeArea()
+        ZStack {
+            LinearGradient(colors: [gradientTop, gradientBottom],
+                           startPoint: .topLeading,
+                           endPoint: .bottomTrailing)
+                .ignoresSafeArea()
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        // MARK: Back Button
-                        HStack {
-                            Button(action: { dismiss() }) {
-                                Image(systemName: "chevron.left")
-                                    .foregroundColor(.white.opacity(0.9))
-                                    .font(.system(size: 18, weight: .semibold))
-                            }
-                            Spacer()
-                        }
-
-                        // MARK: Project Info
-                        Text(project.name ?? "Project Details")
-                            .font(.system(size: 32, weight: .heavy))
-                            .foregroundColor(.white)
-
-                        if let goal = project.goal {
-                            Text(goal)
-                                .font(.system(size: 15))
-                                .foregroundColor(.white.opacity(0.7))
-                        }
-
-                        // MARK: Project Image
-                        AsyncImage(url: imageURL(for: project)) { phase in
-                            switch phase {
-                            case .success(let img):
-                                img.resizable()
-                                    .scaledToFit()
-                                    .clipShape(RoundedRectangle(cornerRadius: 18))
-                            default:
-                                RoundedRectangle(cornerRadius: 18)
-                                    .fill(Color.white.opacity(0.05))
-                                    .overlay(
-                                        Image(systemName: "photo")
-                                            .foregroundColor(.white.opacity(0.3))
-                                    )
-                                    .frame(height: 220)
-                            }
-                        }
-
-                        // MARK: Overview Section
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Build Overview")
-                                .font(.system(size: 20, weight: .semibold))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    // MARK: - Header
+                    HStack {
+                        Button(action: { }) {
+                            Image(systemName: "chevron.left")
                                 .foregroundColor(.white)
+                                .font(.system(size: 18, weight: .semibold))
+                        }
+                        Spacer()
+                    }
 
-                            glassCard {
+                    Text(project.name ?? "Project")
+                        .font(.system(size: 32, weight: .bold))
+                        .foregroundColor(.white)
+
+                    if let goal = project.goal {
+                        Text(goal)
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.7))
+                            .padding(.bottom, 10)
+                    }
+
+                    // MARK: - Preview Image
+                    if let imageURL = project.previewURL ?? project.inputImageURL,
+                       let url = URL(string: imageURL) {
+                        AsyncImage(url: url) { phase in
+                            switch phase {
+                            case .empty:
+                                ProgressView()
+                                    .frame(height: 220)
+                                    .frame(maxWidth: .infinity)
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 220)
+                                    .clipped()
+                                    .cornerRadius(18)
+                                    .overlay(
+                                        LinearGradient(colors: [.black.opacity(0.0), .black.opacity(0.25)],
+                                                       startPoint: .center, endPoint: .bottom)
+                                            .cornerRadius(18)
+                                    )
+                            case .failure:
+                                Color.black.opacity(0.2)
+                                    .frame(height: 220)
+                                    .cornerRadius(18)
+                            @unknown default:
+                                EmptyView()
+                            }
+                        }
+                    }
+
+                    if isLoading {
+                        ProgressView("Loading Plan…")
+                            .tint(.white)
+                            .foregroundColor(.white)
+                            .padding(.top, 30)
+                    } else if let plan = plan {
+                        // MARK: - Plan Sections
+                        Group {
+                            collapsibleSection(title: "Steps", systemImage: "list.number") {
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Text("Budget: \(project.budget ?? "$$")")
-                                    Text("Skill Level: \(project.skillLevel?.capitalized ?? "Intermediate")")
+                                    ForEach(plan.steps?.prefix(3) ?? [], id: \.self) { step in
+                                        Text("• \(step)")
+                                            .foregroundColor(.white.opacity(0.9))
+                                            .font(.subheadline)
+                                    }
                                 }
-                                .foregroundColor(.white.opacity(0.9))
-                                .font(.system(size: 15))
+                            }
+
+                            collapsibleSection(title: "Materials", systemImage: "cube.box") {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ForEach(plan.materials?.prefix(3) ?? [], id: \.self) { item in
+                                        Text("• \(item)")
+                                            .foregroundColor(.white.opacity(0.9))
+                                            .font(.subheadline)
+                                    }
+                                }
+                            }
+
+                            collapsibleSection(title: "Tools", systemImage: "hammer") {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ForEach(plan.tools?.prefix(3) ?? [], id: \.self) { tool in
+                                        Text("• \(tool)")
+                                            .foregroundColor(.white.opacity(0.9))
+                                            .font(.subheadline)
+                                    }
+                                }
+                            }
+
+                            if let cost = plan.estimatedCost {
+                                collapsibleSection(title: "Estimated Cost", systemImage: "dollarsign.circle") {
+                                    Text("$\(Int(cost)) estimated total")
+                                        .foregroundColor(.white.opacity(0.9))
+                                        .font(.subheadline)
+                                }
                             }
                         }
 
-                        // MARK: Navigation Button
-                        NavigationLink(destination: DetailedBuildPlanView(projectId: project.id,
-                                                                          userId: project.userId ?? "")) {
+                        // MARK: - CTA
+                        NavigationLink(destination: DetailedBuildPlanView(projectId: project.id, userId: userId)) {
                             Text("Open Detailed Build Plan")
-                                .font(.system(size: 17, weight: .bold))
+                                .font(.system(size: 18, weight: .bold))
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 15)
+                                .padding(.vertical, 16)
                                 .background(
                                     LinearGradient(colors: [accentStart, accentEnd],
                                                    startPoint: .leading,
                                                    endPoint: .trailing)
                                 )
+                                .cornerRadius(16)
                                 .foregroundColor(.white)
-                                .cornerRadius(14)
+                                .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 5)
                         }
+                        .padding(.top, 20)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 60)
+
+                    Spacer(minLength: 60)
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
             }
         }
-        .preferredColorScheme(.dark)
+        .navigationBarBackButtonHidden(true)
+        .task { await fetchPlan() }
+        .alert("Error", isPresented: $showError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(errorMessage)
+        }
     }
 
-    // MARK: - Helpers
-    private func imageURL(for project: Project) -> URL? {
-        if let preview = project.previewURL, let url = URL(string: preview) {
-            return url
+    // MARK: - Networking
+    private func fetchPlan() async {
+        let service = ProjectsService(userId: userId)
+        do {
+            plan = try await service.fetchPlan(projectId: project.id)
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
         }
-        if let input = project.inputImageURL, let url = URL(string: input) {
-            return url
-        }
-        return nil
+        isLoading = false
     }
 
-    private func glassCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .padding(16)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
-            .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.08), lineWidth: 1))
-            .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+    // MARK: - Collapsible Section
+    private func collapsibleSection<Content: View>(
+        title: String,
+        systemImage: String,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut) {
+                    expandedSection = expandedSection == title ? nil : title
+                }
+            } label: {
+                HStack {
+                    Label(title, systemImage: systemImage)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.white)
+                    Spacer()
+                    Image(systemName: expandedSection == title ? "chevron.up" : "chevron.down")
+                        .foregroundColor(.white.opacity(0.7))
+                }
+                .padding()
+                .background(Color.white.opacity(0.07))
+                .cornerRadius(12)
+            }
+
+            if expandedSection == title {
+                VStack(alignment: .leading, spacing: 8) {
+                    content()
+                        .padding(.horizontal)
+                        .padding(.bottom, 12)
+                }
+                .background(Color.white.opacity(0.04))
+                .cornerRadius(12)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: expandedSection)
     }
 }
