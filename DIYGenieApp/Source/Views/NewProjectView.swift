@@ -10,17 +10,20 @@ struct NewProjectView: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isFocused: Bool
 
+    // Form
     @State private var name = ""
     @State private var goal = ""
     @State private var budget = "$$"
     @State private var skill = "intermediate"
 
+    // Media / flow
     @State private var showingCamera = false
     @State private var showingPicker = false
     @State private var showingOverlay = false
     @State private var capturedImage: UIImage?
     @State private var projectId: String?
 
+    // UX state
     @State private var showAlert = false
     @State private var alertMessage = ""
     @State private var isLoading = false
@@ -31,19 +34,19 @@ struct NewProjectView: View {
 
     var body: some View {
         ZStack {
-            // Background gradient
+            // Background
             LinearGradient(
                 colors: [
                     Color(red: 28/255, green: 26/255, blue: 40/255),
                     Color(red: 60/255, green: 35/255, blue: 126/255)
                 ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
+                startPoint: .topLeading, endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
+
                     // Header
                     HStack {
                         Button(action: { dismiss() }) {
@@ -107,6 +110,7 @@ struct NewProjectView: View {
                             }
                             .pickerStyle(.segmented)
                             .tint(Color.purple.opacity(0.9))
+
                             Text("Your project budget range.")
                                 .font(.caption2)
                                 .foregroundColor(.white.opacity(0.6))
@@ -123,14 +127,17 @@ struct NewProjectView: View {
                             }
                             .pickerStyle(.segmented)
                             .tint(Color.purple.opacity(0.9))
+
                             Text("Your current DIY experience.")
                                 .font(.caption2)
                                 .foregroundColor(.white.opacity(0.6))
                         }
                     }
 
-                    // Photo Section
-                    if capturedImage == nil {
+                    // Photo section
+                    if let image = capturedImage {
+                        photoPreview(image)
+                    } else {
                         VStack(spacing: 14) {
                             Button { showingCamera = true } label: {
                                 primaryButton("Take Photo for Measurements")
@@ -139,8 +146,6 @@ struct NewProjectView: View {
                                 secondaryButton("Upload Photo")
                             }
                         }
-                    } else {
-                        photoPreview
                     }
 
                     Spacer(minLength: 60)
@@ -149,25 +154,38 @@ struct NewProjectView: View {
                 .padding(.bottom, 80)
             }
             .onTapGesture { hideKeyboard() }
+
+            // Inline loading veil
+            if isLoading {
+                Color.black.opacity(0.25).ignoresSafeArea()
+                ProgressView()
+                    .progressViewStyle(.circular)
+                    .scaleEffect(1.4)
+                    .tint(.white)
+            }
         }
 
-        // Sheets
+        // Camera picker
         .sheet(isPresented: $showingCamera) {
             ImagePicker(sourceType: .camera) { image in
-                if let image = image {
+                if let image {
                     capturedImage = image
                     showingOverlay = true
                 }
             }
         }
+
+        // Library picker
         .sheet(isPresented: $showingPicker) {
             ImagePicker(sourceType: .photoLibrary) { image in
-                if let image = image {
+                if let image {
                     capturedImage = image
                     Task { await createProjectAndUpload(image) }
                 }
             }
         }
+
+        // Overlay for rectangle measurement
         .fullScreenCover(isPresented: $showingOverlay) {
             if let image = capturedImage {
                 RectangleOverlayView(
@@ -187,23 +205,28 @@ struct NewProjectView: View {
                 )
             }
         }
+
+        // Alerts
         .alert("Status", isPresented: $showAlert) {
-            Button("OK", role: .cancel) {}
+            Button("OK", role: .cancel) { }
         } message: {
             Text(alertMessage)
         }
     }
 
-    // MARK: - Image Preview
-    private var photoPreview: some View {
+    // MARK: - Photo Preview block
+    private func photoPreview(_ image: UIImage) -> some View {
         VStack(spacing: 14) {
+
+            // header row
             HStack(spacing: 14) {
-                Image(uiImage: capturedImage!)
+                Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
                     .frame(width: 64, height: 64)
                     .clipped()
                     .cornerRadius(12)
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Photo Saved")
                         .foregroundColor(.white)
@@ -221,48 +244,82 @@ struct NewProjectView: View {
                 .foregroundColor(.white.opacity(0.7))
             }
 
+            // actions
             VStack(spacing: 14) {
                 Button {
                     Task {
-                        if let id = projectId {
-                            try? await api.generatePreview(projectId: id)
+                        guard let id = projectId else {
+                            alert("Project not created yet.")
+                            return
+                        }
+                        await runWithSpinner {
+                            let url = try await api.generatePreview(projectId: id)
+                            alert("Preview generated successfully ✅\n\(url)")
                         }
                     }
                 } label: {
-                    primaryButton("Generate AI Plan + Preview")
+                    primaryButton(isLoading ? "Generating..." : "Generate AI Plan + Preview")
                 }
+                .disabled(isLoading)
+
                 Button {
                     Task {
-                        if let id = projectId {
-                            try? await api.generatePlanOnly(projectId: id)
+                        guard let id = projectId else {
+                            alert("Project not created yet.")
+                            return
+                        }
+                        await runWithSpinner {
+                            _ = try await api.generatePlanOnly(projectId: id)
+                            alert("AI plan created successfully ✅")
                         }
                     }
                 } label: {
-                    secondaryButton("Create Plan Only")
+                    secondaryButton(isLoading ? "Creating..." : "Create Plan Only")
                 }
+                .disabled(isLoading)
             }
         }
     }
 
-    // Networking
+    // MARK: - Networking
+    @MainActor
     private func createProjectAndUpload(_ image: UIImage) async {
         guard !name.isEmpty, goal.count >= 15 else {
-            alertMessage = "Please fill all required fields."
-            showAlert = true
+            alert("Please fill all required fields.")
             return
         }
-        do {
+        await runWithSpinner {
             let project = try await api.createProject(
-                name: name, goal: goal, budget: budget, skillLevel: skill)
+                name: name,
+                goal: goal,
+                budget: budget,
+                skillLevel: skill
+            )
             projectId = project.id
             try await api.uploadImage(projectId: project.id, image: image)
-        } catch {
-            alertMessage = "Error: \(error.localizedDescription)"
-            showAlert = true
+            alert("Project created successfully ✅")
         }
     }
 
-    // UI Helpers
+    // MARK: - Small helpers
+    @MainActor
+    private func runWithSpinner(_ work: @escaping () async throws -> Void) async {
+        isLoading = true
+        do {
+            try await work()
+        } catch {
+            alert("Error: \(error.localizedDescription)")
+        }
+        isLoading = false
+    }
+
+    @MainActor
+    private func alert(_ message: String) {
+        alertMessage = message
+        showAlert = true
+    }
+
+    // MARK: - UI helpers
     private func glassField<Content: View>(label: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(label.uppercased())
@@ -285,10 +342,13 @@ struct NewProjectView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
             .background(
-                LinearGradient(colors: [
-                    Color(red: 115/255, green: 73/255, blue: 224/255),
-                    Color(red: 146/255, green: 86/255, blue: 255/255)
-                ], startPoint: .leading, endPoint: .trailing)
+                LinearGradient(
+                    colors: [
+                        Color(red: 115/255, green: 73/255, blue: 224/255),
+                        Color(red: 146/255, green: 86/255, blue: 255/255)
+                    ],
+                    startPoint: .leading, endPoint: .trailing
+                )
             )
             .foregroundColor(.white)
             .cornerRadius(16)
@@ -310,7 +370,7 @@ struct NewProjectView: View {
     }
 
     private func hideKeyboard() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
-                                        to: nil, from: nil, for: nil)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }
+

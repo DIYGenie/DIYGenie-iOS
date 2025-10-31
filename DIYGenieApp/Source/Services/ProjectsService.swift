@@ -2,57 +2,33 @@
 //  ProjectsService.swift
 //  DIYGenieApp
 //
-//  Created by Tye Kowalski on 10/30/25.
-//
 
 import Foundation
 import Supabase
 import UIKit
 
-// MARK: - Helper Type
-struct AnyEncodable: Encodable {
-    private let encode: (Encoder) throws -> Void
-    init<T: Encodable>(_ value: T) { self.encode = value.encode }
-    func encode(to encoder: Encoder) throws { try encode(encoder) }
-}
-
-// MARK: - ProjectsService
+/// Handles all project-related Supabase + API logic
 struct ProjectsService {
-    private let client: SupabaseClient
     private let userId: String
+    private let client = SupabaseConfig.client
 
     init(userId: String) {
         self.userId = userId
-        self.client = SupabaseConfig.client
     }
 
-    // MARK: - Fetch All Projects (async)
+    // MARK: - Fetch Projects
     func fetchProjects() async throws -> [Project] {
-        let response: [Project] = try await client
+        let response = try await client
             .from("projects")
             .select()
             .eq("user_id", value: userId)
             .order("created_at", ascending: false)
             .execute()
-            .value
-        return response
-    }
 
-    // MARK: - Fetch AI Build Plan
-    func fetchPlan(projectId: String) async throws -> PlanResponse {
-        let response: [PlanResponse] = try await client
-            .from("projects")
-            .select("plan_text, steps, tools_and_materials, cost_estimate")
-            .eq("id", value: projectId)
-            .limit(1)
-            .execute()
-            .value
+        guard let data = response.data else { return [] }
 
-        guard let plan = response.first else {
-            throw NSError(domain: "FetchPlanError", code: 0, userInfo: [NSLocalizedDescriptionKey: "No plan found for this project."])
-        }
-
-        return plan
+        let jsonData = try JSONSerialization.data(withJSONObject: data)
+        return try JSONDecoder().decode([Project].self, from: jsonData)
     }
 
     // MARK: - Create Project
@@ -66,136 +42,214 @@ struct ProjectsService {
             "created_at": AnyEncodable(ISO8601DateFormatter().string(from: Date()))
         ]
 
-        let response: Project = try await client
+        let response = try await client
             .from("projects")
-            .insert(insertData)
+            .insert(values: insertData)
             .select()
             .single()
             .execute()
-            .value
 
-        return response
-    }
-
-    // MARK: - Upload Image to Supabase Storage
-    func uploadImage(projectId: String, image: UIImage) async throws -> String {
-        guard let imageData = image.jpegData(compressionQuality: 0.85) else {
-            throw NSError(domain: "UploadError", code: 0, userInfo: [NSLocalizedDescriptionKey: "Failed to encode image"])
+        guard let data = response.data else {
+            throw NSError(domain: "ProjectsService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Create project failed"])
         }
 
-        let fileName = "uploads/\(projectId)_original.jpg"
-        _ = try await client.storage
-            .from("uploads")
-            .upload(fileName, data: imageData, options: FileOptions(contentType: "image/jpeg", upsert: true))
+        let jsonData = try JSONSerialization.data(withJSONObject: data)
+        return try JSONDecoder().decode(Project.self, from: jsonData)
+    }
 
-        // ✅ Convert to String before returning
-        let publicURL = try client.storage.from("uploads").getPublicURL(path: fileName)
-        try await client.from("projects")
+    // MARK: - Upload Image
+    func uploadImage(projectId: String, image: UIImage) async throws {
+        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+            throw NSError(domain: "ProjectsService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid image data"])
+        }
+
+        let path = "\(userId)/\(UUID().uuidString).jpg"
+        let bucket = client.storage.from("uploads")
+
+        _ = try await bucket.upload(path: path, data: imageData, fileOptions: FileOptions(contentType: "image/jpeg"))
+
+        guard let publicURL = bucket.getPublicURL(path: path) else {
+            throw NSError(domain: "ProjectsService", code: 3, userInfo: [NSLocalizedDescriptionKey: "Public URL generation failed"])
+        }
+
+        _ = try await client
+            .from("projects")
             .update(["original_image_url": publicURL.absoluteString])
             .eq("id", value: projectId)
             .execute()
-
-        return publicURL.absoluteString
     }
 
-    // MARK: - Generate Decor8 AI Preview
-    func generatePreview(projectId: String) async throws -> String {
-        // 1️⃣ Fetch original image URL from Supabase
-        let project: Project = try await client
+    // MARK: - Generate Decor8 Preview
+    func generatePreview(projectId: String) async throws -> URL {
+        // Fetch project
+        let result = try await client
             .from("projects")
             .select()
             .eq("id", value: projectId)
             .single()
             .execute()
-            .value
 
-        guard let originalURL = project.originalImageURL else {
-            throw NSError(domain: "PreviewError", code: 0, userInfo: [NSLocalizedDescriptionKey: "No image URL found"])
+        guard let data = result.data else {
+            throw NSError(domain: "ProjectsService", code: 10, userInfo: [NSLocalizedDescriptionKey: "Project not found"])
         }
 
-        // 2️⃣ Call Decor8 API
+        let jsonData = try JSONSerialization.data(withJSONObject: data)
+        let project = try JSONDecoder().decode(Project.self, from: jsonData)
+
+        guard let imageURL = project.originalImageURL, let goal = project.goal else {
+            throw NSError(domain: "ProjectsService", code: 11, userInfo: [NSLocalizedDescriptionKey: "Missing image or goal"])
+        }
+
         guard let apiURL = URL(string: "https://api.decor8.ai/generate-preview") else {
-            throw NSError(domain: "PreviewError", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid Decor8 URL"])
+            throw NSError(domain: "ProjectsService", code: 12, userInfo: [NSLocalizedDescriptionKey: "Invalid Decor8 endpoint"])
         }
 
         var request = URLRequest(url: apiURL)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.addValue(SupabaseConfig.decor8Key, forHTTPHeaderField: "Authorization")
+        request.addValue("Bearer \(SupabaseConfig.decor8Key)", forHTTPHeaderField: "Authorization")
 
-        let body: [String: Any] = ["image_url": originalURL, "prompt": project.goal ?? "home improvement"]
+        let body: [String: Any] = [
+            "image_url": imageURL,
+            "prompt": goal
+        ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw NSError(domain: "PreviewError", code: 0, userInfo: [NSLocalizedDescriptionKey: "Decor8 request failed"])
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(domain: "ProjectsService", code: 13, userInfo: [NSLocalizedDescriptionKey: "Decor8 API error"])
         }
 
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        guard let previewURL = json?["preview_url"] as? String else {
-            throw NSError(domain: "PreviewError", code: 0, userInfo: [NSLocalizedDescriptionKey: "Missing preview_url in response"])
+        guard
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let previewURLString = json["preview_url"] as? String,
+            let previewURL = URL(string: previewURLString)
+        else {
+            throw NSError(domain: "ProjectsService", code: 14, userInfo: [NSLocalizedDescriptionKey: "Invalid Decor8 response"])
         }
 
-        // 3️⃣ Save to Supabase
-        try await client.from("projects")
-            .update(["preview_image_url": previewURL])
+        // Save to Supabase
+        _ = try await client
+            .from("projects")
+            .update(["preview_url": previewURLString])
             .eq("id", value: projectId)
             .execute()
 
         return previewURL
     }
 
-    // MARK: - Generate Plan (text only)
-    func generatePlanOnly(projectId: String) async throws -> String {
-        let project: Project = try await client
+    // MARK: - Generate Plan (OpenAI)
+    func generatePlanOnly(projectId: String) async throws -> PlanResponse {
+        let result = try await client
             .from("projects")
             .select()
             .eq("id", value: projectId)
             .single()
             .execute()
-            .value
 
-        guard let goal = project.goal else { throw NSError(domain: "PlanError", code: 0, userInfo: [NSLocalizedDescriptionKey: "Missing project goal"]) }
-
-        // Call your OpenAI backend endpoint
-        guard let apiURL = URL(string: "https://api.diygenieapp.com/generate-plan") else {
-            throw NSError(domain: "PlanError", code: 0, userInfo: [NSLocalizedDescriptionKey: "Invalid API URL"])
+        guard let data = result.data else {
+            throw NSError(domain: "ProjectsService", code: 20, userInfo: [NSLocalizedDescriptionKey: "Project not found"])
         }
 
-        var request = URLRequest(url: apiURL)
+        let jsonData = try JSONSerialization.data(withJSONObject: data)
+        let project = try JSONDecoder().decode(Project.self, from: jsonData)
+
+        guard let goal = project.goal else {
+            throw NSError(domain: "ProjectsService", code: 21, userInfo: [NSLocalizedDescriptionKey: "Missing project goal"])
+        }
+
+        // Build OpenAI prompt
+        let prompt = """
+        Create a detailed DIY project plan for: "\(goal)".
+        Include:
+        1. Step-by-step instructions
+        2. List of tools and materials
+        3. Estimated cost and difficulty
+        """
+
+        let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")!
+        var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
+        request.addValue("Bearer \(SupabaseConfig.openAIKey)", forHTTPHeaderField: "Authorization")
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["project_id": projectId, "goal": goal])
 
-        let (data, _) = try await URLSession.shared.data(for: request)
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        let planText = json?["plan_text"] as? String ?? "No plan generated."
+        let body: [String: Any] = [
+            "model": "gpt-4o-mini",
+            "messages": [["role": "user", "content": prompt]]
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        // Save to Supabase
-        try await client.from("projects")
-            .update(["plan_text": planText])
-            .eq("id", value: projectId)
-            .execute()
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(domain: "ProjectsService", code: 22, userInfo: [NSLocalizedDescriptionKey: "OpenAI request failed"])
+        }
 
-        return planText
-    }
+        let decoded = try JSONDecoder().decode(OpenAIResponse.self, from: data)
+        let planText = decoded.choices.first?.message.content ?? "No plan generated."
 
-    // MARK: - Update Project
-    func updateProject(projectId: String, fields: [String: AnyEncodable]) async throws -> Project {
-        let response: Project = try await client
+        // Save plan to Supabase
+        _ = try await client
             .from("projects")
-            .update(fields)
+            .update(["ai_plan": planText])
             .eq("id", value: projectId)
-            .select()
-            .single()
             .execute()
-            .value
-        return response
-    }
 
-    // MARK: - Delete Project
-    func deleteProject(projectId: String) async throws {
-        _ = try await client.from("projects").delete().eq("id", value: projectId).execute()
+        return PlanResponse(
+            id: UUID().uuidString,
+            title: project.name ?? "DIY Project Plan",
+            description: goal,
+            summary: planText,
+            steps: nil,
+            tools: nil,
+            materials: nil,
+            estimatedCost: nil
+        )
     }
+}
+
+// MARK: - Codable Models
+
+struct Project: Codable, Identifiable {
+    let id: String
+    let userId: String
+    let name: String?
+    let goal: String?
+    let budget: String?
+    let skillLevel: String?
+    let originalImageURL: String?
+    let previewURL: String?
+    let aiPlan: String?
+    let createdAt: String?
+}
+
+struct PlanResponse: Codable, Identifiable {
+    let id: String
+    let title: String?
+    let description: String?
+    let summary: String?
+    let steps: [String]?
+    let tools: [String]?
+    let materials: [String]?
+    let estimatedCost: Double?
+}
+
+// MARK: - OpenAI DTOs
+
+struct OpenAIResponse: Codable {
+    struct Choice: Codable {
+        struct Message: Codable {
+            let role: String
+            let content: String
+        }
+        let message: Message
+    }
+    let choices: [Choice]
+}
+
+// MARK: - AnyEncodable
+struct AnyEncodable: Encodable {
+    private let encodeFunc: (Encoder) throws -> Void
+    init<T: Encodable>(_ value: T) { encodeFunc = value.encode }
+    func encode(to encoder: Encoder) throws { try encodeFunc(encoder) }
 }
 

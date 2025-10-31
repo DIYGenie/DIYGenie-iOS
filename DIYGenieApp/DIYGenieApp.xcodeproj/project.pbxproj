@@ -52,8 +52,8 @@
 		E24CE04E2EA89EF10036185A = {
 			isa = PBXGroup;
 			children = (
-				E269F6922EB3ED2100CF06B1 /* Assets.xcassets */,
 				E2AF0F882EA92B3700B0FBE4 /* DIYGenieApp-Info.plist */,
+				E269F6922EB3ED2100CF06B1 /* Assets.xcassets */,
 				E27DC6102EB2A55A00DDB9B1 /* ContentView.swift */,
 				E27DC6112EB2A55A00DDB9B1 /* DIYGenieApp.swift */,
 				E24CE0592EA89EF10036185A /* Source */,
