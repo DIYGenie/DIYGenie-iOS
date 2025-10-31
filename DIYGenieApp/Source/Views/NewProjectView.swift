@@ -285,20 +285,55 @@ struct NewProjectView: View {
     @MainActor
     private func createProjectAndUpload(_ image: UIImage) async {
         guard !name.isEmpty, goal.count >= 15 else {
-            alert("Please fill all required fields.")
+            alertMessage = "Please fill all required fields."
+            showAlert = true
             return
         }
-        await runWithSpinner {
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            print("🟠 Starting project creation...")
+
+            // 1️⃣ Create project via API
             let project = try await api.createProject(
                 name: name,
                 goal: goal,
                 budget: budget,
                 skillLevel: skill
             )
-            projectId = project.id
+
+            print("🟣 Received project from API:", project)
+
+            // 2️⃣ Ensure project ID is set on main actor
+            DispatchQueue.main.async {
+                self.projectId = project.id
+                print("🟢 Saved projectId to state:", self.projectId ?? "nil")
+            }
+
+            // 3️⃣ Upload image
             try await api.uploadImage(projectId: project.id, image: image)
-            alert("Project created successfully ✅")
+            print("🟩 Image upload finished for project:", project.id)
+
+            alertMessage = "Project created successfully ✅"
+            showAlert = true
+
+        } catch {
+            print("🔴 Error creating or uploading project:", error.localizedDescription)
+            alertMessage = "Error: \(error.localizedDescription)"
+            showAlert = true
         }
+    }
+
+
+    // MARK: - Small helpers
+    /// Runs an async job while showing the spinner, and RETURNS the job's result.
+    @MainActor
+    private func runWithSpinner<T>(_ work: @escaping () async throws -> T) async rethrows -> T {
+        isLoading = true
+        defer { isLoading = false }
+        return try await work()
     }
 
     // MARK: - Small helpers
