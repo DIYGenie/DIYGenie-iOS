@@ -7,7 +7,6 @@ import Foundation
 import Supabase
 import UIKit
 
-// MARK: - ProjectsService
 struct ProjectsService {
     private let userId: String
     private let client = SupabaseConfig.client
@@ -25,7 +24,10 @@ struct ProjectsService {
             .order("created_at", ascending: false)
             .execute()
 
-        guard let resultData = response.data else { return [] }
+        guard let resultData = response.data else {
+            throw NSError(domain: "ProjectsService", code: 0, userInfo: [NSLocalizedDescriptionKey: "No data returned"])
+        }
+
         let jsonData = try JSONSerialization.data(withJSONObject: resultData)
         return try JSONDecoder().decode([Project].self, from: jsonData)
     }
@@ -43,7 +45,7 @@ struct ProjectsService {
 
         let response = try await client
             .from("projects")
-            .insert(values: insertData)
+            .insert(insertData) // ✅ correct Supabase v2+ syntax
             .select()
             .single()
             .execute()
@@ -56,7 +58,7 @@ struct ProjectsService {
         return try JSONDecoder().decode(Project.self, from: jsonData)
     }
 
-    // MARK: - Upload Image
+    // MARK: - Upload Image to Supabase Storage
     func uploadImage(projectId: String, image: UIImage) async throws {
         guard let imageData = image.jpegData(compressionQuality: 0.8) else {
             throw NSError(domain: "ProjectsService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid image data"])
@@ -65,7 +67,8 @@ struct ProjectsService {
         let path = "\(userId)/\(UUID().uuidString).jpg"
         let bucket = client.storage.from("uploads")
 
-        _ = try await bucket.upload(path: path, data: imageData, fileOptions: FileOptions(contentType: "image/jpeg"))
+        // ✅ Correct Supabase v2+ upload syntax
+        _ = try await bucket.upload(path, data: imageData, options: FileOptions(contentType: "image/jpeg"))
 
         guard let publicURL = bucket.getPublicURL(path: path) else {
             throw NSError(domain: "ProjectsService", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to get public URL"])
@@ -78,7 +81,7 @@ struct ProjectsService {
             .execute()
     }
 
-    // MARK: - Generate Preview
+    // MARK: - Generate Decor8 AI Preview
     func generatePreview(projectId: String) async throws -> URL {
         let response = try await client
             .from("projects")
@@ -94,19 +97,27 @@ struct ProjectsService {
         let jsonData = try JSONSerialization.data(withJSONObject: resultData)
         let project = try JSONDecoder().decode(Project.self, from: jsonData)
 
-        guard let imageURL = project.originalImageURL, let goal = project.goal else {
+        guard let imageURL = project.originalImageURL,
+              let goal = project.goal else {
             throw NSError(domain: "ProjectsService", code: 5, userInfo: [NSLocalizedDescriptionKey: "Missing image or goal"])
         }
 
+        // ✅ Decor8 API call
         let endpoint = URL(string: "https://api.decor8.ai/generate-preview")!
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
         request.addValue("Bearer \(SupabaseConfig.decor8Key)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["image_url": imageURL, "prompt": goal])
+
+        let body: [String: Any] = [
+            "image_url": imageURL,
+            "prompt": goal
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, responseHTTP) = try await URLSession.shared.data(for: request)
-        guard let http = responseHTTP as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        guard let http = responseHTTP as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "ProjectsService", code: 6, userInfo: [NSLocalizedDescriptionKey: "Decor8 API error"])
         }
 
@@ -127,7 +138,7 @@ struct ProjectsService {
         return previewURL
     }
 
-    // MARK: - Generate Plan (OpenAI)
+    // MARK: - Generate OpenAI Plan
     func generatePlanOnly(projectId: String) async throws -> PlanResponse {
         let response = try await client
             .from("projects")
@@ -147,13 +158,15 @@ struct ProjectsService {
         }
 
         let prompt = """
-        Create a DIY project plan for: "\(goal)".
+        Create a detailed DIY project plan for: "\(goal)".
         Include:
-        - Step-by-step guide
-        - Tools and materials list
+        - Step-by-step instructions
+        - Tools list
+        - Materials list
         - Estimated cost
         """
 
+        // ✅ OpenAI API call
         let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")!
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -165,7 +178,8 @@ struct ProjectsService {
         ])
 
         let (data, responseHTTP) = try await URLSession.shared.data(for: request)
-        guard let http = responseHTTP as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        guard let http = responseHTTP as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "ProjectsService", code: 10, userInfo: [NSLocalizedDescriptionKey: "OpenAI request failed"])
         }
 
@@ -189,47 +203,17 @@ struct ProjectsService {
             estimatedCost: nil
         )
     }
-}
 
-// MARK: - Models
-struct Project: Codable, Identifiable {
-    let id: String
-    let userId: String
-    let name: String?
-    let goal: String?
-    let budget: String?
-    let skillLevel: String?
-    let originalImageURL: String?
-    let previewURL: String?
-    let aiPlan: String?
-    let createdAt: String?
-}
-
-struct PlanResponse: Codable, Identifiable {
-    let id: String
-    let title: String?
-    let description: String?
-    let summary: String?
-    let steps: [String]?
-    let tools: [String]?
-    let materials: [String]?
-    let estimatedCost: Double?
-}
-
-struct OpenAIResponse: Codable {
-    struct Choice: Codable {
-        struct Message: Codable {
-            let role: String
-            let content: String
-        }
-        let message: Message
+    // MARK: - Compatibility Wrapper for old views
+    func fetchPlan(projectId: String) async throws -> PlanResponse {
+        return try await generatePlanOnly(projectId: projectId)
     }
-    let choices: [Choice]
 }
 
-// MARK: - Helper
+// MARK: - Helper Encodable Wrapper
 struct AnyEncodable: Encodable {
     private let encodeFunc: (Encoder) throws -> Void
     init<T: Encodable>(_ value: T) { encodeFunc = value.encode }
     func encode(to encoder: Encoder) throws { try encodeFunc(encoder) }
 }
+

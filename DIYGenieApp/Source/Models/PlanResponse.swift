@@ -2,7 +2,27 @@
 //  PlanResponse.swift
 //  DIYGenieApp
 //
-//  Created by Tye  Kowalski on 10/31/25.
-//
 
 import Foundation
+
+struct PlanResponse: Codable, Identifiable {
+    let id: String
+    let title: String?
+    let description: String?
+    let summary: String?
+    let steps: [String]?
+    let tools: [String]?
+    let materials: [String]?
+    let estimatedCost: Double?
+}
+
+struct OpenAIResponse: Codable {
+    struct Choice: Codable {
+        struct Message: Codable {
+            let role: String
+            let content: String
+        }
+        let message: Message
+    }
+    let choices: [Choice]
+}
