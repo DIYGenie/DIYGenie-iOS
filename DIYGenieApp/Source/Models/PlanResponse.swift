@@ -14,15 +14,16 @@ struct PlanResponse: Codable, Identifiable {
     let tools: [String]?
     let materials: [String]?
     let estimatedCost: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case description
+        case summary
+        case steps
+        case tools
+        case materials
+        case estimatedCost
+    }
 }
 
-struct OpenAIResponse: Codable {
-    struct Choice: Codable {
-        struct Message: Codable {
-            let role: String
-            let content: String
-        }
-        let message: Message
-    }
-    let choices: [Choice]
-}

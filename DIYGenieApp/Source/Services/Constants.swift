@@ -1,8 +1,11 @@
+
 //
 //  Constants.swift
 //  DIYGenieApp
 //
-//  Created by Tye  Kowalski on 10/31/25.
-//
 
 import Foundation
+
+enum Constants {
+    static let apiBase = "https://api.diygenieapp.com"
+}

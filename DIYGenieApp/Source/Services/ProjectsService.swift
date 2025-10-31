@@ -24,12 +24,13 @@ struct ProjectsService {
             .order("created_at", ascending: false)
             .execute()
 
-        guard let resultData = response.data else {
-            throw NSError(domain: "ProjectsService", code: 0,
-                          userInfo: [NSLocalizedDescriptionKey: "No data returned"])
+        guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+            throw NSError(domain: "ProjectsService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid image data"])
         }
 
-        let jsonData = try JSONSerialization.data(withJSONObject: resultData)
+        }
+
+    if let imageData = image.jpegData(compressionQuality: 0.8) { ... }
         return try JSONDecoder().decode([Project].self, from: jsonData)
     }
 
@@ -86,7 +87,7 @@ struct ProjectsService {
         // ✅ Save URL in project record
         _ = try await client
             .from("projects")
-            .update(values: ["input_image_url": AnyEncodable(publicURL.absoluteString)])
+            .update(value: ["input_image_url": AnyEncodable(publicURL.absoluteString)])
             .eq("id", value: projectId)
             .execute()
 
