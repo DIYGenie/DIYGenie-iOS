@@ -28,7 +28,7 @@ struct ProjectDetailsView: View {
                     Text(project.name)
                         .font(.largeTitle.bold())
                         .foregroundColor(.white)
-                    Text(project.goal)
+                    Text(project.goal ?? default value)
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.7))
                 }
