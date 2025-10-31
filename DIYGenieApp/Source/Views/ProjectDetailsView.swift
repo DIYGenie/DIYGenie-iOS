@@ -185,7 +185,7 @@ struct ProjectDetailsView: View {
         if showingPreview {
             if let urlString = project.previewURL, let url = URL(string: urlString) { return url }
         } else {
-            if let urlString = project.inputImageURL, let url = URL(string: urlString) { return url }
+            if let urlString = project.originalImageUrl, let url = URL(string: urlString) { return url }
         }
         return nil
     }
