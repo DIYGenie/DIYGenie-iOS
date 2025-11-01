@@ -19,15 +19,17 @@ extension ProjectsService {
         let path = "\(userId)/\(UUID().uuidString).usdz"
         let data = try Data(contentsOf: fileURL)
 
-        // Supabase v2.36.0 signature: upload(_ path: String, data: Data, options: FileOptions?)
+        // Explicit type to avoid: “Cannot infer contextual base in reference to member 'init'”
+        let opts = FileOptions(contentType: "model/vnd.usdz+zip")
+
         _ = try await bucket.upload(
             path,
             data: data,
-            options: .init(contentType: "model/vnd.usdz+zip")
+            options: opts
         )
 
-        // Build a stable public URL (SDK no longer provides getPublicUrl)
-        let publicURL = SupabaseConfig.publicURL(bucket: "uploads", path: path)
+        // Build a stable public URL
+        let publicURL: String = SupabaseConfig.publicURL(bucket: "uploads", path: path)
 
         // Update project row
         let update: [String: AnyEncodable] = ["ar_scan_url": AnyEncodable(publicURL)]
@@ -44,9 +46,7 @@ extension ProjectsService {
             let url: URL
             init(_ url: URL) { self.url = url }
             func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
-            func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
-                url as NSURL
-            }
+            func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem { url as NSURL }
         }
 
         final class RetainingQLController: QLPreviewController {
