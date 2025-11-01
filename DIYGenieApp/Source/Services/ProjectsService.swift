@@ -8,27 +8,11 @@ import Supabase
 import UIKit
 
 struct ProjectsService {
-    private let userId: String
-    private let client = SupabaseConfig.client
-
-    init(userId: String? = nil) {
-        if let id = userId ?? UserDefaults.standard.string(forKey: "user_id"), !id.isEmpty {
-            self.userId = id
-        } else {
-            let newId = UUID().uuidString
-            UserDefaults.standard.set(newId, forKey: "user_id")
-            self.userId = newId
-            print("🟢 Created fallback user_id:", newId)
-        }
-    }
+    let userId: String
+    let client = SupabaseConfig.client
 
     // MARK: - Fetch All Projects
     func fetchProjects() async throws -> [Project] {
-        guard !userId.isEmpty else {
-            print("⚠️ fetchProjects() aborted — empty userId")
-            return []
-        }
-
         let response = try await client
             .from("projects")
             .select()
@@ -36,147 +20,85 @@ struct ProjectsService {
             .order("created_at", ascending: false)
             .execute()
 
-        // ✅ Decode directly
-        do {
-            return try JSONDecoder().decode([Project].self, from: response.data)
-        } catch {
-            print("🔴 JSON decode error:", error)
-            return []
-        }
-    }
-
-    // MARK: - Create Project
-    func createProject(
-        name: String,
-        goal: String,
-        budget: String,
-        skillLevel: String
-    ) async throws -> Project {
-        // Ensure user_id exists
-        guard !userId.isEmpty else {
+        // New Supabase SDK already returns non-optional Data
+        guard !response.data.isEmpty else {
             throw NSError(
                 domain: "ProjectsService",
-                code: 400,
-                userInfo: [NSLocalizedDescriptionKey: "Missing user_id"]
+                code: 100,
+                userInfo: [NSLocalizedDescriptionKey: "No data returned from Supabase"]
             )
         }
 
-        // Normalize skill level for Supabase check constraint
-        let normalizedSkill = skillLevel.lowercased()
+        let projects = try JSONDecoder().decode([Project].self, from: response.data)
+        return projects
+    }
 
-        // Prepare insert payload
+    // MARK: - Create Project
+    func createProject(name: String, goal: String, budget: String, skillLevel: String) async throws -> Project {
         let insert: [String: AnyEncodable] = [
             "user_id": AnyEncodable(userId),
             "name": AnyEncodable(name),
             "goal": AnyEncodable(goal),
             "budget": AnyEncodable(budget),
-            "skill_level": AnyEncodable(normalizedSkill),
-            "status": AnyEncodable("draft")
+            "skill_level": AnyEncodable(skillLevel),
+            "status": AnyEncodable("draft"),
+            "created_at": AnyEncodable(Date().ISO8601Format())
         ]
 
-        print("🧩 Creating project with skill_level = \(normalizedSkill)")
-
-        // Perform insert
         let response = try await client
             .from("projects")
-            .insert(insert)
+            .insert([insert])
             .select()
             .single()
             .execute()
 
-        // Decode the response from Supabase
-        let data = response.data
-        guard !data.isEmpty else {
-            throw NSError(
-                domain: "ProjectsService",
-                code: 500,
-                userInfo: [NSLocalizedDescriptionKey: "Empty response from Supabase"]
-            )
-        }
-
-        return try JSONDecoder().decode(Project.self, from: data)
+        let project = try JSONDecoder().decode(Project.self, from: response.data)
+        return project
     }
 
     // MARK: - Upload Image
     func uploadImage(projectId: String, image: UIImage) async throws {
-        guard !userId.isEmpty else {
-            throw NSError(domain: "ProjectsService", code: 400,
-                          userInfo: [NSLocalizedDescriptionKey: "Missing user_id"])
-        }
-
         guard let imageData = image.jpegData(compressionQuality: 0.8) else {
-            throw NSError(domain: "ProjectsService", code: 401,
-                          userInfo: [NSLocalizedDescriptionKey: "Invalid image data."])
+            throw NSError(domain: "ProjectsService", code: 200, userInfo: [NSLocalizedDescriptionKey: "Failed to compress image"])
         }
 
-        let path = "\(userId)/\(UUID().uuidString).jpg"
         let bucket = client.storage.from("uploads")
+        let path = "\(userId)/\(UUID().uuidString).jpg"
 
-        _ = try await bucket.upload(
-            path,
-            data: imageData,
-            options: FileOptions(contentType: "image/jpeg", upsert: false)
-        )
+        _ = try await bucket.upload(path: path, file: imageData, options: FileOptions(contentType: "image/jpeg"))
 
-        let publicURL = try bucket.getPublicURL(path: path).absoluteString
-        print("🟢 Uploaded image → \(publicURL)")
+        let publicURL = bucket.getPublicUrl(path: path)
+        let urlString = publicURL.absoluteString
 
         _ = try await client
             .from("projects")
-            .update(["input_image_url": AnyEncodable(publicURL)])
+            .update(["photo_url": AnyEncodable(urlString)])
             .eq("id", value: projectId)
             .execute()
-
-        print("🟣 Updated project \(projectId) with image URL")
     }
 
-    // MARK: - Update Project
-    func updateProject(_ id: String, fields: [String: AnyEncodable]) async throws {
-        _ = try await client
-            .from("projects")
-            .update(fields)
-            .eq("id", value: id)
-            .execute()
-    }
-
-    // MARK: - Delete Project
-    func deleteProject(_ id: String) async throws {
-        _ = try await client
-            .from("projects")
-            .delete()
-            .eq("id", value: id)
-            .execute()
+    // MARK: - Generate AI Preview
+    func generatePreview(projectId: String) async throws -> String {
+        let url = URL(string: "\(API.baseURL)/api/projects/\(projectId)/generate-preview")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw NSError(domain: "ProjectsService", code: 300, userInfo: [NSLocalizedDescriptionKey: "Preview generation failed"])
+        }
+        return "\(API.baseURL)/projects/\(projectId)"
     }
 
     // MARK: - Generate Plan Only
-    func generatePlanOnly(projectId: String) async throws -> PlanResponse {
-        guard let base = URL(string: Constants.apiBase) else { throw URLError(.badURL) }
-        let url = base.appendingPathComponent("generate-plan/\(projectId)")
+    func generatePlanOnly(projectId: String) async throws -> Bool {
+        let url = URL(string: "\(API.baseURL)/api/projects/\(projectId)/generate-plan")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        let (data, _) = try await URLSession.shared.data(for: request)
-        return try JSONDecoder().decode(PlanResponse.self, from: data)
-    }
-
-    // MARK: - Generate Decor8 Preview
-    func generatePreview(projectId: String) async throws -> String {
-        guard let base = URL(string: Constants.apiBase) else { throw URLError(.badURL) }
-        let url = base.appendingPathComponent("generate-preview/\(projectId)")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-
-        let (data, _) = try await URLSession.shared.data(for: request)
-        let result = try JSONDecoder().decode([String: String].self, from: data)
-        guard let previewURL = result["preview_url"] else {
-            throw NSError(domain: "ProjectsService", code: 104,
-                          userInfo: [NSLocalizedDescriptionKey: "Missing preview_url in response"])
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw NSError(domain: "ProjectsService", code: 301, userInfo: [NSLocalizedDescriptionKey: "Plan generation failed"])
         }
-        return previewURL
-    }
-
-    // MARK: - Compatibility
-    func fetchPlan(projectId: String) async throws -> PlanResponse {
-        try await generatePlanOnly(projectId: projectId)
+        return true
     }
 }
 

@@ -2,7 +2,9 @@
 //  API.swift
 //  DIYGenieApp
 //
-//  Created by Tye  Kowalski on 11/1/25.
-//
 
 import Foundation
+
+enum API {
+    static let baseURL = "https://api.diygenieapp.com"
+}

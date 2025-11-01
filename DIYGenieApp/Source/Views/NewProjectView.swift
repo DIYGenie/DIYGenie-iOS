@@ -21,21 +21,17 @@ struct NewProjectView: View {
     @State private var showingCamera = false
     @State private var showingPicker = false
     @State private var showingOverlay = false
+    @State private var showingARPreview = false
     @State private var capturedImage: UIImage?
     @State private var projectId: String?
-
-    // 🧩 AR Preview
-    @State private var showingARPreview = false
     @State private var arFileURL: URL?
 
-    // UX state
+    // UX
     @State private var showAlert = false
     @State private var alertMessage = ""
     @State private var isLoading = false
 
-    private let api = ProjectsService(
-        userId: UserDefaults.standard.string(forKey: "user_id") ?? "demo"
-    )
+    private let api = ProjectsService(userId: UserDefaults.standard.string(forKey: "user_id") ?? "demo")
 
     var body: some View {
         ZStack {
@@ -54,7 +50,7 @@ struct NewProjectView: View {
 
                     // Header
                     HStack {
-                        Button(action: { dismiss() }) {
+                        SwiftUI.Button(action: { dismiss() }) {
                             Image(systemName: "chevron.left")
                                 .foregroundColor(.white.opacity(0.9))
                                 .font(.system(size: 18, weight: .semibold))
@@ -67,8 +63,7 @@ struct NewProjectView: View {
                             .font(.system(size: 36, weight: .heavy))
                             .foregroundStyle(.white)
                             .shadow(color: .white.opacity(0.08), radius: 6, x: 0, y: 1)
-
-                        Text("Bring your next DIY idea to life with a photo or room scan.")
+                        Text("Get everything you need to bring your next DIY idea to life.")
                             .font(.system(size: 17, weight: .medium))
                             .foregroundColor(.white.opacity(0.8))
                             .lineSpacing(2)
@@ -126,9 +121,9 @@ struct NewProjectView: View {
                     glassField(label: "Skill Level") {
                         VStack(spacing: 6) {
                             Picker("Skill", selection: $skill) {
-                                Text("Easy").tag("easy")
-                                Text("Medium").tag("medium")
-                                Text("Hard").tag("hard")
+                                Text("Beginner").tag("beginner")
+                                Text("Intermediate").tag("intermediate")
+                                Text("Advanced").tag("advanced")
                             }
                             .pickerStyle(.segmented)
                             .tint(Color.purple.opacity(0.9))
@@ -139,15 +134,15 @@ struct NewProjectView: View {
                         }
                     }
 
-                    // Photo section
+                    // Media Section
                     if let image = capturedImage {
                         photoPreview(image)
                     } else {
                         VStack(spacing: 14) {
-                            Button { showingCamera = true } label: {
+                            SwiftUI.Button { showingCamera = true } label: {
                                 primaryButton("Take Photo for Measurements")
                             }
-                            Button { showingPicker = true } label: {
+                            SwiftUI.Button { showingPicker = true } label: {
                                 secondaryButton("Upload Photo")
                             }
                         }
@@ -160,16 +155,16 @@ struct NewProjectView: View {
             }
             .onTapGesture { hideKeyboard() }
 
+            // Inline loading veil
             if isLoading {
                 Color.black.opacity(0.25).ignoresSafeArea()
-                ProgressView()
-                    .progressViewStyle(.circular)
+                ProgressView().progressViewStyle(.circular)
                     .scaleEffect(1.4)
                     .tint(.white)
             }
         }
 
-        // Camera picker
+        // Camera Picker
         .sheet(isPresented: $showingCamera) {
             ImagePicker(sourceType: .camera) { image in
                 if let image {
@@ -179,7 +174,7 @@ struct NewProjectView: View {
             }
         }
 
-        // Library picker
+        // Library Picker
         .sheet(isPresented: $showingPicker) {
             ImagePicker(sourceType: .photoLibrary) { image in
                 if let image {
@@ -210,25 +205,15 @@ struct NewProjectView: View {
             }
         }
 
-        // AR Preview sheet
-        .sheet(isPresented: $showingARPreview) {
-            if let url = arFileURL {
-                ARQuickLookView(url: url)
-            } else {
-                Text("No 3D scan available yet.")
-                    .font(.headline)
-                    .padding()
-            }
-        }
-
+        // Alerts
         .alert("Status", isPresented: $showAlert) {
-            Button("OK", role: .cancel) { }
+            SwiftUI.Button("OK", role: .cancel) { }
         } message: {
             Text(alertMessage)
         }
     }
 
-    // MARK: - Photo Preview
+    // MARK: - Photo Preview Block
     private func photoPreview(_ image: UIImage) -> some View {
         VStack(spacing: 14) {
 
@@ -241,32 +226,24 @@ struct NewProjectView: View {
                     .cornerRadius(12)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Photo Saved")
-                        .foregroundColor(.white)
-                        .font(.headline)
-                    Text("Ready to generate your plan or view 3D scan.")
+                    Text("Photo Saved").foregroundColor(.white).font(.headline)
+                    Text("You can generate a plan or view your scan.")
                         .foregroundColor(.white.opacity(0.7))
                         .font(.subheadline)
                 }
                 Spacer()
-                Button("Redo") {
-                    capturedImage = nil
-                    projectId = nil
-                }
-                .font(.footnote)
-                .foregroundColor(.white.opacity(0.7))
+                SwiftUI.Button("Redo") { capturedImage = nil; projectId = nil }
+                    .font(.footnote)
+                    .foregroundColor(.white.opacity(0.7))
             }
 
             VStack(spacing: 14) {
-                Button {
+                SwiftUI.Button {
                     Task {
-                        guard let id = projectId else {
-                            alert("Project not created yet.")
-                            return
-                        }
+                        guard let id = projectId else { alert("Project not created yet."); return }
                         await runWithSpinner {
                             let url = try await api.generatePreview(projectId: id)
-                            alert("Preview generated successfully ✅\n\(url)")
+                            alert("Preview generated ✅\n\(url)")
                         }
                     }
                 } label: {
@@ -274,12 +251,9 @@ struct NewProjectView: View {
                 }
                 .disabled(isLoading)
 
-                Button {
+                SwiftUI.Button {
                     Task {
-                        guard let id = projectId else {
-                            alert("Project not created yet.")
-                            return
-                        }
+                        guard let id = projectId else { alert("Project not created yet."); return }
                         await runWithSpinner {
                             _ = try await api.generatePlanOnly(projectId: id)
                             alert("AI plan created successfully ✅")
@@ -290,13 +264,15 @@ struct NewProjectView: View {
                 }
                 .disabled(isLoading)
 
-                // 🧩 AR Preview Button (shows only if file exists)
-                if let url = arFileURL {
-                    Button {
+                // AR Button
+                SwiftUI.Button {
+                    if let fileURL = arFileURL {
                         showingARPreview = true
-                    } label: {
-                        secondaryButton("Preview 3D Scan (AR)")
+                    } else {
+                        alert("No AR scan available yet.")
                     }
+                } label: {
+                    secondaryButton("Preview 3D Scan (AR)")
                 }
             }
         }
@@ -318,26 +294,16 @@ struct NewProjectView: View {
             print("🟠 Starting project creation...")
 
             let project = try await api.createProject(
-                name: name,
-                goal: goal,
-                budget: budget,
-                skillLevel: skill
+                name: name, goal: goal, budget: budget, skillLevel: skill
             )
-
             DispatchQueue.main.async {
                 self.projectId = project.id
-                print("🟢 Saved projectId to state:", self.projectId ?? "nil")
+                print("🟢 Saved projectId:", project.id)
             }
 
             try await api.uploadImage(projectId: project.id, image: image)
-            print("🟩 Image upload finished for project:", project.id)
-
-            // 👇 Placeholder for when AR scan file exists later
-            // self.arFileURL = URL(string: project.reference_object ?? "")
-
             alertMessage = "Project created successfully ✅"
             showAlert = true
-
         } catch {
             print("🔴 Error creating or uploading project:", error.localizedDescription)
             alertMessage = "Error: \(error.localizedDescription)"
@@ -348,23 +314,18 @@ struct NewProjectView: View {
     // MARK: - Helpers
     @MainActor
     private func runWithSpinner<T>(_ work: @escaping () async throws -> T) async rethrows -> T {
-        isLoading = true
-        defer { isLoading = false }
+        isLoading = true; defer { isLoading = false }
         return try await work()
-    }
-
-    @MainActor
-    private func runWithSpinner(_ work: @escaping () async throws -> Void) async {
-        isLoading = true
-        do { try await work() }
-        catch { alert("Error: \(error.localizedDescription)") }
-        isLoading = false
     }
 
     @MainActor
     private func alert(_ message: String) {
         alertMessage = message
         showAlert = true
+    }
+
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     private func glassField<Content: View>(label: String, @ViewBuilder content: () -> Content) -> some View {
@@ -389,10 +350,13 @@ struct NewProjectView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
             .background(
-                LinearGradient(colors: [
-                    Color(red: 115/255, green: 73/255, blue: 224/255),
-                    Color(red: 146/255, green: 86/255, blue: 255/255)
-                ], startPoint: .leading, endPoint: .trailing)
+                LinearGradient(
+                    colors: [
+                        Color(red: 115/255, green: 73/255, blue: 224/255),
+                        Color(red: 146/255, green: 86/255, blue: 255/255)
+                    ],
+                    startPoint: .leading, endPoint: .trailing
+                )
             )
             .foregroundColor(.white)
             .cornerRadius(16)
@@ -411,32 +375,6 @@ struct NewProjectView: View {
             )
             .foregroundColor(.white)
             .cornerRadius(14)
-    }
-
-    private func hideKeyboard() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
-                                        to: nil, from: nil, for: nil)
-    }
-}
-
-// MARK: - AR QuickLook Wrapper
-struct ARQuickLookView: UIViewControllerRepresentable {
-    let url: URL
-    func makeUIViewController(context: Context) -> QLPreviewController {
-        let controller = QLPreviewController()
-        controller.dataSource = context.coordinator
-        return controller
-    }
-    func updateUIViewController(_ controller: QLPreviewController, context: Context) {}
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-    final class Coordinator: NSObject, QLPreviewControllerDataSource {
-        let parent: ARQuickLookView
-        init(_ parent: ARQuickLookView) { self.parent = parent }
-        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
-        func previewController(_ controller: QLPreviewController,
-                               previewItemAt index: Int) -> QLPreviewItem {
-            parent.url as QLPreviewItem
-        }
     }
 }
 
