@@ -5,56 +5,33 @@
 
 import Foundation
 import Supabase
+import RoomPlan
+import QuickLook
+import SwiftUI
 
 extension ProjectsService {
 
-    // MARK: - Upload AR Scan (.usdz)
+    // MARK: - Upload RoomPlan .usdz → Storage + update row
     func uploadARScan(projectId: String, fileURL: URL) async throws {
         let bucket = client.storage.from("uploads")
-        let filename = "\(userId)/\(UUID().uuidString).usdz"
-        let fileData = try Data(contentsOf: fileURL)
+        let path = "\(userId)/\(UUID().uuidString).usdz"
+        let data = try Data(contentsOf: fileURL)
 
-        // ✅ New Supabase v2.5+ syntax
-        _ = try await bucket.upload(filename, data: fileData, options: ["contentType": "model/vnd.usdz+zip"])
+        _ = try await bucket.upload(
+            path,
+            data: data,
+            options: .init(contentType: "model/vnd.usdz+zip")
+        )
 
-        // ✅ Public URL
-        let publicURL = bucket.getPublicUrl(path: filename).publicUrl
+        // Build public URL (stable)
+        let publicURL = SupabaseConfig.publicURL(bucket: "uploads", path: path)
 
-        // ✅ Save to projects table
+        let update: [String: AnyEncodable] = ["ar_scan_url": AnyEncodable(publicURL)]
         _ = try await client
             .from("projects")
-            .update(["ar_scan_url": AnyEncodable(publicURL)])
+            .update(update)
             .eq("id", value: projectId)
             .execute()
-
-        print("🟢 AR scan uploaded: \(publicURL)")
-    }
-
-    // MARK: - Delete AR Scan
-    func deleteARScan(projectId: String) async throws {
-        let bucket = client.storage.from("uploads")
-
-        let response = try await client
-            .from("projects")
-            .select("ar_scan_url")
-            .eq("id", value: projectId)
-            .single()
-            .execute()
-
-        guard
-            let data = response.data,
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let urlString = json["ar_scan_url"] as? String,
-            let url = URL(string: urlString)
-        else {
-            print("⚠️ No AR scan URL found for project \(projectId)")
-            return
-        }
-
-        let path = url.path.replacingOccurrences(of: "/storage/v1/object/public/uploads/", with: "")
-        _ = try await bucket.remove(paths: [path])
-
-        print("🗑️ AR scan removed for project \(projectId)")
     }
 }
 
