@@ -2,28 +2,44 @@
 //  SupabaseConfig.swift
 //  DIYGenieApp
 //
-//  FINAL – Production-safe configuration for Xcode 26
-//
 
 import Foundation
 import Supabase
 
-struct SupabaseConfig {
-    // 🔹 Supabase credentials (safe to include anon key + URL)
-    static let supabaseURL = URL(string: "https://qnevigmqyuxfzyczmctc.supabase.co")!
-    static let supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFuZXZpZ21xeXV4Znp5Y3ptY3RjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg5NDc5MjUsImV4cCI6MjA3NDUyMzkyNX0.5wKtzwtNDZt6jjE5gYqNqqWATTdd7g2zVdHB231Z1wQ"
+enum SupabaseConfig {
+    // Read from Info.plist
+    private static let supabaseURLString: String = {
+        guard let s = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String, !s.isEmpty else {
+            fatalError("Missing SUPABASE_URL in Info.plist")
+        }
+        return s
+    }()
 
-    // Supabase client
-    static let client = SupabaseClient(
-        supabaseURL: supabaseURL,
-        supabaseKey: supabaseAnonKey
-    )
+    private static let supabaseAnonKey: String = {
+        guard let s = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String, !s.isEmpty else {
+            fatalError("Missing SUPABASE_ANON_KEY in Info.plist")
+        }
+        return s
+    }()
 
-    // 🔒 Sensitive API keys (loaded from environment variables)
-    static let openAIKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"] ?? ""
-    static let stripeSecret = ProcessInfo.processInfo.environment["STRIPE_SECRET_KEY"] ?? ""
+    /// Supabase project root, e.g. https://xxxx.supabase.co
+    static let baseURL: URL = {
+        guard let url = URL(string: supabaseURLString) else {
+            fatalError("Invalid SUPABASE_URL")
+        }
+        return url
+    }()
 
-    // Optional future variables (safe placeholders)
-    static let decor8Key = ProcessInfo.processInfo.environment["DECOR8_API_KEY"] ?? ""
+    /// Shared Supabase client
+    static let client: SupabaseClient = {
+        SupabaseClient(supabaseURL: baseURL, supabaseKey: supabaseAnonKey)
+    }()
+
+    /// Build a public storage URL (replacement for removed getPublicUrl())
+    /// -> https://<project>.supabase.co/storage/v1/object/public/<bucket>/<path>
+    static func publicURL(bucket: String, path: String) -> URL {
+        baseURL
+            .appendingPathComponent("storage/v1/object/public/\(bucket)/\(path)")
+    }
 }
 

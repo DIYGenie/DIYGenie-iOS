@@ -2,8 +2,6 @@
 //  ProjectsService+AR.swift
 //  DIYGenieApp
 //
-//  Handles RoomPlan scanning, USDZ uploads, and QuickLook previews.
-//
 
 import Foundation
 import Supabase
@@ -12,34 +10,28 @@ import QuickLook
 import SwiftUI
 
 extension ProjectsService {
-    
-    // MARK: - Upload .usdz Scan to Supabase Storage
-    func uploadARScan(projectId: String, fileURL: URL) async throws -> String {
-        let bucket = client.storage.from("uploads")
-        let fileName = "\(userId)/\(UUID().uuidString).usdz"
 
-        // Read file data
-        let fileData = try Data(contentsOf: fileURL)
-        
-        // Upload to Supabase storage
+    // MARK: - Upload RoomPlan .usdz → Storage + update row
+    func uploadARScan(projectId: String, fileURL: URL) async throws {
+        let bucket = client.storage.from("uploads")
+        let path = "\(userId)/\(UUID().uuidString).usdz"
+        let data = try Data(contentsOf: fileURL)
+
         _ = try await bucket.upload(
-            path: fileName,
-            data: fileData,
-            fileOptions: FileOptions(contentType: "model/vnd.usd+zip")
+            path,
+            data: data,
+            options: .init(contentType: "model/vnd.usdz+zip")
         )
 
-        // Generate a public URL for that file
-        let publicURL = bucket.getPublicUrl(path: fileName)
-        print("🟢 AR file uploaded:", publicURL)
+        // Build public URL (stable)
+        let publicURL = SupabaseConfig.publicURL(bucket: "uploads", path: path)
 
-        // Update the project record in Supabase
+        let update: [String: AnyEncodable] = ["ar_scan_url": AnyEncodable(publicURL)]
         _ = try await client
             .from("projects")
-            .update(["ar_scan_url": publicURL])
+            .update(update)
             .eq("id", value: projectId)
             .execute()
-        
-        return publicURL
     }
 }
 
