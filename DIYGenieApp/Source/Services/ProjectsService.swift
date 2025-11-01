@@ -2,83 +2,83 @@
 //  ProjectsService.swift
 //  DIYGenieApp
 //
+//  Works with Supabase Swift v2.36.0
+//
 
 import Foundation
 import UIKit
 import Supabase
 
-// MARK: - SupabaseConfig helper must expose base URL + client
-// SupabaseConfig.client  : SupabaseClient
-// SupabaseConfig.baseURL : URL   (derived from Info.plist SUPABASE_URL)
-private extension SupabaseConfig {
+// MARK: - App / Supabase config (reads from Info.plist)
+enum AppConfig {
+    /// e.g. https://api.yourdomain.com
+    static var apiBaseURL: URL {
+        let raw = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String ?? ""
+        // Intentionally crash early if misconfigured in production.
+        guard let url = URL(string: raw), !raw.isEmpty else {
+            preconditionFailure("Missing or invalid Info.plist key: API_BASE_URL")
+        }
+        return url
+    }
+}
+
+enum SupabaseConfig {
+    /// Base URL of your Supabase project, e.g. https://xxxxx.supabase.co
+    static var baseURL: URL {
+        let raw = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String ?? ""
+        guard let url = URL(string: raw), !raw.isEmpty else {
+            preconditionFailure("Missing or invalid Info.plist key: SUPABASE_URL")
+        }
+        return url
+    }
+
+    /// Anonymous key (safe to ship in client apps)
+    static var anonKey: String {
+        let key = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String ?? ""
+        guard !key.isEmpty else {
+            preconditionFailure("Missing Info.plist key: SUPABASE_ANON_KEY")
+        }
+        return key
+    }
+
+    /// Shared Supabase client
+    static let client: SupabaseClient = {
+        SupabaseClient(supabaseURL: baseURL, supabaseKey: anonKey)
+    }()
+
+    /// Build a public Storage URL (SDK no longer exposes getPublicUrl)
     static func publicURL(bucket: String, path: String) -> String {
-        // <SUPABASE_URL>/storage/v1/object/public/<bucket>/<path>
         baseURL
             .appendingPathComponent("storage/v1/object/public/\(bucket)/\(path)")
             .absoluteString
     }
 }
 
+// MARK: - Service
 struct ProjectsService {
     let userId: String
     let client = SupabaseConfig.client
 
-    // MARK: - Create Project
-    func createProject(
-        name: String,
-        goal: String,
-        budget: String,
-        skillLevel: String
-    ) async throws -> Project {
-        let values: [String: AnyEncodable] = [
-            "user_id": AnyEncodable(userId),
-            "name": AnyEncodable(name),
-            "goal": AnyEncodable(goal),
-            "budget": AnyEncodable(budget),
-            "skill_level": AnyEncodable(skillLevel),
-            "status": AnyEncodable("draft")
-        ]
-
-        let res = try await client
-            .from("projects")
-            .insert(values)
-            .select()
-            .single()
-            .execute()
-
-        return try JSONDecoder().decode(Project.self, from: res.data)
-    }
-
-    // MARK: - Fetch Projects
-    func fetchProjects() async throws -> [Project] {
-        let res = try await client
-            .from("projects")
-            .select()
-            .eq("user_id", value: userId)
-            .order("created_at", ascending: false)
-            .execute()
-
-        return try JSONDecoder().decode([Project].self, from: res.data)
-    }
-
-    // MARK: - Upload Image (photo) → Storage + update row
+    // MARK: Upload Image → Storage → update row
     func uploadImage(projectId: String, image: UIImage) async throws {
         guard let imageData = image.jpegData(compressionQuality: 0.8) else {
-            throw NSError(domain: "ProjectsService", code: 200,
-                          userInfo: [NSLocalizedDescriptionKey: "Failed to compress image"])
+            throw NSError(
+                domain: "ProjectsService",
+                code: 200,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to compress image"]
+            )
         }
 
         let bucket = client.storage.from("uploads")
         let path = "\(userId)/\(UUID().uuidString).jpg"
 
-        // Upload with current SDK
+        // Supabase v2.36.0 signature: upload(_ path: String, data: Data, options: FileOptions?)
         _ = try await bucket.upload(
             path,
             data: imageData,
             options: .init(contentType: "image/jpeg")
         )
 
-        // Build public URL manually (no more getPublicUrl headaches)
         let publicURL = SupabaseConfig.publicURL(bucket: "uploads", path: path)
 
         let update: [String: AnyEncodable] = ["photo_url": AnyEncodable(publicURL)]
@@ -89,52 +89,54 @@ struct ProjectsService {
             .execute()
     }
 
-    // MARK: - Trigger AI preview (server)
+    // MARK: Trigger AI preview (server)
+    /// POST {API_BASE_URL}/api/projects/{id}/generate-preview
+    /// Expects: { "preview_url": "https://..." }
     func generatePreview(projectId: String) async throws -> String {
-        // Hitting your webhook/API (base is set in Constants/API, or inline build here)
-        guard let url = URL(string: "\(API.baseURL)/api/projects/\(projectId)/generate-preview") else {
-            throw NSError(domain: "ProjectsService", code: 400,
-                          userInfo: [NSLocalizedDescriptionKey: "Bad preview URL"])
-        }
+        let url = AppConfig.apiBaseURL
+            .appendingPathComponent("api/projects/\(projectId)/generate-preview")
 
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let resp = response as? HTTPURLResponse, (200..<300).contains(resp.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw NSError(domain: "ProjectsService", code: http.statusCode,
-                          userInfo: [NSLocalizedDescriptionKey: "Preview failed: \(body)"])
+            throw NSError(
+                domain: "ProjectsService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Request failed: \(body)"]
+            )
         }
 
-        // Expecting { "preview_url": "https://..." } or similar
         let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        let urlString = obj?["preview_url"] as? String ?? "ok"
-        return urlString
+        return (obj?["preview_url"] as? String) ?? "ok"
     }
 
-    // MARK: - Trigger Plan-only (server)
+    // MARK: Trigger Plan-only (server)
+    /// POST {API_BASE_URL}/api/projects/{id}/generate-plan
+    /// Expects: { "status": "ok" }
     func generatePlanOnly(projectId: String) async throws -> String {
-        guard let url = URL(string: "\(API.baseURL)/api/projects/\(projectId)/generate-plan") else {
-            throw NSError(domain: "ProjectsService", code: 400,
-                          userInfo: [NSLocalizedDescriptionKey: "Bad plan URL"])
-        }
+        let url = AppConfig.apiBaseURL
+            .appendingPathComponent("api/projects/\(projectId)/generate-plan")
 
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let resp = response as? HTTPURLResponse, (200..<300).contains(resp.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw NSError(domain: "ProjectsService", code: http.statusCode,
-                          userInfo: [NSLocalizedDescriptionKey: "Plan failed: \(body)"])
+            throw NSError(
+                domain: "ProjectsService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Request failed: \(body)"]
+            )
         }
 
         let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        let status = obj?["status"] as? String ?? "ok"
-        return status
+        return (obj?["status"] as? String) ?? "ok"
     }
 }
 
