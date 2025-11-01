@@ -10,13 +10,13 @@ struct HomeView: View {
     @State private var isLoading = false
     @State private var userFirstName: String = ""
     @Environment(\.colorScheme) private var colorScheme
-    
+
     private let templates: [TemplateProject] = [
         .init(title: "Floating Shelves", image: "ShelfPreview"),
         .init(title: "Accent Wall", image: "AccentWallPreview"),
         .init(title: "Mudroom Bench", image: "MudroomBenchPreview")
     ]
-    
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -29,23 +29,25 @@ struct HomeView: View {
                     endPoint: .bottom
                 )
                 .ignoresSafeArea()
-                
+
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 28) {
-                        
+
                         // MARK: - Hero Section
                         VStack(alignment: .leading, spacing: 10) {
                             Text(isReturningUser ? "Welcome back, \(userFirstName)" : "Welcome to DIY Genie")
                                 .font(.system(size: 32, weight: .bold))
                                 .foregroundColor(.white)
-                            
-                            Text(isReturningUser
-                                 ? "Ready to pick up where you left off?"
-                                 : "Describe your project or start with a template → Take a photo → Get your custom step-by-step plan.")
+
+                            Text(
+                                isReturningUser
+                                ? "Ready to pick up where you left off?"
+                                : "Describe your project or start with a template → Take a photo → Get your custom step-by-step plan."
+                            )
                             .foregroundColor(.white.opacity(0.75))
                             .font(.system(size: 16))
                             .lineSpacing(4)
-                            
+
                             HStack(spacing: 14) {
                                 NavigationLink(destination: NewProjectView()) {
                                     Text("Start New Project")
@@ -53,16 +55,20 @@ struct HomeView: View {
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 15)
                                         .background(
-                                            LinearGradient(colors: [
-                                                Color(red: 115/255, green: 73/255, blue: 224/255),
-                                                Color(red: 146/255, green: 86/255, blue: 255/255)
-                                            ], startPoint: .leading, endPoint: .trailing)
+                                            LinearGradient(
+                                                colors: [
+                                                    Color(red: 115/255, green: 73/255, blue: 224/255),
+                                                    Color(red: 146/255, green: 86/255, blue: 255/255)
+                                                ],
+                                                startPoint: .leading,
+                                                endPoint: .trailing
+                                            )
                                         )
                                         .foregroundColor(.white)
                                         .cornerRadius(14)
                                         .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
                                 }
-                                
+
                                 if isReturningUser {
                                     NavigationLink(destination: ProjectsListView()) {
                                         Text("View My Projects")
@@ -70,7 +76,10 @@ struct HomeView: View {
                                             .frame(maxWidth: .infinity)
                                             .padding(.vertical, 15)
                                             .background(Color.white.opacity(0.08))
-                                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.15), lineWidth: 1))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: 14)
+                                                    .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                                            )
                                             .foregroundColor(.white)
                                             .cornerRadius(14)
                                     }
@@ -79,16 +88,17 @@ struct HomeView: View {
                         }
                         .padding(.top, 10)
                         .padding(.horizontal, 20)
-                        
+
                         // MARK: - Template Section
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Not sure where to begin?")
                                 .font(.system(size: 22, weight: .semibold))
                                 .foregroundColor(.white)
+
                             Text("Start with a template.")
                                 .foregroundColor(.white.opacity(0.7))
                                 .font(.system(size: 15))
-                            
+
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 16) {
                                     ForEach(templates) { template in
@@ -99,7 +109,7 @@ struct HomeView: View {
                             }
                         }
                         .padding(.horizontal, 20)
-                        
+
                         // MARK: - Recent Projects Section
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Your Recent Projects")
@@ -108,7 +118,7 @@ struct HomeView: View {
                             Text("Pick up where you left off.")
                                 .foregroundColor(.white.opacity(0.7))
                                 .font(.system(size: 15))
-                            
+
                             if isLoading {
                                 ProgressView()
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
@@ -150,13 +160,13 @@ struct HomeView: View {
             .navigationBarHidden(true)
         }
     }
-    
+
     // MARK: - Computed Props
     private var isReturningUser: Bool {
         !projects.isEmpty
     }
-    
-    // MARK: - Data
+
+    // MARK: - Data Loading
     private func loadUserData() async {
         if let storedName = UserDefaults.standard.string(forKey: "user_name") {
             userFirstName = storedName.components(separatedBy: " ").first ?? "User"
@@ -164,31 +174,25 @@ struct HomeView: View {
             userFirstName = "User"
         }
     }
-    
+
     private func loadProjects() async {
         guard let userId = UserDefaults.standard.string(forKey: "user_id") else { return }
         isLoading = true
         defer { isLoading = false }
-        
+
         let service = ProjectsService(userId: userId)
+
         do {
             let fetched = try await service.fetchProjects()
             let formatter = ISO8601DateFormatter()
-            
-            projects = fetched.sorted { (a: Project, b: Project) -> Bool in
-                guard
-                    let dateAString = a.createdAt,
-                    let dateBString = b.createdAt,
-                    let dateA = formatter.date(from: dateAString),
-                    let dateB = formatter.date(from: dateBString)
-                else {
-                    // If parsing fails, keep original order
-                    return false
-                }
+
+            projects = fetched.sorted { a, b in
+                let dateA = formatter.date(from: a.createdAt) ?? Date.distantPast
+                let dateB = formatter.date(from: b.createdAt) ?? Date.distantPast
                 return dateA > dateB
             }
         } catch {
-            print("Error loading projects: \(error)")
+            print("🔴 Error loading projects:", error)
         }
     }
 }

@@ -16,7 +16,7 @@ struct ProjectDetailsView: View {
     @State private var isLoading = false
 
     private let service = ProjectsService(
-        userId: UserDefaults.standard.string(forKey: "user_id") ?? "demo"
+        userId: UserDefaults.standard.string(forKey: "user_id") ?? UUID().uuidString
     )
 
     var body: some View {
@@ -28,7 +28,8 @@ struct ProjectDetailsView: View {
                     Text(project.name)
                         .font(.largeTitle.bold())
                         .foregroundColor(.white)
-                    Text(project.goal ?? default value)
+
+                    Text(project.goal ?? "No description provided.")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.7))
                 }
@@ -61,6 +62,7 @@ struct ProjectDetailsView: View {
                         Text("AI Project Plan")
                             .font(.title3.bold())
                             .foregroundColor(.white)
+
                         if let summary = plan.summary {
                             Text(summary)
                                 .foregroundColor(.white.opacity(0.9))
@@ -151,7 +153,7 @@ struct ProjectDetailsView: View {
     // MARK: - Helpers
     @MainActor
     private func loadPlan() async {
-        guard let id = project.id as String? else { return }
+        let id = project.id
         isLoading = true
         do {
             let result = try await service.generatePlanOnly(projectId: id)
@@ -210,4 +212,3 @@ struct ProjectDetailsView: View {
             .cornerRadius(14)
     }
 }
-
