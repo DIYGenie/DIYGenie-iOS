@@ -11,50 +11,33 @@ struct ProjectsService {
     let userId: String
     let client = SupabaseConfig.client
 
-    // MARK: - Create Project
-    func createProject(name: String, goal: String, budget: String, skillLevel: String) async throws -> Project {
-        let insert: [String: AnyEncodable] = [
-            "user_id": AnyEncodable(userId),
-            "name": AnyEncodable(name),
-            "goal": AnyEncodable(goal),
-            "budget": AnyEncodable(budget),
-            "skill_level": AnyEncodable(skillLevel),
-            "status": AnyEncodable("draft")
-        ]
-
-        let response = try await client
-            .from("projects")
-            .insert(insert)
-            .select()
-            .single()
-            .execute()
-
-        guard let data = response.data else {
-            throw NSError(domain: "ProjectsService", code: 500, userInfo: [NSLocalizedDescriptionKey: "Empty response from Supabase"])
-        }
-
-        return try JSONDecoder().decode(Project.self, from: data)
-    }
-
-    // MARK: - Upload Image
+    // MARK: - Upload Image to Supabase Storage
     func uploadImage(projectId: String, image: UIImage) async throws {
         guard let imageData = image.jpegData(compressionQuality: 0.8) else {
-            throw NSError(domain: "ProjectsService", code: 200, userInfo: [NSLocalizedDescriptionKey: "Failed to compress image"])
+            throw NSError(domain: "ProjectsService", code: 200,
+                          userInfo: [NSLocalizedDescriptionKey: "Failed to compress image"])
         }
 
         let bucket = client.storage.from("uploads")
-        let path = "\(userId)/\(UUID().uuidString).jpg"
+        let fileName = "\(userId)/\(UUID().uuidString).jpg"
 
-        // ✅ Updated upload syntax for Supabase v2.5+
-        _ = try await bucket.upload(path, data: imageData, options: UploadOptions(contentType: "image/jpeg"))
+        // ✅ Correct Supabase v2 API call
+        _ = try await bucket.upload(
+            path: fileName,
+            file: imageData,
+            options: UploadOptions(contentType: "image/jpeg")
+        )
 
-        // ✅ Get public URL using new return type
-        let publicURL = bucket.getPublicUrl(path)
+        // ✅ Get public URL from the bucket API
+        let publicURL = client.storage.from("uploads").getPublicUrl(path: fileName)
+        print("🟢 Uploaded image public URL:", publicURL)
 
-        // ✅ Update photo_url in projects table
+        // ✅ Update Supabase row safely
+        let updateValues: [String: AnyEncodable] = ["photo_url": AnyEncodable(publicURL)]
+
         _ = try await client
             .from("projects")
-            .update(["photo_url": AnyEncodable(publicURL)])
+            .update(updateValues)
             .eq("id", value: projectId)
             .execute()
     }
@@ -68,11 +51,38 @@ struct ProjectsService {
             .order("created_at", ascending: false)
             .execute()
 
-        // ✅ New SDK returns non-optional Data
-        let data = response.data
+        guard let data = response.data else {
+            throw NSError(domain: "ProjectsService", code: 404,
+                          userInfo: [NSLocalizedDescriptionKey: "No data returned from Supabase"])
+        }
 
-        // Decode safely
         return try JSONDecoder().decode([Project].self, from: data)
+    }
+
+    // MARK: - Create Project
+    func createProject(name: String, goal: String, budget: String, skillLevel: String) async throws -> Project {
+        let insertValues: [String: AnyEncodable] = [
+            "user_id": AnyEncodable(userId),
+            "name": AnyEncodable(name),
+            "goal": AnyEncodable(goal),
+            "budget": AnyEncodable(budget),
+            "skill_level": AnyEncodable(skillLevel),
+            "status": AnyEncodable("draft")
+        ]
+
+        let response = try await client
+            .from("projects")
+            .insert(insertValues)
+            .select()
+            .single()
+            .execute()
+
+        guard let data = response.data else {
+            throw NSError(domain: "ProjectsService", code: 500,
+                          userInfo: [NSLocalizedDescriptionKey: "No project data returned"])
+        }
+
+        return try JSONDecoder().decode(Project.self, from: data)
     }
 }
 
