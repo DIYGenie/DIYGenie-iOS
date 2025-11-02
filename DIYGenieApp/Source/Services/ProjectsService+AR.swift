@@ -29,7 +29,7 @@ extension ProjectsService {
         )
 
         // Build a stable public URL
-        let publicURL: String = SupabaseConfig.publicURL(bucket: "uploads", path: path)
+        let publicURL = SupabaseConfig.publicURL(bucket: "uploads", path: path).absoluteString
 
         // Update project row
         let update: [String: AnyEncodable] = ["ar_scan_url": AnyEncodable(publicURL)]
