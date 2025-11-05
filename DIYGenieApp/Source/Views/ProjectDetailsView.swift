@@ -78,12 +78,12 @@ struct ProjectDetailsView: View {
                         }
 
                         if !plan.materials.isEmpty {
-                            Text("Materials: \(plan.materials.joined(separator: \", \"))")
+                            Text("Materials: \(plan.materials.joined(separator: ", "))")
                                 .foregroundColor(.white.opacity(0.8))
                         }
 
                         if !plan.tools.isEmpty {
-                            Text("Tools: \(plan.tools.joined(separator: \", \"))")
+                            Text("Tools: \(plan.tools.joined(separator: ", "))")
                                 .foregroundColor(.white.opacity(0.8))
                         }
 
