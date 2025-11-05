@@ -32,19 +32,6 @@ enum StoragePublicURL {
     }
 }
 
-// MARK: - Models you decode from Supabase
-// Make sure this matches your "projects" table columns.
-struct Project: Decodable, Identifiable {
-    let id: String
-    let name: String
-    let created_at: String
-
-    // Optional columns used by the UI
-    let input_image_url: String?
-    let preview_url: String?
-    let photo_url: String?
-    let ar_scan_url: String?
-}
 
 // MARK: - Service
 struct ProjectsService {
