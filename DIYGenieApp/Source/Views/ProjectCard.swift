@@ -3,30 +3,39 @@ import SwiftUI
 struct ProjectCard: View {
     let project: Project
 
+    // Prefer preview → input image
+    private var thumbnailURL: URL? {
+        if let s = project.preview_url, let u = URL(string: s) { return u }
+        if let s = project.input_image_url, let u = URL(string: s) { return u }
+        return nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             // Thumbnail (Preview Image)
-            if let thumbnail = project.previewURL,
-               let url = URL(string: thumbnail) {
-                AsyncImage(url: url) { image in
-                    image.resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(height: 160)
-                        .cornerRadius(16)
-                } placeholder: {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.black.opacity(0.2))
-                        .frame(height: 160)
-                        .overlay(
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        )
+            if let url = thumbnailURL {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(height: 160)
+                            .clipped()
+                            .cornerRadius(16)
+                    case .failure(_):
+                        placeholder
+                    default:
+                        placeholderProgress
+                    }
                 }
+            } else {
+                placeholder
             }
 
             // Project Info
             VStack(alignment: .leading, spacing: 4) {
-                Text(project.name ?? "Untitled Project")
+                Text(project.name)
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(.white)
 
@@ -51,5 +60,27 @@ struct ProjectCard: View {
         )
         .cornerRadius(20)
         .shadow(color: .black.opacity(0.4), radius: 8, x: 0, y: 4)
+    }
+
+    // MARK: - Placeholders
+    private var placeholder: some View {
+        RoundedRectangle(cornerRadius: 16)
+            .fill(Color.black.opacity(0.2))
+            .frame(height: 160)
+            .overlay(
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.7))
+            )
+    }
+
+    private var placeholderProgress: some View {
+        RoundedRectangle(cornerRadius: 16)
+            .fill(Color.black.opacity(0.2))
+            .frame(height: 160)
+            .overlay(
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+            )
     }
 }

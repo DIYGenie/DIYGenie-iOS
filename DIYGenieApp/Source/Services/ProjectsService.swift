@@ -2,25 +2,14 @@
 //  ProjectsService.swift
 //  DIYGenieApp
 //
-//  Works with Supabase Swift v2.36.0
-//
 
 import Foundation
 import UIKit
 import Supabase
 
-// MARK: - API base (read from Info.plist)
-enum APIBase {
-    static var url: URL {
-        let raw = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String ?? ""
-        return URL(string: raw).flatMap { $0 } ?? URL(string: "https://example.com")!
-    }
-}
-
-// MARK: - Service for project operations
 struct ProjectsService {
 
-    // NOTE: made internal so extensions in other files can access
+    // MARK: - Dependencies (fixes 'client' / 'userId' not in scope)
     let userId: String
     let client: SupabaseClient
 
@@ -29,76 +18,49 @@ struct ProjectsService {
         self.client = client
     }
 
-    // MARK: Fetch list of projects for signed-in user
+    // MARK: - Plan (server) → full plan JSON
+    func generatePlanOnly(projectId: String) async throws -> PlanResponse {
+        // Build strict base URL from Info.plist
+        let base = API.baseURL
+        let url = try requireURL_(base: base)
+            .appendingPathComponent("api")
+            .appendingPathComponent("projects")
+            .appendingPathComponent(projectId)
+            .appendingPathComponent("generate-plan")
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw NSError(domain: "ProjectsService", code: http.statusCode, userInfo: [
+                NSLocalizedDescriptionKey: "Plan failed: \(body)"
+            ])
+        }
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(PlanResponse.self, from: data)
+    }
+
+    // MARK: - Fetch projects for signed-in user
     func fetchProjects() async throws -> [Project] {
+        // Supabase Swift decodes directly when the generic is specified.
         let response: PostgrestResponse<[Project]> = try await client
             .from("projects")
-            .select() // all columns; add explicit list if you prefer
+            .select()
             .eq("user_id", value: userId)
             .order("created_at", ascending: false)
             .execute()
-
         return response.value
     }
 
-    // MARK: Upload a photo → Storage → update row
-    func uploadImage(projectId: String, image: UIImage) async throws {
-        guard let data = image.jpegData(compressionQuality: 0.8) else {
-            throw NSError(domain: "ProjectsService", code: 200,
-                          userInfo: [NSLocalizedDescriptionKey: "Failed to compress image"])
-        }
-
-        let bucket = client.storage.from("uploads")
-        let path = "\(userId)/\(UUID().uuidString).jpg"
-        let opts = FileOptions(contentType: "image/jpeg")
-
-        _ = try await bucket.upload(path, data: data, options: opts)
-
-        let publicURL = SupabaseConfig.publicURL(bucket: "uploads", path: path).absoluteString
-        let update: [String: AnyEncodable] = ["photo_url": AnyEncodable(publicURL)]
-
-        _ = try await client
-            .from("projects")
-            .update(update)
-            .eq("id", value: projectId)
-            .execute()
-    }
-
-    // MARK: Trigger AI preview (server) -> preview URL String
-    func generatePreview(projectId: String) async throws -> String {
-        let url = APIBase.url.appendingPathComponent("api/projects/\(projectId)/generate-preview")
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw NSError(domain: "ProjectsService",
-                          code: (resp as? HTTPURLResponse)?.statusCode ?? -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Preview failed: \(body)"])
-        }
-
-        let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        return (obj?["preview_url"] as? String) ?? ""
-    }
-
-    // MARK: Trigger Plan-only (server) -> full PlanResponse
-    func generatePlanOnly(projectId: String) async throws -> PlanResponse {
-        let url = APIBase.url.appendingPathComponent("api/projects/\(projectId)/generate-plan")
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw NSError(domain: "ProjectsService",
-                          code: (resp as? HTTPURLResponse)?.statusCode ?? -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Plan failed: \(body)"])
-        }
-
-        return try JSONDecoder().decode(PlanResponse.self, from: data)
+    // MARK: - Strict URL helper
+    private func requireURL_(base: String) throws -> URL {
+        if let url = URL(string: base) { return url }
+        throw NSError(domain: "ProjectsService", code: -99,
+                      userInfo: [NSLocalizedDescriptionKey: "Invalid API_BASE_URL"])
     }
 }
-
