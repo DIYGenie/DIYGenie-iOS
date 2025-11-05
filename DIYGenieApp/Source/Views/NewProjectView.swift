@@ -241,11 +241,16 @@ struct NewProjectView: View {
                 SwiftUI.Button {
                     Task {
                         guard let id = projectId else { alert("Project not created yet."); return }
-                        await runWithSpinner {
-                            let url = try await api.generatePreview(projectId: id)
-                            alert("Preview generated ✅\n\(url)")
+                        do {
+                            try await runWithSpinner {
+                                let url = try await api.generatePreview(projectId: id)
+                                alert("Preview generated ✅\n\(url)")
+                            }
+                        } catch {
+                            alert("Failed to generate preview: \(error.localizedDescription)")
                         }
                     }
+
                 } label: {
                     primaryButton(isLoading ? "Generating..." : "Generate AI Plan + Preview")
                 }
@@ -254,11 +259,16 @@ struct NewProjectView: View {
                 SwiftUI.Button {
                     Task {
                         guard let id = projectId else { alert("Project not created yet."); return }
-                        await runWithSpinner {
-                            _ = try await api.generatePlanOnly(projectId: id)
-                            alert("AI plan created successfully ✅")
+                        do {
+                            try await runWithSpinner {
+                                _ = try await api.generatePlanOnly(projectId: id)
+                                alert("AI plan created successfully ✅")
+                            }
+                        } catch {
+                            alert("Failed to create plan: \(error.localizedDescription)")
                         }
                     }
+
                 } label: {
                     secondaryButton(isLoading ? "Creating..." : "Create Plan Only")
                 }
