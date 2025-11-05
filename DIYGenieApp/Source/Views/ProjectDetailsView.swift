@@ -68,22 +68,22 @@ struct ProjectDetailsView: View {
                                 .foregroundColor(.white.opacity(0.9))
                         }
 
-                        if let steps = plan.steps, !steps.isEmpty {
+                        if !plan.steps.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
-                                ForEach(steps, id: \.self) { step in
+                                ForEach(plan.steps, id: \.self) { step in
                                     Text("• \(step)")
                                         .foregroundColor(.white.opacity(0.9))
                                 }
                             }
                         }
 
-                        if let materials = plan.materials, !materials.isEmpty {
-                            Text("Materials: \(materials.joined(separator: ", "))")
+                        if !plan.materials.isEmpty {
+                            Text("Materials: \(plan.materials.joined(separator: \", \"))")
                                 .foregroundColor(.white.opacity(0.8))
                         }
 
-                        if let tools = plan.tools, !tools.isEmpty {
-                            Text("Tools: \(tools.joined(separator: ", "))")
+                        if !plan.tools.isEmpty {
+                            Text("Tools: \(plan.tools.joined(separator: \", \"))")
                                 .foregroundColor(.white.opacity(0.8))
                         }
 
