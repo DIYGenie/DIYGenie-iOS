@@ -5,70 +5,42 @@
 
 import SwiftUI
 import PhotosUI
-import QuickLook
+import RoomPlan
+import AVFoundation
 
 struct NewProjectView: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isFocused: Bool
-    @State private var plan: PlanResponse?
-    @State private var showPlanSheet = false
+
     // Form
     @State private var name = ""
     @State private var goal = ""
-    @State private var budget = "$$"
-    @State private var skill = "intermediate"
+    @State private var budget = "$$"                 // '$', '$$', '$$$'
+    @State private var skill = "beginner"            // 'beginner', 'intermediate', 'advanced'
 
     // Media / flow
     @State private var showingCamera = false
     @State private var showingPicker = false
     @State private var showingOverlay = false
-    @State private var showingARPreview = false
+    @State private var showingARScanner = false
     @State private var capturedImage: UIImage?
     @State private var projectId: String?
-    @State private var arFileURL: URL?
 
     // UX
     @State private var showAlert = false
     @State private var alertMessage = ""
     @State private var isLoading = false
 
-    private let api = ProjectsService(userId: UserDefaults.standard.string(forKey: "user_id") ?? "demo")
+    private let api = ProjectsService(
+        userId: UserDefaults.standard.string(forKey: "user_id") ?? UUID().uuidString
+    )
 
     var body: some View {
         ZStack {
-            // Background
-            LinearGradient(
-                colors: [
-                    Color(red: 28/255, green: 26/255, blue: 40/255),
-                    Color(red: 60/255, green: 35/255, blue: 126/255)
-                ],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
-
+            background
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-
-                    // Header
-                    HStack {
-                        SwiftUI.Button(action: { dismiss() }) {
-                            Image(systemName: "chevron.left")
-                                .foregroundColor(.white.opacity(0.9))
-                                .font(.system(size: 18, weight: .semibold))
-                        }
-                        Spacer()
-                    }
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("New Project")
-                            .font(.system(size: 36, weight: .heavy))
-                            .foregroundStyle(.white)
-                            .shadow(color: .white.opacity(0.08), radius: 6, x: 0, y: 1)
-                        Text("Get everything you need to bring your next DIY idea to life.")
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundColor(.white.opacity(0.8))
-                            .lineSpacing(2)
-                    }
+                    header
 
                     // Name
                     glassField(label: "Project Name") {
@@ -135,15 +107,15 @@ struct NewProjectView: View {
                         }
                     }
 
-                    // Media Section
+                    // Media
                     if let image = capturedImage {
                         photoPreview(image)
                     } else {
                         VStack(spacing: 14) {
-                            SwiftUI.Button { showingCamera = true } label: {
-                                primaryButton("Take Photo for Measurements")
+                            Button { showingCamera = true } label: {
+                                primaryButton("Take Photo of Project Area")
                             }
-                            SwiftUI.Button { showingPicker = true } label: {
+                            Button { showingPicker = true } label: {
                                 secondaryButton("Upload Photo")
                             }
                         }
@@ -156,16 +128,13 @@ struct NewProjectView: View {
             }
             .onTapGesture { hideKeyboard() }
 
-            // Inline loading veil
             if isLoading {
                 Color.black.opacity(0.25).ignoresSafeArea()
-                ProgressView().progressViewStyle(.circular)
-                    .scaleEffect(1.4)
-                    .tint(.white)
+                ProgressView().scaleEffect(1.4).tint(.white)
             }
         }
 
-        // Camera Picker
+        // Camera
         .sheet(isPresented: $showingCamera) {
             ImagePicker(sourceType: .camera) { image in
                 if let image {
@@ -175,7 +144,7 @@ struct NewProjectView: View {
             }
         }
 
-        // Library Picker
+        // Library
         .sheet(isPresented: $showingPicker) {
             ImagePicker(sourceType: .photoLibrary) { image in
                 if let image {
@@ -185,7 +154,7 @@ struct NewProjectView: View {
             }
         }
 
-        // Overlay for rectangle measurement
+        // Rectangle overlay (existing)
         .fullScreenCover(isPresented: $showingOverlay) {
             if let image = capturedImage {
                 RectangleOverlayView(
@@ -199,149 +168,126 @@ struct NewProjectView: View {
                     },
                     onError: { error in
                         showingOverlay = false
-                        alertMessage = error.localizedDescription
-                        showAlert = true
+                        alert("Error: \(error.localizedDescription)")
                     }
                 )
             }
         }
 
-        // Alerts
-        .alert("Status", isPresented: $showAlert) {
-            SwiftUI.Button("OK", role: .cancel) { }
-        } message: {
-            Text(alertMessage)
+        // AR Scanner (optional add-on)
+        .sheet(isPresented: $showingARScanner) {
+            if let pid = projectId {
+                ARRoomPlanSheet(projectId: pid) { tempURL in
+                    Task {
+                        do {
+                            try await api.uploadARScan(projectId: pid, fileURL: tempURL)
+                            alert("AR scan saved ✅")
+                        } catch {
+                            alert("AR upload failed: \(error.localizedDescription)")
+                        }
+                    }
+                }
+            } else {
+                Text("Create the project first.")
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(.black)
+            }
+        }
+
+        .alert("Status", isPresented: $showAlert) { Button("OK", role: .cancel) {} } message: { Text(alertMessage) }
+    }
+
+    // MARK: - UI blocks
+
+    private var background: some View {
+        LinearGradient(
+            colors: [
+                Color(red: 28/255, green: 26/255, blue: 40/255),
+                Color(red: 60/255, green: 35/255, blue: 126/255)
+            ],
+            startPoint: .topLeading, endPoint: .bottomTrailing
+        )
+        .ignoresSafeArea()
+    }
+
+    private var header: some View {
+        HStack {
+            Button(action: { dismiss() }) {
+                Image(systemName: "chevron.left")
+                    .foregroundColor(.white.opacity(0.9))
+                    .font(.system(size: 18, weight: .semibold))
+            }
+            Spacer()
         }
     }
 
-    // MARK: - Photo Preview Block
     private func photoPreview(_ image: UIImage) -> some View {
         VStack(spacing: 14) {
 
+            // header row
             HStack(spacing: 14) {
                 Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 64, height: 64)
-                    .clipped()
-                    .cornerRadius(12)
+                    .resizable().scaledToFill()
+                    .frame(width: 64, height: 64).clipped().cornerRadius(12)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Photo Saved").foregroundColor(.white).font(.headline)
-                    Text("You can generate a plan or view your scan.")
-                        .foregroundColor(.white.opacity(0.7))
-                        .font(.subheadline)
+                    Text("Photo Saved")
+                        .foregroundColor(.white).font(.headline)
+                    Text("Ready to generate your plan.")
+                        .foregroundColor(.white.opacity(0.7)).font(.subheadline)
                 }
                 Spacer()
-                SwiftUI.Button("Redo") { capturedImage = nil; projectId = nil }
-                    .font(.footnote)
-                    .foregroundColor(.white.opacity(0.7))
+                Button("Redo") {
+                    capturedImage = nil
+                    projectId = nil
+                }
+                .font(.footnote)
+                .foregroundColor(.white.opacity(0.7))
             }
 
-            VStack(spacing: 14) {
-                // "Generate AI Plan + Preview"
-                SwiftUI.Button {
+            // actions
+            VStack(spacing: 12) {
+                // Primary: Generate plan + preview
+                Button {
                     Task {
-                        guard let id = projectId else { alert("Project not created yet."); return }
-                        do {
-                            try await runWithSpinner {
-                                _ = try await api.generatePreview(projectId: id)  // triggers Decor8 & saves preview_url
-                                let result = try await api.fetchPlan(projectId: id) // read saved plan_json
-                                self.plan = result
-                            }
-                            alert("Preview generated and plan loaded ✅")
-                        } catch {
-                            alert("Failed to generate preview/plan: \(error.localizedDescription)")
+                        guard let id = projectId else { return alert("Project not created yet.") }
+                        await runWithSpinner {
+                            let url = try await api.generatePreview(projectId: id)
+                            alert("Preview generated ✅\n\(url)")
                         }
                     }
-                } label: {
-                    primaryButton(isLoading ? "Generating..." : "Generate AI Plan + Preview")
-                }
+                } label: { primaryButton(isLoading ? "Generating..." : "Generate AI Plan + Preview") }
                 .disabled(isLoading)
 
-
-                SwiftUI.Button {
+                // Secondary: Plan only (free users)
+                Button {
                     Task {
-                        guard let id = projectId else { alert("Project not created yet."); return }
-                        do {
-                            try await runWithSpinner {
-                                let result = try await api.fetchPlan(projectId: id)
-                                self.plan = result
-                                self.showPlanSheet = true
-                            }
-                            alert("Plan loaded successfully ✅")
-                        } catch {
-                            alert("Failed to load plan: \(error.localizedDescription)")
+                        guard let id = projectId else { return alert("Project not created yet.") }
+                        await runWithSpinner {
+                            _ = try await api.generatePlanOnly(projectId: id)
+                            alert("AI plan created ✅")
                         }
                     }
-                } label: {
-                    secondaryButton(isLoading ? "Loading..." : "Load Plan")
-                }
+                } label: { secondaryButton(isLoading ? "Creating..." : "Create Plan Only (no preview)") }
                 .disabled(isLoading)
 
-
-                // AR Button
-                SwiftUI.Button {
-                    if let fileURL = arFileURL {
-                        showingARPreview = true
-                    } else {
-                        alert("No AR scan available yet.")
+                // NEW: Optional AR
+                Button {
+                    guard RoomCaptureSession.isSupported else {
+                        alert("AR scanning not supported on this device.")
+                        return
                     }
+                    guard AVCaptureDevice.authorizationStatus(for: .video) != .denied else {
+                        alert("Camera access needed for AR scan. Enable in Settings.")
+                        return
+                    }
+                    showingARScanner = true
                 } label: {
-                    secondaryButton("Preview 3D Scan (AR)")
+                    tertiaryButton("Add AR Scan for Accurate Measurements")
                 }
             }
         }
-    }
-
-    // MARK: - Networking
-    @MainActor
-    private func createProjectAndUpload(_ image: UIImage) async {
-        guard !name.isEmpty, goal.count >= 15 else {
-            alertMessage = "Please fill all required fields."
-            showAlert = true
-            return
-        }
-
-        isLoading = true
-        defer { isLoading = false }
-
-        do {
-            print("🟠 Starting project creation...")
-
-            let project = try await api.createProject(
-                name: name, goal: goal, budget: budget, skillLevel: skill
-            )
-            DispatchQueue.main.async {
-                self.projectId = project.id
-                print("🟢 Saved projectId:", project.id)
-            }
-
-            try await api.uploadImage(projectId: project.id, image: image)
-            alertMessage = "Project created successfully ✅"
-            showAlert = true
-        } catch {
-            print("🔴 Error creating or uploading project:", error.localizedDescription)
-            alertMessage = "Error: \(error.localizedDescription)"
-            showAlert = true
-        }
-    }
-
-    // MARK: - Helpers
-    @MainActor
-    private func runWithSpinner<T>(_ work: @escaping () async throws -> T) async rethrows -> T {
-        isLoading = true; defer { isLoading = false }
-        return try await work()
-    }
-
-    @MainActor
-    private func alert(_ message: String) {
-        alertMessage = message
-        showAlert = true
-    }
-
-    private func hideKeyboard() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 
     private func glassField<Content: View>(label: String, @ViewBuilder content: () -> Content) -> some View {
@@ -353,10 +299,7 @@ struct NewProjectView: View {
         }
         .padding(16)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
-        )
+        .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.1), lineWidth: 1))
         .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 3)
     }
 
@@ -367,10 +310,8 @@ struct NewProjectView: View {
             .padding(.vertical, 16)
             .background(
                 LinearGradient(
-                    colors: [
-                        Color(red: 115/255, green: 73/255, blue: 224/255),
-                        Color(red: 146/255, green: 86/255, blue: 255/255)
-                    ],
+                    colors: [Color(red: 115/255, green: 73/255, blue: 224/255),
+                             Color(red: 146/255, green: 86/255, blue: 255/255)],
                     startPoint: .leading, endPoint: .trailing
                 )
             )
@@ -385,12 +326,107 @@ struct NewProjectView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 15)
             .background(Color.white.opacity(0.08))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
-            )
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.2), lineWidth: 1))
             .foregroundColor(.white)
             .cornerRadius(14)
     }
+
+    private func tertiaryButton(_ title: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arkit")
+            Text(title)
+        }
+        .font(.system(size: 16, weight: .semibold))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(Color.white.opacity(0.06))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.18), lineWidth: 1))
+        .foregroundColor(.white)
+        .cornerRadius(12)
+    }
+
+    // MARK: - Actions
+
+    @MainActor
+    private func createProjectAndUpload(_ image: UIImage) async {
+        guard !name.isEmpty, goal.count >= 5 else {
+            return alert("Please fill all required fields.")
+        }
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            print("🟠 Starting project creation...")
+            let project = try await api.createProject(name: name, goal: goal, budget: budget, skillLevel: skill)
+            self.projectId = project.id
+            try await api.uploadImage(projectId: project.id, image: image)
+            alert("Project created successfully ✅")
+        } catch {
+            alert("Error: \(error.localizedDescription)")
+        }
+    }
+
+    @MainActor
+    private func runWithSpinner(_ work: @escaping () async throws -> Void) async {
+        isLoading = true
+        defer { isLoading = false }
+        do { try await work() } catch { alert("Error: \(error.localizedDescription)") }
+    }
+
+    @MainActor
+    private func alert(_ message: String) {
+        alertMessage = message
+        showAlert = true
+    }
+
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
 }
 
+// MARK: - AR RoomPlan Sheet (saves to temporary .usdz then callback)
+private struct ARRoomPlanSheet: UIViewControllerRepresentable {
+    let projectId: String
+    let onExport: (URL) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onExport: onExport) }
+
+    func makeUIViewController(context: Context) -> RoomCaptureViewController {
+        let vc = RoomCaptureViewController()
+        vc.captureSession.delegate = context.coordinator
+        vc.modalPresentationStyle = .fullScreen
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: RoomCaptureViewController, context: Context) { }
+
+    final class Coordinator: NSObject, RoomCaptureSessionDelegate {
+        private let onExport: (URL) -> Void
+        private var hasExported = false
+
+        init(onExport: @escaping (URL) -> Void) {
+            self.onExport = onExport
+        }
+
+        func captureSession(_ session: RoomCaptureSession, didUpdate room: CapturedRoom) {
+            // no-op for live updates
+        }
+
+        func captureSession(_ session: RoomCaptureSession, didEndWith data: CapturedRoomData, error: Error?) {
+            guard !hasExported else { return }
+            hasExported = true
+            if let error = error {
+                print("RoomPlan error:", error.localizedDescription)
+                return
+            }
+            let tmp = FileManager.default.temporaryDirectory
+                .appendingPathComponent("scan-\(UUID().uuidString).usdz")
+            do {
+                try data.export(to: tmp)
+                onExport(tmp)
+            } catch {
+                print("Export failed:", error.localizedDescription)
+            }
+        }
+    }
+}
