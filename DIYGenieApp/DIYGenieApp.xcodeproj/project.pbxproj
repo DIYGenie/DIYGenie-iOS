@@ -7,13 +7,30 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		E216F0212EA97762009AF2B3 /* RoomPlan.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E216F0202EA97761009AF2B3 /* RoomPlan.framework */; };
 		E25A6F322EAC7FC900C384C9 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = E25A6F312EAC7FC900C384C9 /* Supabase */; };
 		E269F6932EB3ED2200CF06B1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E269F6922EB3ED2100CF06B1 /* Assets.xcassets */; };
 		E27DC6252EB2A55A00DDB9B1 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E27DC6102EB2A55A00DDB9B1 /* ContentView.swift */; };
 		E27DC6262EB2A55A00DDB9B1 /* DIYGenieApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E27DC6112EB2A55A00DDB9B1 /* DIYGenieApp.swift */; };
-		E2AF0F902EA9373000B0FBE4 /* ARKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E2AF0F8F2EA9373000B0FBE4 /* ARKit.framework */; };
+		E2ECF6C12EBC459000D3AAD9 /* RoomPlan.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E216F0202EA97761009AF2B3 /* RoomPlan.framework */; };
+		E2ECF6C22EBC459000D3AAD9 /* RoomPlan.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E216F0202EA97761009AF2B3 /* RoomPlan.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		E2ECF6C42EBC459E00D3AAD9 /* ARKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E2AF0F8F2EA9373000B0FBE4 /* ARKit.framework */; };
+		E2ECF6C52EBC459E00D3AAD9 /* ARKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E2AF0F8F2EA9373000B0FBE4 /* ARKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		E2ECF6C32EBC459000D3AAD9 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				E2ECF6C52EBC459E00D3AAD9 /* ARKit.framework in Embed Frameworks */,
+				E2ECF6C22EBC459000D3AAD9 /* RoomPlan.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		E216F01E2EA97375009AF2B3 /* Developer.app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; name = Developer.app; path = ../../../../../Applications/Developer.app; sourceTree = "<group>"; };
@@ -40,8 +57,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E216F0212EA97762009AF2B3 /* RoomPlan.framework in Frameworks */,
-				E2AF0F902EA9373000B0FBE4 /* ARKit.framework in Frameworks */,
+				E2ECF6C42EBC459E00D3AAD9 /* ARKit.framework in Frameworks */,
+				E2ECF6C12EBC459000D3AAD9 /* RoomPlan.framework in Frameworks */,
 				E25A6F322EAC7FC900C384C9 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -91,6 +108,7 @@
 				E24CE0532EA89EF10036185A /* Sources */,
 				E24CE0542EA89EF10036185A /* Frameworks */,
 				E24CE0552EA89EF10036185A /* Resources */,
+				E2ECF6C32EBC459000D3AAD9 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
