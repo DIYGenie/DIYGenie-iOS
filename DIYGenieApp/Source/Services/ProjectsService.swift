@@ -161,4 +161,7 @@ struct ProjectsService {
         return try JSONDecoder().decode(PlanResponse.self, from: data)
     }
 }
-
+// Optional: queue a preview on the backend (no-op stub for now)
+public func requestPreview(projectId: String) async throws {
+    // Wire this to your backend later; safe no-op for compile/run.
+}
