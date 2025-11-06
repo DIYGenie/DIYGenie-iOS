@@ -34,6 +34,7 @@ struct ARRoomPlanSheet: UIViewRepresentable {
 
     // MARK: - Coordinator
     final class Coordinator: NSObject, RoomCaptureSessionDelegate, RoomCaptureViewDelegate {
+
         private let onExport: (URL) -> Void
         private var hasExported = false
 

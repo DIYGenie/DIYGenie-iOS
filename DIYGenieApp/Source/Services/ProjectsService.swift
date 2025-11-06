@@ -165,3 +165,9 @@ struct ProjectsService {
 public func requestPreview(projectId: String) async throws {
     // Wire this to your backend later; safe no-op for compile/run.
 }
+extension ProjectsService {
+    public func requestPreview(projectId: String) async throws {
+        // TODO: call your backend to kick off Decor8 preview.
+        // Safe no-op so the app compiles and runs for now.
+    }
+}
