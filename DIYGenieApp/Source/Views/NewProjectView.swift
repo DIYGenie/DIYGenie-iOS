@@ -8,9 +8,12 @@ struct NewProjectView: View {
     @State private var goal: String = ""
     @State private var budget: Budget = .mid
     @State private var skill: Skill = .intermediate
+    enum BudgetSelection: String, CaseIterable { case $, $$, $$$ }
+    enum SkillSelection: String, CaseIterable { case beginner, intermediate, advanced }
 
-    // Media / AR
-    @State private var capturedImage: UIImage?
+    @State private var capturedUIImage: UIImage? = nil
+
+    private let currentUserId = "99198c4b-8470-49e2-895c-75593c5aa181" // from your logs; replace with real session id when wired
     @State private var showingLibrary = false
     @State private var showingCamera = false
     @State private var showingARScanner = false
@@ -195,6 +198,21 @@ struct NewProjectView: View {
             }
             .ignoresSafeArea()
         }
+        
+        let projectId = try await ProjectsService.createProject(
+            name: name,
+            goal: goal,
+            budget: BudgetSelection,   // "$", "$$", or "$$$"
+            skill: skillSelection,     // "beginner" | "intermediate" | "advanced"
+            userId: currentUserId,
+            photoURL: nil
+        )
+
+        if let img = selectedUIImage {
+            let publicURL = try await ProjectsService.uploadPhoto(img)
+            try await ProjectsService.attachPhoto(to: projectId, url: publicURL)
+        }
+
         // AR (placeholder if your AR view isn’t wired yet)
         .sheet(isPresented: $showingARScanner) {
             #if canImport(RoomPlan)
