@@ -5,8 +5,11 @@
 
 import SwiftUI
 import PhotosUI
-import RoomPlan
 import AVFoundation
+
+#if canImport(RoomPlan)
+import RoomPlan
+#endif
 
 struct NewProjectView: View {
     @Environment(\.dismiss) private var dismiss
@@ -25,6 +28,10 @@ struct NewProjectView: View {
     @State private var showingARScanner = false
     @State private var capturedImage: UIImage?
     @State private var projectId: String?
+    @State private var createdProject: Project?
+
+    // Navigation
+    @State private var goToDetails = false
 
     // UX
     @State private var showAlert = false
@@ -38,6 +45,7 @@ struct NewProjectView: View {
     var body: some View {
         ZStack {
             background
+
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     header
@@ -134,6 +142,21 @@ struct NewProjectView: View {
             }
         }
 
+        // Hidden navigation trigger → Project Details
+        .background(
+            NavigationLink(
+                destination: {
+                    if let p = createdProject {
+                        ProjectDetailsView(project: p)
+                    } else {
+                        EmptyView()
+                    }
+                },
+                isActive: $goToDetails
+            ) { EmptyView() }
+            .hidden()
+        )
+
         // Camera
         .sheet(isPresented: $showingCamera) {
             ImagePicker(sourceType: .camera) { image in
@@ -177,16 +200,30 @@ struct NewProjectView: View {
         // AR Scanner (optional add-on)
         .sheet(isPresented: $showingARScanner) {
             if let pid = projectId {
-                ARRoomPlanSheet(projectId: pid) { tempURL in
-                    Task {
-                        do {
-                            try await api.uploadARScan(projectId: pid, fileURL: tempURL)
-                            alert("AR scan saved ✅")
-                        } catch {
-                            alert("AR upload failed: \(error.localizedDescription)")
+                #if canImport(RoomPlan)
+                if #available(iOS 17.0, *) {
+                    ARRoomPlanSheet(projectId: pid) { tempURL in
+                        Task {
+                            do {
+                                try await api.uploadARScan(projectId: pid, fileURL: tempURL)
+                                alert("AR scan saved ✅")
+                            } catch {
+                                alert("AR upload failed: \(error.localizedDescription)")
+                            }
                         }
                     }
+                } else {
+                    Text("RoomPlan requires iOS 17+.")
+                        .foregroundColor(.white)
+                        .padding()
+                        .background(.black)
                 }
+                #else
+                Text("AR scanning not supported on this build.")
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(.black)
+                #endif
             } else {
                 Text("Create the project first.")
                     .foregroundColor(.white)
@@ -223,7 +260,7 @@ struct NewProjectView: View {
     }
 
     private func photoPreview(_ image: UIImage) -> some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
 
             // header row
             HStack(spacing: 14) {
@@ -241,20 +278,24 @@ struct NewProjectView: View {
                 Button("Redo") {
                     capturedImage = nil
                     projectId = nil
+                    createdProject = nil
                 }
                 .font(.footnote)
                 .foregroundColor(.white.opacity(0.7))
             }
 
-            // actions
+            // MAIN ACTIONS (two buttons only)
             VStack(spacing: 12) {
                 // Primary: Generate plan + preview
                 Button {
                     Task {
-                        guard let id = projectId else { return alert("Project not created yet.") }
+                        guard let id = projectId, let p = createdProject else {
+                            return alert("Project not created yet.")
+                        }
                         await runWithSpinner {
-                            let url = try await api.generatePreview(projectId: id)
-                            alert("Preview generated ✅\n\(url)")
+                            _ = try await api.generatePreview(projectId: id)
+                            // Auto-navigate to details after success
+                            goToDetails = true
                         }
                     }
                 } label: { primaryButton(isLoading ? "Generating..." : "Generate AI Plan + Preview") }
@@ -263,30 +304,49 @@ struct NewProjectView: View {
                 // Secondary: Plan only (free users)
                 Button {
                     Task {
-                        guard let id = projectId else { return alert("Project not created yet.") }
+                        guard let id = projectId, let _ = createdProject else {
+                            return alert("Project not created yet.")
+                        }
                         await runWithSpinner {
                             _ = try await api.generatePlanOnly(projectId: id)
-                            alert("AI plan created ✅")
+                            // Auto-navigate to details after success
+                            goToDetails = true
                         }
                     }
                 } label: { secondaryButton(isLoading ? "Creating..." : "Create Plan Only (no preview)") }
                 .disabled(isLoading)
+            }
 
-                // NEW: Optional AR
+            // OPTIONAL AR (separate block UNDER the card/actions)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Optional")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.6))
                 Button {
-                    guard RoomCaptureSession.isSupported else {
-                        alert("AR scanning not supported on this device.")
-                        return
+                    #if canImport(RoomPlan)
+                    if #available(iOS 17.0, *) {
+                        guard AVCaptureDevice.authorizationStatus(for: .video) != .denied else {
+                            alert("Camera access needed for AR scan. Enable in Settings.")
+                            return
+                        }
+                        #if canImport(RoomPlan)
+                        if !(RoomCaptureSession.isSupported) {
+                            alert("AR scanning not supported on this device.")
+                            return
+                        }
+                        #endif
+                        showingARScanner = true
+                    } else {
+                        alert("RoomPlan requires iOS 17+.")
                     }
-                    guard AVCaptureDevice.authorizationStatus(for: .video) != .denied else {
-                        alert("Camera access needed for AR scan. Enable in Settings.")
-                        return
-                    }
-                    showingARScanner = true
+                    #else
+                    alert("AR scanning not supported on this build.")
+                    #endif
                 } label: {
                     tertiaryButton("Add AR Scan for Accurate Measurements")
                 }
             }
+            .padding(.top, 6)
         }
     }
 
@@ -359,6 +419,7 @@ struct NewProjectView: View {
             print("🟠 Starting project creation...")
             let project = try await api.createProject(name: name, goal: goal, budget: budget, skillLevel: skill)
             self.projectId = project.id
+            self.createdProject = project
             try await api.uploadImage(projectId: project.id, image: image)
             alert("Project created successfully ✅")
         } catch {
@@ -384,7 +445,8 @@ struct NewProjectView: View {
     }
 }
 
-// MARK: - AR RoomPlan Sheet (saves to temporary .usdz then callback)
+#if canImport(RoomPlan)
+@available(iOS 17.0, *)
 private struct ARRoomPlanSheet: UIViewControllerRepresentable {
     let projectId: String
     let onExport: (URL) -> Void
@@ -430,3 +492,5 @@ private struct ARRoomPlanSheet: UIViewControllerRepresentable {
         }
     }
 }
+#endif
+
