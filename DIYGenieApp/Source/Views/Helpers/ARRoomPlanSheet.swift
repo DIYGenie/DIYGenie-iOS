@@ -33,15 +33,25 @@ struct ARRoomPlanSheet: UIViewRepresentable {
     }
 
     // MARK: - Coordinator
-    final class Coordinator: NSObject, RoomCaptureSessionDelegate, RoomCaptureViewDelegate {
-
+    static var supportsSecureCoding: Bool { true }
+    
+    @objc(ARRoomPlanSheetCoordinator) final class Coordinator: NSObject, RoomCaptureSessionDelegate, RoomCaptureViewDelegate, NSSecureCoding {
+       
+        static var supportsSecureCoding: Bool { true }
         private let onExport: (URL) -> Void
         private var hasExported = false
 
         init(onExport: @escaping (URL) -> Void) {
             self.onExport = onExport
         }
+        @objc required init?(coder: NSCoder) {
+            // Not used — needed only to satisfy NSSecureCoding
+            return nil
+        }
 
+        @objc func encode(with coder: NSCoder) {
+            // No-op — we never archive this coordinator
+        }
         // Live updates if you ever want them
         func captureSession(_ session: RoomCaptureSession, didUpdate room: CapturedRoom) { }
 
