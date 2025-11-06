@@ -156,7 +156,7 @@ struct ProjectDetailsView: View {
         let id = project.id
         isLoading = true
         do {
-            let result = try await service.generatePlanOnly(projectId: id)
+            let result = try await service.fetchPlan(projectId: id)
             self.plan = result
             alertMessage = "Plan loaded successfully ✅"
         } catch {
@@ -165,6 +165,7 @@ struct ProjectDetailsView: View {
         isLoading = false
         showAlert = true
     }
+
 
     // MARK: - UI Helpers
     private func placeholderImage(_ text: String) -> some View {

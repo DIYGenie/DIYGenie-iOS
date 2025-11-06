@@ -10,7 +10,8 @@ import QuickLook
 struct NewProjectView: View {
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isFocused: Bool
-
+    @State private var plan: PlanResponse?
+    @State private var showPlanSheet = false
     // Form
     @State private var name = ""
     @State private var goal = ""
@@ -238,41 +239,46 @@ struct NewProjectView: View {
             }
 
             VStack(spacing: 14) {
+                // "Generate AI Plan + Preview"
                 SwiftUI.Button {
                     Task {
                         guard let id = projectId else { alert("Project not created yet."); return }
                         do {
                             try await runWithSpinner {
-                                let url = try await api.generatePreview(projectId: id)
-                                alert("Preview generated ✅\n\(url)")
+                                _ = try await api.generatePreview(projectId: id)  // triggers Decor8 & saves preview_url
+                                let result = try await api.fetchPlan(projectId: id) // read saved plan_json
+                                self.plan = result
                             }
+                            alert("Preview generated and plan loaded ✅")
                         } catch {
-                            alert("Failed to generate preview: \(error.localizedDescription)")
+                            alert("Failed to generate preview/plan: \(error.localizedDescription)")
                         }
                     }
-
                 } label: {
                     primaryButton(isLoading ? "Generating..." : "Generate AI Plan + Preview")
                 }
                 .disabled(isLoading)
 
+
                 SwiftUI.Button {
                     Task {
                         guard let id = projectId else { alert("Project not created yet."); return }
                         do {
                             try await runWithSpinner {
-                                _ = try await api.generatePlanOnly(projectId: id)
-                                alert("AI plan created successfully ✅")
+                                let result = try await api.fetchPlan(projectId: id)
+                                self.plan = result
+                                self.showPlanSheet = true
                             }
+                            alert("Plan loaded successfully ✅")
                         } catch {
-                            alert("Failed to create plan: \(error.localizedDescription)")
+                            alert("Failed to load plan: \(error.localizedDescription)")
                         }
                     }
-
                 } label: {
-                    secondaryButton(isLoading ? "Creating..." : "Create Plan Only")
+                    secondaryButton(isLoading ? "Loading..." : "Load Plan")
                 }
                 .disabled(isLoading)
+
 
                 // AR Button
                 SwiftUI.Button {

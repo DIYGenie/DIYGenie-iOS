@@ -2,22 +2,17 @@
 //  ProjectsService.swift
 //  DIYGenieApp
 //
-//  Supabase + API service (fixed routes):
-//  - POST  {API_BASE_URL}/api/projects/{id}/preview   -> triggers Decor8 preview; returns { preview_url }
-//  - GET   {API_BASE_URL}/api/projects/{id}/plan      -> returns saved plan_json (PlanResponse)
-//
 
 import Foundation
 import UIKit
 import Supabase
 
-// MARK: - App / Supabase config helpers (read from Info.plist)
-
+// MARK: - App / Supabase config helpers
 enum AppConfig {
     static var apiBaseURL: URL {
         let raw = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String ?? ""
         guard let url = URL(string: raw) else {
-            fatalError("❌ API_BASE_URL missing/invalid in Info.plist")
+            fatalError("❌ Missing/invalid API_BASE_URL in Info.plist")
         }
         return url
     }
@@ -27,27 +22,29 @@ enum SupabaseEnv {
     static var baseURL: URL {
         let raw = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String ?? ""
         guard let url = URL(string: raw) else {
-            fatalError("❌ SUPABASE_URL missing/invalid in Info.plist")
+            fatalError("❌ Missing/invalid SUPABASE_URL in Info.plist")
         }
         return url
     }
-
-    static func publicURL(bucket: String, path: String) -> String {
-        baseURL
-            .appendingPathComponent("storage/v1/object/public")
-            .appendingPathComponent(bucket)
-            .appendingPathComponent(path)
-            .absoluteString
+    static func publicURL(bucket: String, path: String) -> URL {
+        baseURL.appendingPathComponent("storage/v1/object/public/\(bucket)/\(path)")
     }
 }
 
-// MARK: - Service
-
 struct ProjectsService {
-    let userId: String
-    private let client: SupabaseClient = SupabaseConfig.client   // you already have this
 
-    // MARK: Create project (returns created row)
+    // ✅ These fix the “cannot find in scope” errors
+    let userId: String
+    let client: SupabaseClient = SupabaseConfig.client
+
+    // Shared decoder for PostgREST responses
+    private let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        return d
+    }()
+
+    // MARK: - Create project (returns created row)
     func createProject(name: String, goal: String, budget: String, skillLevel: String) async throws -> Project {
         let payload: [String: AnyEncodable] = [
             "user_id": AnyEncodable(userId),
@@ -58,36 +55,33 @@ struct ProjectsService {
             "is_demo": AnyEncodable(false)
         ]
 
-        let resp: PostgrestResponse<Project> = try await client
+        let resp = try await client
             .from("projects")
             .insert(payload, returning: .representation)
             .single()
-            .execute(decoding: Project.self)
+            .execute()
 
-        guard let project = resp.value else {
-            throw NSError(domain: "ProjectsService", code: -10,
-                          userInfo: [NSLocalizedDescriptionKey: "Empty response from insert()"])
-        }
-        return project
+        let data = resp.data
+        return try decoder.decode(Project.self, from: data)
+
     }
 
-    // MARK: Fetch projects for current user
+    // MARK: – Fetch projects for current user
     func fetchProjects() async throws -> [Project] {
-        let resp: PostgrestResponse<[Project]> = try await client
+        let resp = try await client
             .from("projects")
             .select()
             .eq("user_id", value: userId)
             .order("created_at", ascending: false)
-            .execute(decoding: [Project].self)
+            .execute()
 
-        guard let list = resp.value else {
-            throw NSError(domain: "ProjectsService", code: -11,
-                          userInfo: [NSLocalizedDescriptionKey: "Empty response from select()"])
-        }
-        return list
+        let data = resp.data
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode([Project].self, from: data)   // <-- decode an array
     }
 
-    // MARK: Upload image -> Storage, save public URL on project.input_image_url
+    // MARK: - Upload image -> Storage, save public URL on project
     func uploadImage(projectId: String, image: UIImage) async throws {
         guard let data = image.jpegData(compressionQuality: 0.85) else {
             throw NSError(domain: "ProjectsService", code: 200,
@@ -96,11 +90,12 @@ struct ProjectsService {
 
         let path = "\(userId)/\(UUID().uuidString).jpg"
 
-        _ = try await client.storage
+        // Supabase Storage upload (new signature is path:file:options:)
+        try await client.storage
             .from("uploads")
             .upload(path: path, file: data, options: FileOptions(contentType: "image/jpeg"))
 
-        let publicURL = SupabaseEnv.publicURL(bucket: "uploads", path: path)
+        let publicURL = SupabaseEnv.publicURL(bucket: "uploads", path: path).absoluteString
 
         let update: [String: AnyEncodable] = ["input_image_url": AnyEncodable(publicURL)]
         _ = try await client
@@ -110,45 +105,32 @@ struct ProjectsService {
             .execute()
     }
 
-    // MARK: Trigger Decor8 Preview on backend (POST /api/projects/{id}/preview)
-    // Backend also persists preview_url to the row; we return it for immediate UI.
+    // MARK: - Server calls (Decor8 preview + plan fetch)
+    /// POST {API}/api/projects/{id}/preview  -> { preview_url }
     func generatePreview(projectId: String) async throws -> String {
-        var url = AppConfig.apiBaseURL
-        url.appendPathComponent("api/projects")
-        url.appendPathComponent(projectId)
-        url.appendPathComponent("preview")
-
+        let url = AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)/preview")
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse else {
-            throw NSError(domain: "ProjectsService", code: -1,
-                          userInfo: [NSLocalizedDescriptionKey: "No HTTP response"])
-        }
-        guard 200..<300 ~= http.statusCode else {
+        guard let http = resp as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
             let body = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw NSError(domain: "ProjectsService", code: http.statusCode,
+            throw NSError(domain: "ProjectsService", code: (resp as? HTTPURLResponse)?.statusCode ?? -1,
                           userInfo: [NSLocalizedDescriptionKey: "Preview failed: \(body)"])
         }
-
         let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let urlString = obj?["preview_url"] as? String ?? ""
-        guard !urlString.isEmpty else {
+        if urlString.isEmpty {
             throw NSError(domain: "ProjectsService", code: -2,
                           userInfo: [NSLocalizedDescriptionKey: "Preview OK but no preview_url returned"])
         }
         return urlString
     }
 
-    // MARK: Fetch saved plan (GET /api/projects/{id}/plan)
+    /// GET {API}/api/projects/{id}/plan -> PlanResponse (saved plan_json)
     func fetchPlan(projectId: String) async throws -> PlanResponse {
-        var url = AppConfig.apiBaseURL
-        url.appendPathComponent("api/projects")
-        url.appendPathComponent(projectId)
-        url.appendPathComponent("plan")
-
+        let url = AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)/plan")
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
         req.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -159,7 +141,6 @@ struct ProjectsService {
             throw NSError(domain: "ProjectsService", code: (resp as? HTTPURLResponse)?.statusCode ?? -1,
                           userInfo: [NSLocalizedDescriptionKey: "Fetch plan failed: \(body)"])
         }
-
         return try JSONDecoder().decode(PlanResponse.self, from: data)
     }
 }
