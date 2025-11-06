@@ -50,9 +50,7 @@ struct HomeView: View {
                                 .foregroundColor(.white.opacity(0.75))
                                 .lineSpacing(3)
                             
-                            Button {
-                                // Navigate to NewProjectView
-                            } label: {
+                            NavigationLink(destination: NewProjectView()) {
                                 Text("Start New Project")
                                     .font(.system(size: 17, weight: .semibold))
                                     .frame(maxWidth: .infinity)
@@ -112,9 +110,7 @@ struct HomeView: View {
                                         Text("No projects yet — your next idea starts here!")
                                             .font(.system(size: 15))
                                             .foregroundColor(.white.opacity(0.8))
-                                        Button {
-                                            // Navigate to NewProjectView
-                                        } label: {
+                                        NavigationLink(destination: NewProjectView()) {
                                             Text("Start New Project")
                                                 .font(.system(size: 16, weight: .medium))
                                                 .padding(.vertical, 12)
@@ -171,9 +167,10 @@ struct HomeView: View {
             let fetched = try await service.fetchProjects()
             let formatter = ISO8601DateFormatter()
             
+            // 🔧 FIX: sort by createdAt (decoded from created_at)
             projects = fetched.sorted(by: { (a: Project, b: Project) -> Bool in
-                let dateA = formatter.date(from: a.created_at ?? "") ?? Date.distantPast
-                let dateB = formatter.date(from: b.created_at ?? "") ?? Date.distantPast
+                let dateA = formatter.date(from: a.createdAt ?? "") ?? .distantPast
+                let dateB = formatter.date(from: b.createdAt ?? "") ?? .distantPast
                 return dateA > dateB
             })
         } catch {
@@ -205,9 +202,7 @@ struct TemplateCard: View {
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundColor(.white)
 
-            Button {
-                // navigate to new project view with template prefill
-            } label: {
+            NavigationLink(destination: NewProjectView()) {
                 Text("Create")
                     .font(.system(size: 15, weight: .medium))
                     .frame(maxWidth: .infinity)
@@ -224,4 +219,3 @@ struct TemplateCard: View {
         .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
     }
 }
-
