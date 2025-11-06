@@ -33,7 +33,7 @@ enum SupabaseEnv {
 
 struct ProjectsService {
 
-    // ✅ These fix the “cannot find in scope” errors
+    // ✅ Provided by caller
     let userId: String
     let client: SupabaseClient = SupabaseConfig.client
 
@@ -51,7 +51,8 @@ struct ProjectsService {
             "name": AnyEncodable(name),
             "goal": AnyEncodable(goal),
             "budget": AnyEncodable(budget),
-            "skilllevel": AnyEncodable(skillLevel),
+            // 🔧 FIX: correct column name
+            "skill_level": AnyEncodable(skillLevel),
             "is_demo": AnyEncodable(false)
         ]
 
@@ -61,9 +62,7 @@ struct ProjectsService {
             .single()
             .execute()
 
-        let data = resp.data
-        return try decoder.decode(Project.self, from: data)
-
+        return try decoder.decode(Project.self, from: resp.data)
     }
 
     // MARK: – Fetch projects for current user
@@ -75,10 +74,7 @@ struct ProjectsService {
             .order("created_at", ascending: false)
             .execute()
 
-        let data = resp.data
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return try decoder.decode([Project].self, from: data)   // <-- decode an array
+        return try decoder.decode([Project].self, from: resp.data)
     }
 
     // MARK: - Upload image -> Storage, save public URL on project
@@ -106,12 +102,14 @@ struct ProjectsService {
     }
 
     // MARK: - Server calls (Decor8 preview + plan fetch)
+
     /// POST {API}/api/projects/{id}/preview  -> { preview_url }
     func generatePreview(projectId: String) async throws -> String {
         let url = AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)/preview")
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = Data("{}".utf8)
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
@@ -126,6 +124,25 @@ struct ProjectsService {
                           userInfo: [NSLocalizedDescriptionKey: "Preview OK but no preview_url returned"])
         }
         return urlString
+    }
+
+    /// POST {API}/api/projects/{id}/plan  -> triggers plan generation without preview
+    /// Returns true on any 2xx response.
+    func generatePlanOnly(projectId: String) async throws -> Bool {
+        let url = AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)/plan")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Legacy handler may accept empty JSON body.
+        req.httpBody = Data("{}".utf8)
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
+            let body = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw NSError(domain: "ProjectsService", code: (resp as? HTTPURLResponse)?.statusCode ?? -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Plan-only failed: \(body)"])
+        }
+        return true
     }
 
     /// GET {API}/api/projects/{id}/plan -> PlanResponse (saved plan_json)
@@ -144,3 +161,4 @@ struct ProjectsService {
         return try JSONDecoder().decode(PlanResponse.self, from: data)
     }
 }
+
