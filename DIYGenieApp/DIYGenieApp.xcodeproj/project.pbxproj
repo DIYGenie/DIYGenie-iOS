@@ -13,6 +13,8 @@
 		E27DC6262EB2A55A00DDB9B1 /* DIYGenieApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E27DC6112EB2A55A00DDB9B1 /* DIYGenieApp.swift */; };
 		E2ECF6C12EBC459000D3AAD9 /* RoomPlan.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E216F0202EA97761009AF2B3 /* RoomPlan.framework */; };
 		E2ECF6C42EBC459E00D3AAD9 /* ARKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E2AF0F8F2EA9373000B0FBE4 /* ARKit.framework */; };
+		E2ECF6C92EBC83DB00D3AAD9 /* Color+Brand.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2ECF6C82EBC83DB00D3AAD9 /* Color+Brand.swift */; };
+		E2ECF6CB2EBC841300D3AAD9 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2ECF6CA2EBC841300D3AAD9 /* Theme.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -25,6 +27,8 @@
 		E2AF0F882EA92B3700B0FBE4 /* DIYGenieApp-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "DIYGenieApp-Info.plist"; sourceTree = "<group>"; };
 		E2AF0F8A2EA9360E00B0FBE4 /* RoomPlan.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = RoomPlan.framework; path = System/Library/Frameworks/RoomPlan.framework; sourceTree = SDKROOT; };
 		E2AF0F8F2EA9373000B0FBE4 /* ARKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ARKit.framework; path = System/Library/Frameworks/ARKit.framework; sourceTree = SDKROOT; };
+		E2ECF6C82EBC83DB00D3AAD9 /* Color+Brand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Brand.swift"; sourceTree = "<group>"; };
+		E2ECF6CA2EBC841300D3AAD9 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -54,6 +58,8 @@
 			children = (
 				E2AF0F882EA92B3700B0FBE4 /* DIYGenieApp-Info.plist */,
 				E269F6922EB3ED2100CF06B1 /* Assets.xcassets */,
+				E2ECF6CA2EBC841300D3AAD9 /* Theme.swift */,
+				E2ECF6C82EBC83DB00D3AAD9 /* Color+Brand.swift */,
 				E27DC6102EB2A55A00DDB9B1 /* ContentView.swift */,
 				E27DC6112EB2A55A00DDB9B1 /* DIYGenieApp.swift */,
 				E24CE0592EA89EF10036185A /* Source */,
@@ -162,6 +168,8 @@
 			files = (
 				E27DC6252EB2A55A00DDB9B1 /* ContentView.swift in Sources */,
 				E27DC6262EB2A55A00DDB9B1 /* DIYGenieApp.swift in Sources */,
+				E2ECF6C92EBC83DB00D3AAD9 /* Color+Brand.swift in Sources */,
+				E2ECF6CB2EBC841300D3AAD9 /* Theme.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
