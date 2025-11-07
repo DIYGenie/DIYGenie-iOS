@@ -1,21 +1,22 @@
 import Foundation
 
-enum BudgetSelection: CaseIterable, Equatable {
-    case one, two, three
+// MARK: - Budget & Skill models (single source of truth)
 
-    var symbol: String {
-        switch self {
-        case .one:   return "$"
-        case .two:   return "$$"
-        case .three: return "$$$"
-        }
-    }
+enum BudgetSelection: String, CaseIterable, Identifiable, Equatable {
+    case one = "$"
+    case two = "$$"
+    case three = "$$$"
+
+    var id: String { rawValue }
+    var symbol: String { rawValue }
 }
 
-enum SkillSelection: String, CaseIterable, Equatable {
-    case beginner, intermediate, advanced
+enum SkillSelection: String, CaseIterable, Identifiable, Equatable {
+    case beginner
+    case intermediate
+    case advanced
 
-    var label: String {
-        rawValue.capitalized
-    }
+    var id: String { rawValue }
+    var label: String { rawValue.capitalized }
 }
+

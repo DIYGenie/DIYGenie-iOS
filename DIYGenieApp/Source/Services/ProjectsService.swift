@@ -9,29 +9,6 @@ import Supabase
 
 // MARK: - App / Supabase config helpers
 
-// MARK: – App / Supabase config helpers
-
-    static var apiBaseURL: URL {
-        let raw = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String ?? ""
-        guard let url = URL(string: raw) else {
-            fatalError("❌ Missing/invalid API_BASE_URL in Info.plist")
-        }
-        return url
-    }
-
-
-enum SupabaseEnv {
-    static var baseURL: URL {
-        let raw = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String ?? ""
-        guard let url = URL(string: raw) else {
-            fatalError("❌ Missing/invalid SUPABASE_URL in Info.plist")
-        }
-        return url
-    }
-    static func publicURL(bucket: String, path: String) -> URL {
-        baseURL.appendingPathComponent("storage/v1/object/public/\(bucket)/\(path)")
-    }
-}
 
 struct ProjectsService {
 
@@ -91,9 +68,11 @@ struct ProjectsService {
         // Supabase Storage upload (new signature is path:file:options:)
         try await client.storage
             .from("uploads")
-            .upload(path: path, file: data, options: FileOptions(contentType: "image/jpeg"))
+            .
+        upload(path: path, file: data, options: FileOptions(contentType: "image/jpeg"))
 
-        let publicURL = SupabaseEnv.publicURL(bucket: "uploads", path: path).absoluteString
+        let publicURL = AppConfig.publicURL(bucket: "uploads", path: path)
+
 
         let update: [String: AnyEncodable] = ["input_image_url": AnyEncodable(publicURL)]
         _ = try await client

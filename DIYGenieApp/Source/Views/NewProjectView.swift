@@ -1,22 +1,5 @@
 import SwiftUI
 
-// MARK: - Simple enums (no $ symbols)
-enum BudgetSelection: CaseIterable, Equatable {
-    case one, two, three
-    var label: String {
-        switch self {
-        case .one:   return "$"
-        case .two:   return "$$"
-        case .three: return "$$$"
-        }
-    }
-}
-
-enum SkillSelection: String, CaseIterable, Equatable {
-    case beginner, intermediate, advanced
-    var label: String { rawValue.capitalized }
-}
-
 struct NewProjectView: View {
 
     // MARK: - State
@@ -34,23 +17,19 @@ struct NewProjectView: View {
     @State private var alertMessage: String = ""
     @State private var showAlert = false
 
-    // set after successful create
+    // set after successful create (used to unlock AR row)
     @State private var projectId: UUID?
 
-    // MARK: - View
+    private let bgGradient = Gradient(colors: [Color("BGStart"), Color("BGEnd")])
+
+    // MARK: - Body
     var body: some View {
         ZStack {
-            // Spotify-style purple/black gradient using your asset names directly
-            LinearGradient(
-                colors: [Color("BGStart"), Color("BGEnd")],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            LinearGradient(gradient: bgGradient, startPoint: .topLeading, endPoint: .bottomTrailing)
+                .ignoresSafeArea()
 
             ScrollView {
                 VStack(spacing: 18) {
-
-                    // Header
                     header
 
                     // Project name
@@ -97,9 +76,7 @@ struct NewProjectView: View {
                         sectionLabel("BUDGET")
                         HStack(spacing: 10) {
                             ForEach(BudgetSelection.allCases, id: \.self) { opt in
-                                pill(title: opt.label, isOn: budget == opt) {
-                                    budget = opt
-                                }
+                                pill(title: opt.label, isOn: budget == opt) { budget = opt }
                             }
                         }
                         helper("Your project budget range.")
@@ -110,39 +87,15 @@ struct NewProjectView: View {
                         sectionLabel("SKILL LEVEL")
                         HStack(spacing: 10) {
                             ForEach(SkillSelection.allCases, id: \.self) { opt in
-                                pill(title: opt.label, isOn: skill == opt) {
-                                    skill = opt
-                                }
+                                pill(title: opt.label, isOn: skill == opt) { skill = opt }
                             }
                         }
                         helper("Your current DIY experience.")
                     }
 
-                    // AR (locked until project exists)
-                    if let _ = projectId {
-                        tappableRow(
-                            icon: "viewfinder.rectangular",
-                            title: "Add AR Scan Accuracy",
-                            subtitle: "Improve measurements with Room Scan",
-                            enabled: true
-                        ) {
-                            // present your AR sheet here (you already have that view)
-                            alert("AR sheet not wired in this file. Hook up your AR view here.")
-                        }
-                    } else {
-                        tappableRow(
-                            icon: "viewfinder.rectangular",
-                            title: "Add AR Scan Accuracy",
-                            subtitle: "Create the project first",
-                            enabled: false,
-                            action: {}
-                        )
-                    }
-
-                    // Room photo block
+                    // Room photo
                     sectionCard {
                         sectionLabel("ROOM PHOTO")
-
                         if let img = selectedUIImage {
                             HStack(spacing: 12) {
                                 Image(uiImage: img)
@@ -177,20 +130,35 @@ struct NewProjectView: View {
                             )
                         } else {
                             VStack(spacing: 12) {
-                                actionRow(
-                                    systemName: "photo.on.rectangle",
-                                    title: "Add a room photo"
-                                ) {
+                                actionRow(systemName: "photo.on.rectangle", title: "Add a room photo") {
                                     isShowingLibrary = true
                                 }
-                                actionRow(
-                                    systemName: "camera.viewfinder",
-                                    title: "Take Photo for Measurements"
-                                ) {
+                                actionRow(systemName: "camera.viewfinder", title: "Take Photo for Measurements") {
                                     isShowingCamera = true
                                 }
                             }
                         }
+                    }
+
+                    // AR (locked until project exists)
+                    if projectId != nil {
+                        tappableRow(
+                            icon: "viewfinder.rectangular",
+                            title: "Add AR Scan Accuracy",
+                            subtitle: "Improve measurements with Room Scan",
+                            enabled: true
+                        ) {
+                            // TODO: present AR sheet here
+                            alert("AR sheet not wired in this file. Hook up your AR view here.")
+                        }
+                    } else {
+                        tappableRow(
+                            icon: "viewfinder.rectangular",
+                            title: "Add AR Scan Accuracy",
+                            subtitle: "Create the project first",
+                            enabled: false,
+                            action: {}
+                        )
                     }
 
                     // CTAs
@@ -237,15 +205,14 @@ struct NewProjectView: View {
             Button("OK", role: .cancel) { }
         }
     }
+}
 
-    // MARK: - Sections
-
-    private var header: some View {
+// MARK: - Sections & UI helpers
+private extension NewProjectView {
+    var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
-                Button {
-                    dismiss()
-                } label: {
+                Button { dismiss() } label: {
                     Image(systemName: "chevron.left")
                         .font(.title2.weight(.semibold))
                         .foregroundColor(.white)
@@ -268,35 +235,33 @@ struct NewProjectView: View {
         .padding(.bottom, 4)
     }
 
-    private func sectionCard(@ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            content()
-        }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 18)
-                .fill(Color("Surface").opacity(0.7))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18)
-                        .stroke(Color("SurfaceStroke"), lineWidth: 1)
-                )
-        )
+    func sectionCard(@ViewBuilder _ content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 12) { content() }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(Color("Surface").opacity(0.7))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(Color("SurfaceStroke"), lineWidth: 1)
+                    )
+            )
     }
 
-    private func sectionLabel(_ text: String) -> some View {
+    func sectionLabel(_ text: String) -> some View {
         Text(text)
             .font(.footnote.weight(.semibold))
             .foregroundColor(Color("TextSecondary"))
             .textCase(.uppercase)
     }
 
-    private func helper(_ text: String) -> some View {
+    func helper(_ text: String) -> some View {
         Text(text)
             .font(.footnote)
             .foregroundColor(Color("TextSecondary"))
     }
 
-    private func pill(title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+    func pill(title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
                 .font(.headline)
@@ -310,7 +275,7 @@ struct NewProjectView: View {
         }
     }
 
-    private func tappableRow(icon: String, title: String, subtitle: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+    func tappableRow(icon: String, title: String, subtitle: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: { if enabled { action() } }) {
             HStack(spacing: 14) {
                 Image(systemName: icon)
@@ -340,7 +305,7 @@ struct NewProjectView: View {
         .disabled(!enabled)
     }
 
-    private func actionRow(systemName: String, title: String, action: @escaping () -> Void) -> some View {
+    func actionRow(systemName: String, title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: systemName)
@@ -363,7 +328,7 @@ struct NewProjectView: View {
         }
     }
 
-    private func primaryCTA(title: String, action: @escaping () -> Void) -> some View {
+    func primaryCTA(title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
                 .font(.headline.weight(.semibold))
@@ -379,7 +344,7 @@ struct NewProjectView: View {
         .opacity(isLoading ? 0.6 : 1)
     }
 
-    private func secondaryCTA(title: String, action: @escaping () -> Void) -> some View {
+    func secondaryCTA(title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
                 .font(.headline.weight(.semibold))
@@ -394,32 +359,31 @@ struct NewProjectView: View {
         .disabled(isLoading)
         .opacity(isLoading ? 0.6 : 1)
     }
+}
 
-    // MARK: - Actions (wire to your service)
-
-    private func createWithPreview() async {
-        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else {
-            return alert("Please enter a project name.")
-        }
-        guard !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return alert("Please enter a goal/description.")
-        }
-        guard let ui = selectedUIImage else {
-            return alert("Add a room photo to generate the preview.")
-        }
+// MARK: - Actions
+private extension NewProjectView {
+    func createWithPreview() async {
+        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return alert("Please enter a project name.") }
+        guard !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return alert("Please enter a goal/description.") }
+        guard let ui = selectedUIImage else { return alert("Add a room photo to generate the preview.") }
 
         isLoading = true
         defer { isLoading = false }
 
         do {
             let photoURL = try await ProjectsService.uploadPhoto(ui)
+            let uid = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+
             let id = try await ProjectsService.createProject(
                 name: name,
                 goal: goal,
                 budget: budget.label,
-                skill: skill.label,
+                skillLevel: skill.label,
+                userId: uid,
                 photoURL: photoURL
             )
+
             projectId = id
             alert("Project created. You can now add an AR scan for better accuracy.")
         } catch {
@@ -427,13 +391,9 @@ struct NewProjectView: View {
         }
     }
 
-    private func createWithoutPreview() async {
-        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else {
-            return alert("Please enter a project name.")
-        }
-        guard !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return alert("Please enter a goal/description.")
-        }
+    func createWithoutPreview() async {
+        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return alert("Please enter a project name.") }
+        guard !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return alert("Please enter a goal/description.") }
 
         isLoading = true
         defer { isLoading = false }
@@ -443,9 +403,11 @@ struct NewProjectView: View {
                 name: name,
                 goal: goal,
                 budget: budget.label,
-                skill: skill.label,
+                skillLevel: skill.label,
+                userId: (UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString),
                 photoURL: nil
             )
+
             projectId = id
             alert("Project created. You can now add an AR scan for better accuracy.")
         } catch {
@@ -453,8 +415,9 @@ struct NewProjectView: View {
         }
     }
 
-    private func alert(_ text: String) {
+    func alert(_ text: String) {
         alertMessage = text
         showAlert = true
     }
 }
+
