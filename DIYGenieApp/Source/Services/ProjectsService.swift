@@ -8,7 +8,9 @@ import UIKit
 import Supabase
 
 // MARK: - App / Supabase config helpers
-enum AppConfig {
+
+// MARK: – App / Supabase config helpers
+
     static var apiBaseURL: URL {
         let raw = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String ?? ""
         guard let url = URL(string: raw) else {
@@ -16,7 +18,7 @@ enum AppConfig {
         }
         return url
     }
-}
+
 
 enum SupabaseEnv {
     static var baseURL: URL {
