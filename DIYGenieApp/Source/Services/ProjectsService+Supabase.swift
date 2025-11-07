@@ -40,6 +40,7 @@ extension ProjectsService {
         )
         req.httpMethod = "POST"
         AppConfig.supabaseHeaders.forEach { req.setValue($1, forHTTPHeaderField: $0) }
+
         req.setValue("return=representation", forHTTPHeaderField: "Prefer")
         req.httpBody = try JSONEncoder().encode(body)
 

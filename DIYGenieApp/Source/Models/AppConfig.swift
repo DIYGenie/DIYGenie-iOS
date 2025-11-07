@@ -1,42 +1,39 @@
 import Foundation
 
-/// Central place for runtime configuration pulled from Info.plist.
-/// Keys required in Info.plist:
-///  - API_BASE_URL (e.g. https://api.diygenieapp.com)
-///  - SUPABASE_URL (e.g. https://xxxx.supabase.co)
-///  - SUPABASE_ANON_KEY (string)
 enum AppConfig {
-
-    // MARK: - API (DIY Genie backend)
-    static var apiBaseURL: URL {
-        guard
-            let raw = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String,
-            let url = URL(string: raw)
-        else { fatalError("❌ Missing/invalid API_BASE_URL in Info.plist") }
+    // Already present:
+    static var apiBaseURL: URL {            // from Info.plist key: API_BASE_URL
+        let raw = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String ?? ""
+        guard let url = URL(string: raw) else { fatalError("Missing/invalid API_BASE_URL") }
         return url
     }
 
-    // MARK: - Supabase
-    static var supabaseURL: URL {
-        guard
-            let raw = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String,
-            let url = URL(string: raw)
-        else { fatalError("❌ Missing/invalid SUPABASE_URL in Info.plist") }
+    static var supabaseURL: URL {           // from Info.plist key: SUPABASE_URL
+        let raw = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String ?? ""
+        guard let url = URL(string: raw) else { fatalError("Missing/invalid SUPABASE_URL") }
         return url
     }
 
-    static var supabaseAnonKey: String {
-        guard
-            let key = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String,
-            !key.isEmpty
-        else { fatalError("❌ Missing SUPABASE_ANON_KEY in Info.plist") }
-        return key
+    static var supabaseAnonKey: String {    // from Info.plist key: SUPABASE_ANON_KEY
+        (Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String) ?? ""
     }
 
-    /// Helper to build a public storage URL for a file in a bucket.
-    static func publicURL(bucket: String, path: String) -> URL {
-        supabaseURL
-            .appendingPathComponent("storage/v1/object/public/\(bucket)/\(path)")
+    // ✅ used by ProjectsService+Supabase
+    // Build a public CDN URL for a Storage object
+    static func publicURL(bucket: String, path: String) -> String {
+        let url = supabaseURL
+            .appendingPathComponent("storage/v1/object/public")
+            .appendingPathComponent(bucket)
+            .appendingPathComponent(path)
+        return url.absoluteString
+    }
+
+    static var supabaseHeaders: [String: String] {
+        [
+            "apikey": supabaseAnonKey,
+            "Authorization": "Bearer \(supabaseAnonKey)",
+            "Content-Type": "application/json"
+        ]
     }
 }
 
