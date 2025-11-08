@@ -7,13 +7,14 @@ import Foundation
 import UIKit
 import Supabase
 
-struct ProjectsService {
+// MARK: - Service
 
+struct ProjectsService {
     // Provided by caller
     let userId: String
     let client: SupabaseClient = SupabaseConfig.client
 
-    // Shared decoder
+    // Shared decoder for PostgREST responses
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
@@ -21,12 +22,7 @@ struct ProjectsService {
     }()
 
     // MARK: - Create project (returns created row)
-    func createProject(
-        name: String,
-        goal: String,
-        budget: String,
-        skillLevel: String
-    ) async throws -> Project {
+    func createProject(name: String, goal: String, budget: String, skillLevel: String) async throws -> Project {
         let payload: [String: AnyEncodable] = [
             "user_id": AnyEncodable(userId),
             "name": AnyEncodable(name),
@@ -58,23 +54,18 @@ struct ProjectsService {
     }
 
     // MARK: - Fetch single project by id
-    func fetchProject(projectId: String) async throws -> Project {
+    func fetchProject(id: String) async throws -> Project {
         let resp = try await client
             .from("projects")
             .select()
-            .eq("id", value: projectId)
+            .eq("id", value: id)
             .single()
             .execute()
 
         return try decoder.decode(Project.self, from: resp.data)
     }
 
-    // Convenience overload to match callsites: fetchProject(id:)
-    func fetchProject(id: String) async throws -> Project {
-        try await fetchProject(projectId: id)
-    }
-
-    // MARK: - Upload image -> Storage, save public URL on project
+    // MARK: - Upload image → Storage, save public URL on project
     func uploadImage(projectId: String, image: UIImage) async throws {
         guard let data = image.jpegData(compressionQuality: 0.85) else {
             throw NSError(
@@ -86,8 +77,8 @@ struct ProjectsService {
 
         let path = "\(userId)/\(UUID().uuidString).jpg"
 
-        // Supabase Storage upload
-        _ = try await client.storage
+        // Supabase Storage upload (new signature is path:file:options:)
+        try await client.storage
             .from("uploads")
             .upload(
                 path: path,
@@ -95,10 +86,10 @@ struct ProjectsService {
                 options: FileOptions(contentType: "image/jpeg")
             )
 
-        // Public URL (use SupabaseConfig helper for consistency)
+        // Build public URL (use SupabaseConfig helper)
         let publicURL = SupabaseConfig.publicURL(bucket: "uploads", path: path).absoluteString
 
-        // Save URL on project
+        // Save on the project
         let update: [String: AnyEncodable] = ["input_image_url": AnyEncodable(publicURL)]
         _ = try await client
             .from("projects")
@@ -108,6 +99,8 @@ struct ProjectsService {
     }
 
     // MARK: - Server calls (Decor8 preview + plan fetch)
+
+    /// POST {API}/api/projects/{id}/preview  -> { preview_url }
     func generatePreview(projectId: String) async throws -> String {
         let url = AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)/preview")
         var req = URLRequest(url: url)
@@ -136,6 +129,8 @@ struct ProjectsService {
         return urlString
     }
 
+    /// POST {API}/api/projects/{id}/plan  -> triggers plan generation without preview
+    /// Returns true on any 2xx response.
     func generatePlanOnly(projectId: String) async throws -> Bool {
         let url = AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)/plan")
         var req = URLRequest(url: url)
@@ -155,6 +150,7 @@ struct ProjectsService {
         return true
     }
 
+    /// GET {API}/api/projects/{id}/plan -> PlanResponse (saved plan_json)
     func fetchPlan(projectId: String) async throws -> PlanResponse {
         let url = AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)/plan")
         var req = URLRequest(url: url)
@@ -171,6 +167,11 @@ struct ProjectsService {
             )
         }
         return try JSONDecoder().decode(PlanResponse.self, from: data)
+    }
+
+    /// Optional no-op (kept for compatibility)
+    public func requestPreview(projectId: String) async throws {
+        // wire later if you want this to queue on backend
     }
 }
 
