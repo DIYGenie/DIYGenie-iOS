@@ -3,31 +3,45 @@ import UIKit
 
 struct NewProjectView: View {
 
-    // MARK: - State
+    // MARK: - Env / Services
     @Environment(\.dismiss) private var dismiss
+    private let service = ProjectsService(
+        userId: UserDefaults.standard.string(forKey: "user_id") ?? UUID().uuidString
+    )
 
+    // MARK: - Form state
     @State private var name: String = ""
     @State private var goal: String = ""
     @State private var budget: BudgetSelection = .two
     @State private var skill: SkillSelection = .intermediate
 
+    // MARK: - Media & overlay
     @State private var selectedUIImage: UIImage?
+    @State private var pendingCropRect: CGRect?  // normalized 0..1 from RectangleOverlayView
+    @State private var showOverlay = false       // fullScreenCover for rectangle overlay
+
+    // MARK: - Sheets
     @State private var isShowingCamera = false
     @State private var isShowingLibrary = false
+    @State private var showARSheet = false       // RoomPlan sheet
+
+    // MARK: - UX state
     @State private var isLoading = false
     @State private var alertMessage: String = ""
     @State private var showAlert = false
 
-    // unlocks AR row + nav after create
-    @State private var projectId: String?
+    // MARK: - Created project / nav
+    @State private var projectId: String?          // unlocks AR row
+    @State private var createdProject: Project?    // used for details nav
     @State private var goToDetail = false
-    @State private var createdProject: Project?
-
-    // service
-    private let service = ProjectsService(
-        userId: UserDefaults.standard.string(forKey: "user_id") ?? UUID().uuidString
-    )
-
+    @ViewBuilder
+    private var detailsDestination: some View {
+        if let p = createdProject {
+            ProjectDetailsView(project: p)
+        } else {
+            EmptyView()
+        }
+    }
     // MARK: - Background
     private let bgGradient = Gradient(colors: [Color("BGStart"), Color("BGEnd")])
     private var background: some View {
@@ -35,73 +49,78 @@ struct NewProjectView: View {
             .ignoresSafeArea()
     }
 
-    // MARK: - Computed
-    private var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty &&
-        !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
     // MARK: - Body
     var body: some View {
         ZStack {
             background
             form
-
-            // Hidden programmatic navigation to details
-            NavigationLink(isActive: $goToDetail) {
-                if let p = createdProject {
-                    ProjectDetailsView(project: p)
-                } else {
-                    EmptyView()
-                }
-            } label: { EmptyView() }
-            .hidden()
         }
+        // Hidden navigation (fires when CTAs finish)
+        .background(
+            NavigationLink(isActive: $goToDetail) {
+                detailsDestination
+            } label: {
+                EmptyView()
+            }
+            .hidden()
+        )
+
         // Camera
         .sheet(isPresented: $isShowingCamera) {
             ImagePicker(sourceType: .camera) { ui in
-                guard let ui else { return }
+                guard let ui = ui else { return }
                 selectedUIImage = ui
+                showOverlay = true     // go to rectangle overlay immediately
             }
             .ignoresSafeArea()
         }
         // Library
         .sheet(isPresented: $isShowingLibrary) {
             ImagePicker(sourceType: .photoLibrary) { ui in
-                guard let ui else { return }
+                guard let ui = ui else { return }
                 selectedUIImage = ui
+                showOverlay = true     // go to rectangle overlay immediately
             }
             .ignoresSafeArea()
         }
-        // AR sheet (now includes onExport)
-        .sheet(isPresented: $showAR) {
-            ARRoomPlanSheet(
-                projectId: projectId ?? "",
-                onExport: { fileURL in
-                    Task {
-                        do {
-                            // Upload the exported scan to Supabase + update project
-                            try await service.uploadARScan(projectId: projectId ?? "", fileURL: fileURL)
-
-                            // Refresh local copy so details reflect new asset
-                            if let id = projectId {
-                                createdProject = try await service.fetchProject(id: id)
-                            }
-
-                            alertMessage = "AR scan attached to your project ✅"
-                            showAlert = true
-                        } catch {
-                            alertMessage = "Failed to attach AR scan: \(error.localizedDescription)"
-                            showAlert = true
+        // Rectangle overlay flow (works before project exists)
+        .fullScreenCover(isPresented: $showOverlay) {
+            if let img = selectedUIImage {
+                RectangleOverlayView(
+                    image: img,
+                    projectId: projectId ?? "",
+                    userId: service.userId,
+                    onCancel: { showOverlay = false },
+                    onComplete: { rect in
+                        // Save normalized selection; if project exists we can push to backend right away later.
+                        pendingCropRect = rect
+                        showOverlay = false
+                    },
+                    onError: { err in
+                        alert("Overlay error: \(err.localizedDescription)")
+                        showOverlay = false
+                    }
+                )
+            }
+        }
+        // RoomPlan sheet (active once project exists)
+        .sheet(isPresented: $showARSheet) {
+            if let pid = projectId {
+                if #available(iOS 17.0, *) {
+                    ARRoomPlanSheet(projectId: pid) { fileURL in
+                        Task {
+                            await handleRoomPlanExport(fileURL)
                         }
                     }
+                    .ignoresSafeArea()
+                } else {
+                    Text("RoomPlan requires iOS 17 or later.")
+                        .padding()
                 }
-            )
+            }
         }
-        // Alert
-        .alert(alertMessage, isPresented: $showAlert) {
-            Button("OK", role: .cancel) { }
-        }
+        // Alerts
+        .alert(alertMessage, isPresented: $showAlert) { Button("OK", role: .cancel) {} }
     }
 
     // MARK: - Form
@@ -124,7 +143,7 @@ struct NewProjectView: View {
                         )
                 }
 
-                // Goal / Description
+                // Goal
                 sectionCard {
                     sectionLabel("GOAL / DESCRIPTION")
                     TextEditor(text: $goal)
@@ -152,24 +171,24 @@ struct NewProjectView: View {
                     sectionLabel("BUDGET")
                     HStack(spacing: 10) {
                         ForEach(Array(BudgetSelection.allCases), id: \.self) { opt in
-                            pill(title: opt.label, isOn: budget == opt) { self.budget = opt }
+                            pill(title: opt.label, isOn: budget == opt) { budget = opt }
                         }
                     }
                     helper("Your project budget range.")
                 }
 
-                // Skill level
+                // Skill
                 sectionCard {
                     sectionLabel("SKILL LEVEL")
                     HStack(spacing: 10) {
                         ForEach(Array(SkillSelection.allCases), id: \.self) { opt in
-                            pill(title: opt.label, isOn: skill == opt) { self.skill = opt }
+                            pill(title: opt.label, isOn: skill == opt) { skill = opt }
                         }
                     }
                     helper("Your current DIY experience.")
                 }
 
-                // Room photo
+                // Photo block
                 sectionCard {
                     sectionLabel("ROOM PHOTO")
                     if let img = selectedUIImage {
@@ -185,16 +204,32 @@ struct NewProjectView: View {
                                 Text("Photo attached")
                                     .foregroundColor(Color("TextPrimary"))
                                     .font(.headline)
-                                Text("Use AR or retake a photo if needed.")
-                                    .foregroundColor(Color("TextSecondary"))
-                                    .font(.subheadline)
 
-                                Button("Retake", role: .cancel) {
-                                    selectedUIImage = nil
-                                    isShowingCamera = true
+                                if pendingCropRect != nil {
+                                    Text("Area selected ✓")
+                                        .font(.subheadline)
+                                        .foregroundColor(Color("TextSecondary"))
+                                } else {
+                                    Text("Tap 'Retake' to set target area.")
+                                        .font(.subheadline)
+                                        .foregroundColor(Color("TextSecondary"))
                                 }
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundColor(Color("Accent"))
+
+                                HStack(spacing: 16) {
+                                    Button("Retake", role: .cancel) {
+                                        showOverlay = true
+                                    }
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(Color("Accent"))
+
+                                    if projectId != nil {
+                                        Button("Re-upload") {
+                                            Task { await uploadCurrentImageIfNeeded(force: true) }
+                                        }
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(Color("Accent"))
+                                    }
+                                }
                             }
                             Spacer()
                         }
@@ -216,14 +251,14 @@ struct NewProjectView: View {
                     }
                 }
 
-                // AR row (enabled after create)
+                // AR row
                 if projectId != nil {
                     tappableRow(
                         icon: "viewfinder.rectangular",
                         title: "Add AR Scan Accuracy",
                         subtitle: "Improve measurements with Room Scan",
                         enabled: true
-                    ) { showAR = true }
+                    ) { showARSheet = true }
                 } else {
                     tappableRow(
                         icon: "viewfinder.rectangular",
@@ -237,14 +272,14 @@ struct NewProjectView: View {
                 // CTAs
                 VStack(spacing: 12) {
                     primaryCTA(title: "Generate AI Plan + Preview") {
-                        Task { await createWithPreview() }
+                        Task { await createAndNavigate(wantsPreview: true) }
                     }
-                    .disabled(isLoading || !isValid)
+                    .disabled(!isValid || isLoading)
 
                     secondaryCTA(title: "Create Plan Only (no preview)") {
-                        Task { await createWithoutPreview() }
+                        Task { await createAndNavigate(wantsPreview: false) }
                     }
-                    .disabled(isLoading || !isValid)
+                    .disabled(!isValid || isLoading)
                 }
                 .padding(.top, 6)
 
@@ -262,8 +297,95 @@ struct NewProjectView: View {
         }
     }
 
-    // MARK: - Sections & helpers
-    private var header: some View {
+    // MARK: - Derived
+    private var isValid: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty &&
+        !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    // MARK: - Actions
+    @MainActor
+    private func createAndNavigate(wantsPreview: Bool) async {
+        guard isValid else { return alert("Please complete name and goal.") }
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            // 1) Create project (once)
+            let created = try await service.createProject(
+                name: name,
+                goal: goal,
+                budget: budget.label,
+                skillLevel: skill.label
+            )
+            projectId = created.id
+
+            // 2) Upload photo (if any)
+            if let img = selectedUIImage {
+                try await service.uploadImage(projectId: created.id, image: img)
+            }
+
+            // 3) If user selected a rectangle, try to store it (safe no-op if column missing)
+            if let rect = pendingCropRect {
+                await service.attachCropRectIfAvailable(projectId: created.id, rect: rect)
+            }
+
+            // 4) Kick off plan/preview
+            if wantsPreview {
+                _ = try await service.generatePreview(projectId: created.id)
+            } else {
+                _ = try await service.generatePlanOnly(projectId: created.id)
+            }
+
+            // 5) Refresh + navigate
+            let fresh = try await service.fetchProject(id: created.id)
+
+            createdProject = fresh
+            goToDetail = true
+
+        } catch {
+            alert("Failed to create project: \(error.localizedDescription)")
+        }
+    }
+
+    @MainActor
+    private func uploadCurrentImageIfNeeded(force: Bool = false) async {
+        guard let pid = projectId, let img = selectedUIImage else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            try await service.uploadImage(projectId: pid, image: img)
+            alert("Photo uploaded.")
+        } catch {
+            alert("Upload failed: \(error.localizedDescription)")
+        }
+    }
+
+    @MainActor
+    private func handleRoomPlanExport(_ fileURL: URL) async {
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            guard let pid = projectId else { return }
+            try await service.uploadARScan(projectId: pid, fileURL: fileURL)
+            let fresh = try await service.fetchProject(id: pid)
+
+            createdProject = fresh
+            alert("AR scan attached to your project ✅")
+        } catch {
+            alert("Failed to attach AR scan: \(error.localizedDescription)")
+        }
+    }
+
+    private func alert(_ text: String) {
+        alertMessage = text
+        showAlert = true
+    }
+}
+
+// MARK: - Sections & UI helpers
+private extension NewProjectView {
+    var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
                 Button { dismiss() } label: {
@@ -289,7 +411,7 @@ struct NewProjectView: View {
         .padding(.bottom, 4)
     }
 
-    private func sectionCard(@ViewBuilder _ content: () -> some View) -> some View {
+    func sectionCard(@ViewBuilder _ content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 12) { content() }
             .padding(16)
             .background(
@@ -302,20 +424,20 @@ struct NewProjectView: View {
             )
     }
 
-    private func sectionLabel(_ text: String) -> some View {
+    func sectionLabel(_ text: String) -> some View {
         Text(text)
             .font(.footnote.weight(.semibold))
             .foregroundColor(Color("TextSecondary"))
             .textCase(.uppercase)
     }
 
-    private func helper(_ text: String) -> some View {
+    func helper(_ text: String) -> some View {
         Text(text)
             .font(.footnote)
             .foregroundColor(Color("TextSecondary"))
     }
 
-    private func pill(title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+    func pill(title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
                 .font(.headline)
@@ -329,7 +451,7 @@ struct NewProjectView: View {
         }
     }
 
-    private func tappableRow(icon: String, title: String, subtitle: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+    func tappableRow(icon: String, title: String, subtitle: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: { if enabled { action() } }) {
             HStack(spacing: 14) {
                 Image(systemName: icon)
@@ -359,7 +481,7 @@ struct NewProjectView: View {
         .disabled(!enabled)
     }
 
-    private func actionRow(systemName: String, title: String, action: @escaping () -> Void) -> some View {
+    func actionRow(systemName: String, title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: systemName)
@@ -382,7 +504,7 @@ struct NewProjectView: View {
         }
     }
 
-    private func primaryCTA(title: String, action: @escaping () -> Void) -> some View {
+    func primaryCTA(title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
                 .font(.headline.weight(.semibold))
@@ -394,9 +516,10 @@ struct NewProjectView: View {
                         .fill(Color("Accent"))
                 )
         }
+        .opacity(isLoading ? 0.6 : 1)
     }
 
-    private func secondaryCTA(title: String, action: @escaping () -> Void) -> some View {
+    func secondaryCTA(title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
                 .font(.headline.weight(.semibold))
@@ -408,80 +531,7 @@ struct NewProjectView: View {
                         .fill(Color.white.opacity(0.08))
                 )
         }
+        .opacity(isLoading ? 0.6 : 1)
     }
-}
-
-// MARK: - Actions
-private extension NewProjectView {
-    func createWithPreview() async {
-        guard isValid else { return alert("Please fill in name and description.") }
-        guard let ui = selectedUIImage else { return alert("Add a room photo to generate the preview.") }
-
-        isLoading = true
-        defer { isLoading = false }
-
-        do {
-            // 1) Create project row first
-            let project = try await service.createProject(
-                name: name,
-                goal: goal,
-                budget: budget.label,
-                skillLevel: skill.label
-            )
-            self.projectId = project.id
-            self.createdProject = project
-
-            // 2) Upload image and save URL
-            try await service.uploadImage(projectId: project.id, image: ui)
-
-            // 3) Trigger preview and fetch updated project (optional)
-            _ = try await service.generatePreview(projectId: project.id)
-            self.createdProject = try await service.fetchProject(id: project.id)
-
-            // 4) Go to details
-            goToDetail = true
-        } catch {
-            alert("Failed to create project: \(error.localizedDescription)")
-        }
-    }
-
-    func createWithoutPreview() async {
-        guard isValid else { return alert("Please fill in name and description.") }
-
-        isLoading = true
-        defer { isLoading = false }
-
-        do {
-            let project = try await service.createProject(
-                name: name,
-                goal: goal,
-                budget: budget.label,
-                skillLevel: skill.label
-            )
-            self.projectId = project.id
-            self.createdProject = project
-
-            // (Optional) plan-only call
-            _ = try await service.generatePlanOnly(projectId: project.id)
-
-            goToDetail = true
-        } catch {
-            alert("Failed to create project: \(error.localizedDescription)")
-        }
-    }
-
-    func alert(_ text: String) {
-        alertMessage = text
-        showAlert = true
-    }
-
-    // local flag to drive AR sheet
-    var showAR: Binding<Bool> {
-        .init(
-            get: { projectId != nil && _showAR },
-            set: { _ in _showAR = $0 }
-        )
-    }
-    @State private var _showAR = false
 }
 
