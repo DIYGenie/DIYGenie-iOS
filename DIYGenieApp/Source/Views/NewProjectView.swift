@@ -3,45 +3,41 @@ import UIKit
 
 struct NewProjectView: View {
 
-    // MARK: - Env / Services
+    // MARK: - Environment
     @Environment(\.dismiss) private var dismiss
-    private let service = ProjectsService(
-        userId: UserDefaults.standard.string(forKey: "user_id") ?? UUID().uuidString
-    )
+
+    // MARK: - Drafts (optional)
+    @AppStorage("newProj_name") private var draftName: String = ""
+    @AppStorage("newProj_goal") private var draftGoal: String = ""
 
     // MARK: - Form state
     @State private var name: String = ""
     @State private var goal: String = ""
     @State private var budget: BudgetSelection = .two
-    @State private var skill: SkillSelection = .intermediate
+    @State private var skill:  SkillSelection  = .intermediate
 
-    // MARK: - Media & overlay
+    // MARK: - Media & overlays
     @State private var selectedUIImage: UIImage?
-    @State private var pendingCropRect: CGRect?  // normalized 0..1 from RectangleOverlayView
-    @State private var showOverlay = false       // fullScreenCover for rectangle overlay
+    @State private var areaSelected = false
 
-    // MARK: - Sheets
+    // MARK: - UI flags
     @State private var isShowingCamera = false
     @State private var isShowingLibrary = false
-    @State private var showARSheet = false       // RoomPlan sheet
-
-    // MARK: - UX state
+    @State private var showAR = false
     @State private var isLoading = false
-    @State private var alertMessage: String = ""
+    @State private var alertMessage = ""
     @State private var showAlert = false
 
-    // MARK: - Created project / nav
-    @State private var projectId: String?          // unlocks AR row
-    @State private var createdProject: Project?    // used for details nav
+    // MARK: - Navigation / created project
+    @State private var projectId: String?
+    @State private var createdProject: Project?
     @State private var goToDetail = false
-    @ViewBuilder
-    private var detailsDestination: some View {
-        if let p = createdProject {
-            ProjectDetailsView(project: p)
-        } else {
-            EmptyView()
-        }
-    }
+
+    // MARK: - Services
+    private let service = ProjectsService(
+        userId: UserDefaults.standard.string(forKey: "user_id") ?? UUID().uuidString
+    )
+
     // MARK: - Background
     private let bgGradient = Gradient(colors: [Color("BGStart"), Color("BGEnd")])
     private var background: some View {
@@ -55,72 +51,102 @@ struct NewProjectView: View {
             background
             form
         }
-        // Hidden navigation (fires when CTAs finish)
         .background(
+            // Hidden navigation (fires after CTAs succeed)
             NavigationLink(isActive: $goToDetail) {
-                detailsDestination
-            } label: {
-                EmptyView()
-            }
+                if let p = createdProject { ProjectDetailsView(project: p) } else { EmptyView() }
+            } label: { EmptyView() }
             .hidden()
         )
+        .onAppear {
+            if !draftName.isEmpty { name = draftName }
+            if !draftGoal.isEmpty { goal = draftGoal }
+        }
+        .onChange(of: name) { draftName = $0 }
+        .onChange(of: goal) { draftGoal = $0 }
+        .hideKeyboardOnTap()
 
         // Camera
         .sheet(isPresented: $isShowingCamera) {
             ImagePicker(sourceType: .camera) { ui in
-                guard let ui = ui else { return }
+                guard let ui else { return }
                 selectedUIImage = ui
-                showOverlay = true     // go to rectangle overlay immediately
+                Task { await createIfNeededAndUpload(ui) }  // auto-create + upload
             }
             .ignoresSafeArea()
         }
+
         // Library
         .sheet(isPresented: $isShowingLibrary) {
             ImagePicker(sourceType: .photoLibrary) { ui in
-                guard let ui = ui else { return }
+                guard let ui else { return }
                 selectedUIImage = ui
-                showOverlay = true     // go to rectangle overlay immediately
+                Task { await createIfNeededAndUpload(ui) }  // auto-create + upload
             }
             .ignoresSafeArea()
         }
-        // Rectangle overlay flow (works before project exists)
-        .fullScreenCover(isPresented: $showOverlay) {
-            if let img = selectedUIImage {
+
+        // Rectangle overlay (only once per photo attach)
+        .sheet(isPresented: .constant(selectedUIImage != nil && projectId != nil && !areaSelected)) {
+            if let img = selectedUIImage, let pid = projectId {
                 RectangleOverlayView(
                     image: img,
-                    projectId: projectId ?? "",
+                    projectId: pid,
                     userId: service.userId,
-                    onCancel: { showOverlay = false },
-                    onComplete: { rect in
-                        // Save normalized selection; if project exists we can push to backend right away later.
-                        pendingCropRect = rect
-                        showOverlay = false
+                    onCancel: { areaSelected = true },
+                    onComplete: { normalized in
+                        Task {
+                            do {
+                                try await service.saveCropRect(projectId: pid, normalized: normalized)
+                                areaSelected = true
+                                alert("Area saved ✓")
+                            } catch {
+                                alert("Saving area failed: \(error.localizedDescription)")
+                                areaSelected = true
+                            }
+                        }
                     },
                     onError: { err in
                         alert("Overlay error: \(err.localizedDescription)")
-                        showOverlay = false
+                        areaSelected = true
                     }
                 )
+                .ignoresSafeArea()
+            } else {
+                Text("Preparing overlay…").padding()
             }
         }
-        // RoomPlan sheet (active once project exists)
-        .sheet(isPresented: $showARSheet) {
+
+        // AR sheet (RoomPlan)
+        .sheet(isPresented: $showAR) {
             if let pid = projectId {
                 if #available(iOS 17.0, *) {
                     ARRoomPlanSheet(projectId: pid) { fileURL in
                         Task {
-                            await handleRoomPlanExport(fileURL)
+                            do {
+                                try await service.uploadARScan(projectId: pid, fileURL: fileURL)
+                                if let p = try? await service.fetchProject(projectId: pid) {
+                                    createdProject = p
+                                }
+                                alert("AR scan attached to your project ✅")
+                            } catch {
+                                alert("Failed to attach AR scan: \(error.localizedDescription)")
+                            }
                         }
                     }
                     .ignoresSafeArea()
                 } else {
-                    Text("RoomPlan requires iOS 17 or later.")
-                        .padding()
+                    Text("RoomPlan requires iOS 17+").padding()
                 }
+            } else {
+                Text("Create the project first").padding()
             }
         }
-        // Alerts
-        .alert(alertMessage, isPresented: $showAlert) { Button("OK", role: .cancel) {} }
+
+        // Alert
+        .alert(alertMessage, isPresented: $showAlert) {
+            Button("OK", role: .cancel) { }
+        }
     }
 
     // MARK: - Form
@@ -143,7 +169,7 @@ struct NewProjectView: View {
                         )
                 }
 
-                // Goal
+                // Goal / Description
                 sectionCard {
                     sectionLabel("GOAL / DESCRIPTION")
                     TextEditor(text: $goal)
@@ -177,7 +203,7 @@ struct NewProjectView: View {
                     helper("Your project budget range.")
                 }
 
-                // Skill
+                // Skill level
                 sectionCard {
                     sectionLabel("SKILL LEVEL")
                     HStack(spacing: 10) {
@@ -188,9 +214,10 @@ struct NewProjectView: View {
                     helper("Your current DIY experience.")
                 }
 
-                // Photo block
+                // Room photo
                 sectionCard {
                     sectionLabel("ROOM PHOTO")
+
                     if let img = selectedUIImage {
                         HStack(spacing: 12) {
                             Image(uiImage: img)
@@ -205,31 +232,25 @@ struct NewProjectView: View {
                                     .foregroundColor(Color("TextPrimary"))
                                     .font(.headline)
 
-                                if pendingCropRect != nil {
-                                    Text("Area selected ✓")
-                                        .font(.subheadline)
-                                        .foregroundColor(Color("TextSecondary"))
-                                } else {
-                                    Text("Tap 'Retake' to set target area.")
-                                        .font(.subheadline)
-                                        .foregroundColor(Color("TextSecondary"))
-                                }
-
-                                HStack(spacing: 16) {
-                                    Button("Retake", role: .cancel) {
-                                        showOverlay = true
-                                    }
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundColor(Color("Accent"))
-
-                                    if projectId != nil {
-                                        Button("Re-upload") {
-                                            Task { await uploadCurrentImageIfNeeded(force: true) }
-                                        }
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundColor(Color("Accent"))
+                                HStack(spacing: 6) {
+                                    if areaSelected {
+                                        Text("Area selected ✓")
+                                            .foregroundColor(Color("TextSecondary"))
+                                            .font(.subheadline)
+                                    } else {
+                                        Text("Adjust your target area…")
+                                            .foregroundColor(Color("TextSecondary"))
+                                            .font(.subheadline)
                                     }
                                 }
+
+                                Button("Retake", role: .cancel) {
+                                    selectedUIImage = nil
+                                    areaSelected = false
+                                    isShowingCamera = true
+                                }
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(Color("Accent"))
                             }
                             Spacer()
                         }
@@ -258,7 +279,7 @@ struct NewProjectView: View {
                         title: "Add AR Scan Accuracy",
                         subtitle: "Improve measurements with Room Scan",
                         enabled: true
-                    ) { showARSheet = true }
+                    ) { showAR = true }
                 } else {
                     tappableRow(
                         icon: "viewfinder.rectangular",
@@ -272,14 +293,11 @@ struct NewProjectView: View {
                 // CTAs
                 VStack(spacing: 12) {
                     primaryCTA(title: "Generate AI Plan + Preview") {
-                        Task { await createAndNavigate(wantsPreview: true) }
+                        Task { await createWithPreview() }
                     }
-                    .disabled(!isValid || isLoading)
-
                     secondaryCTA(title: "Create Plan Only (no preview)") {
-                        Task { await createAndNavigate(wantsPreview: false) }
+                        Task { await createWithoutPreview() }
                     }
-                    .disabled(!isValid || isLoading)
                 }
                 .padding(.top, 6)
 
@@ -287,104 +305,26 @@ struct NewProjectView: View {
             }
             .padding(18)
         }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+            }
+        }
         .disabled(isLoading)
         .overlay(alignment: .center) {
             if isLoading {
-                ProgressView()
-                    .scaleEffect(1.2)
-                    .tint(.white)
+                ProgressView().scaleEffect(1.2).tint(.white)
             }
         }
-    }
-
-    // MARK: - Derived
-    private var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty &&
-        !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    // MARK: - Actions
-    @MainActor
-    private func createAndNavigate(wantsPreview: Bool) async {
-        guard isValid else { return alert("Please complete name and goal.") }
-        isLoading = true
-        defer { isLoading = false }
-
-        do {
-            // 1) Create project (once)
-            let created = try await service.createProject(
-                name: name,
-                goal: goal,
-                budget: budget.label,
-                skillLevel: skill.label
-            )
-            projectId = created.id
-
-            // 2) Upload photo (if any)
-            if let img = selectedUIImage {
-                try await service.uploadImage(projectId: created.id, image: img)
-            }
-
-            // 3) If user selected a rectangle, try to store it (safe no-op if column missing)
-            if let rect = pendingCropRect {
-                await service.attachCropRectIfAvailable(projectId: created.id, rect: rect)
-            }
-
-            // 4) Kick off plan/preview
-            if wantsPreview {
-                _ = try await service.generatePreview(projectId: created.id)
-            } else {
-                _ = try await service.generatePlanOnly(projectId: created.id)
-            }
-
-            // 5) Refresh + navigate
-            let fresh = try await service.fetchProject(id: created.id)
-
-            createdProject = fresh
-            goToDetail = true
-
-        } catch {
-            alert("Failed to create project: \(error.localizedDescription)")
-        }
-    }
-
-    @MainActor
-    private func uploadCurrentImageIfNeeded(force: Bool = false) async {
-        guard let pid = projectId, let img = selectedUIImage else { return }
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            try await service.uploadImage(projectId: pid, image: img)
-            alert("Photo uploaded.")
-        } catch {
-            alert("Upload failed: \(error.localizedDescription)")
-        }
-    }
-
-    @MainActor
-    private func handleRoomPlanExport(_ fileURL: URL) async {
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            guard let pid = projectId else { return }
-            try await service.uploadARScan(projectId: pid, fileURL: fileURL)
-            let fresh = try await service.fetchProject(id: pid)
-
-            createdProject = fresh
-            alert("AR scan attached to your project ✅")
-        } catch {
-            alert("Failed to attach AR scan: \(error.localizedDescription)")
-        }
-    }
-
-    private func alert(_ text: String) {
-        alertMessage = text
-        showAlert = true
     }
 }
 
 // MARK: - Sections & UI helpers
-private extension NewProjectView {
+extension NewProjectView {
+
     var header: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
@@ -511,11 +451,9 @@ private extension NewProjectView {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(Color("Accent"))
-                )
+                .background(RoundedRectangle(cornerRadius: 20).fill(Color("Accent")))
         }
+        .disabled(isLoading)
         .opacity(isLoading ? 0.6 : 1)
     }
 
@@ -526,12 +464,125 @@ private extension NewProjectView {
                 .foregroundColor(Color("TextPrimary"))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(
-                    RoundedRectangle(cornerRadius: 18)
-                        .fill(Color.white.opacity(0.08))
-                )
+                .background(RoundedRectangle(cornerRadius: 18).fill(Color.white.opacity(0.08)))
         }
+        .disabled(isLoading)
         .opacity(isLoading ? 0.6 : 1)
+    }
+}
+
+// MARK: - Actions
+extension NewProjectView {
+
+    @MainActor
+    func createIfNeededAndUpload(_ ui: UIImage) async {
+        do {
+            isLoading = true
+
+            // 1) Create project if missing
+            if createdProject == nil {
+                let p = try await service.createProject(
+                    name: name.isEmpty ? "Untitled" : name,
+                    goal: goal.isEmpty ? "—" : goal,
+                    budget: budget.label,
+                    skillLevel: skill.label
+                )
+                createdProject = p
+                projectId = p.id
+            }
+
+            // 2) Upload image → save URL
+            if let id = projectId {
+                try await service.uploadImage(projectId: id, image: ui)
+            }
+        } catch {
+            alert("Photo attach failed: \(error.localizedDescription)")
+        }
+        isLoading = false
+    }
+
+    func createWithPreview() async {
+        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return alert("Please enter a project name.") }
+        guard !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return alert("Please enter a goal/description.") }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            let id: String
+            if let existing = projectId {
+                id = existing
+            } else {
+                let p = try await service.createProject(
+                    name: name,
+                    goal: goal,
+                    budget: budget.label,
+                    skillLevel: skill.label
+                )
+                createdProject = p
+                projectId = p.id
+                id = p.id
+            }
+
+            // kick off preview generation (ignore URL here; Details loads it)
+            _ = try? await service.generatePreview(projectId: id)
+
+            // refresh + navigate
+            if let p = try? await service.fetchProject(projectId: id) {
+                createdProject = p
+            }
+            goToDetail = true
+        } catch {
+            alert("Failed to create project: \(error.localizedDescription)")
+        }
+    }
+
+    func createWithoutPreview() async {
+        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return alert("Please enter a project name.") }
+        guard !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return alert("Please enter a goal/description.") }
+
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            let id: String
+            if let existing = projectId {
+                id = existing
+            } else {
+                let p = try await service.createProject(
+                    name: name,
+                    goal: goal,
+                    budget: budget.label,
+                    skillLevel: skill.label
+                )
+                createdProject = p
+                projectId = p.id
+                id = p.id
+            }
+
+            _ = try? await service.generatePlanOnly(projectId: id)
+
+            if let p = try? await service.fetchProject(projectId: id) {
+                createdProject = p
+            }
+            goToDetail = true
+        } catch {
+            alert("Failed to create project: \(error.localizedDescription)")
+        }
+    }
+
+    func alert(_ text: String) {
+        alertMessage = text
+        showAlert = true
+    }
+}
+
+// MARK: - Small helper to dismiss keyboard on tap
+private extension View {
+    func hideKeyboardOnTap() -> some View {
+        self.onTapGesture {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
     }
 }
 

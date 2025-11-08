@@ -49,4 +49,24 @@ extension ProjectsService {
             .execute()
     }
 }
+import CoreGraphics
 
+extension ProjectsService {
+    /// Saves a normalized crop rectangle the user drew on the photo.
+    func saveCropRect(projectId: String, normalized: CGRect) async throws {
+        let payload: [String: AnyEncodable] = [
+            "crop_json": AnyEncodable([
+                "x": AnyEncodable(Double(normalized.origin.x)),
+                "y": AnyEncodable(Double(normalized.origin.y)),
+                "w": AnyEncodable(Double(normalized.size.width)),
+                "h": AnyEncodable(Double(normalized.size.height))
+            ]),
+            "area_selected": AnyEncodable(true)
+        ]
+        _ = try await client
+            .from("projects")
+            .update(payload)
+            .eq("id", value: projectId)
+            .execute()
+    }
+}

@@ -174,4 +174,20 @@ struct ProjectsService {
         // wire later if you want this to queue on backend
     }
 }
-
+// Saves a normalized crop rectangle the user drew on the photo
+func saveCropRect(projectId: String, normalized: CGRect) async throws {
+    let payload: [String: AnyEncodable] = [
+        "crop_json": AnyEncodable([
+            "x": AnyEncodable(normalized.origin.x),
+            "y": AnyEncodable(normalized.origin.y),
+            "w": AnyEncodable(normalized.size.width),
+            "h": AnyEncodable(normalized.size.height)
+        ]),
+        "area_selected": AnyEncodable(true)
+    ]
+    _ = try await
+        .from("projects")
+        .update(payload)
+        .eq("id", value: projectId)
+        .execute()
+}
