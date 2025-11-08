@@ -21,10 +21,11 @@ extension ProjectsService {
         _ = try await client.storage
             .from("uploads")
             .upload(
-                path: path,
-                file: data,
+                path,
+                data: data,
                 options: FileOptions(contentType: "model/vnd.usdz+zip")
             )
+
 
         // 2) Build public URL
         let publicURLString = SupabaseConfig.publicURL(bucket: "uploads", path: path).absoluteString
@@ -45,27 +46,6 @@ extension ProjectsService {
         _ = try await client
             .from("projects")
             .update(update)
-            .eq("id", value: projectId)
-            .execute()
-    }
-}
-import CoreGraphics
-
-extension ProjectsService {
-    /// Saves a normalized crop rectangle the user drew on the photo.
-    func saveCropRect(projectId: String, normalized: CGRect) async throws {
-        let payload: [String: AnyEncodable] = [
-            "crop_json": AnyEncodable([
-                "x": AnyEncodable(Double(normalized.origin.x)),
-                "y": AnyEncodable(Double(normalized.origin.y)),
-                "w": AnyEncodable(Double(normalized.size.width)),
-                "h": AnyEncodable(Double(normalized.size.height))
-            ]),
-            "area_selected": AnyEncodable(true)
-        ]
-        _ = try await client
-            .from("projects")
-            .update(payload)
             .eq("id", value: projectId)
             .execute()
     }

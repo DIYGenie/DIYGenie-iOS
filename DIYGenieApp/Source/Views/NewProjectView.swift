@@ -1,107 +1,112 @@
 import SwiftUI
-import UIKit
 
 struct NewProjectView: View {
 
-    // MARK: - Environment
+    // MARK: – State
     @Environment(\.dismiss) private var dismiss
 
-    // MARK: - Drafts (optional)
     @AppStorage("newProj_name") private var draftName: String = ""
     @AppStorage("newProj_goal") private var draftGoal: String = ""
 
-    // MARK: - Form state
     @State private var name: String = ""
     @State private var goal: String = ""
     @State private var budget: BudgetSelection = .two
-    @State private var skill:  SkillSelection  = .intermediate
+    @State private var skill: SkillSelection = .intermediate
 
-    // MARK: - Media & overlays
+    // media + overlays
     @State private var selectedUIImage: UIImage?
-    @State private var areaSelected = false
-
-    // MARK: - UI flags
     @State private var isShowingCamera = false
     @State private var isShowingLibrary = false
+    @State private var areaSelected = false
+
+    // AR
+    @State private var projectId: String?
     @State private var showAR = false
+
+    // navigation
+    @State private var createdProject: Project?
+    @State private var goToDetail = false
+
+    // misc UI
     @State private var isLoading = false
     @State private var alertMessage = ""
     @State private var showAlert = false
 
-    // MARK: - Navigation / created project
-    @State private var projectId: String?
-    @State private var createdProject: Project?
-    @State private var goToDetail = false
-
-    // MARK: - Services
     private let service = ProjectsService(
         userId: UserDefaults.standard.string(forKey: "user_id") ?? UUID().uuidString
     )
 
-    // MARK: - Background
+    // MARK: – Background
     private let bgGradient = Gradient(colors: [Color("BGStart"), Color("BGEnd")])
     private var background: some View {
         LinearGradient(gradient: bgGradient, startPoint: .topLeading, endPoint: .bottomTrailing)
             .ignoresSafeArea()
     }
 
-    // MARK: - Body
+    // MARK: – Computed
+    private var isValid: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty &&
+        !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    // MARK: – Body
     var body: some View {
         ZStack {
             background
             form
         }
+        // hidden navigation: when CTAs complete we jump to details
         .background(
-            // Hidden navigation (fires after CTAs succeed)
-            NavigationLink(isActive: $goToDetail) {
-                if let p = createdProject { ProjectDetailsView(project: p) } else { EmptyView() }
-            } label: { EmptyView() }
-            .hidden()
+            NavigationLink(
+                destination: Group {
+                    if let p = createdProject {
+                        ProjectDetailsView(project: p)
+                    } else {
+                        EmptyView()
+                    }
+                },
+                isActive: $goToDetail
+            ) { EmptyView() }
         )
-        .onAppear {
-            if !draftName.isEmpty { name = draftName }
-            if !draftGoal.isEmpty { goal = draftGoal }
-        }
-        .onChange(of: name) { draftName = $0 }
-        .onChange(of: goal) { draftGoal = $0 }
-        .hideKeyboardOnTap()
-
-        // Camera
+        .hidden()
+        
+        
         .sheet(isPresented: $isShowingCamera) {
             ImagePicker(sourceType: .camera) { ui in
                 guard let ui else { return }
                 selectedUIImage = ui
-                Task { await createIfNeededAndUpload(ui) }  // auto-create + upload
+                Task { await createIfNeededAndUpload(ui) }     // auto-create + upload
             }
             .ignoresSafeArea()
         }
-
-        // Library
         .sheet(isPresented: $isShowingLibrary) {
             ImagePicker(sourceType: .photoLibrary) { ui in
                 guard let ui else { return }
                 selectedUIImage = ui
-                Task { await createIfNeededAndUpload(ui) }  // auto-create + upload
+                Task { await createIfNeededAndUpload(ui) }     // auto-create + upload
             }
             .ignoresSafeArea()
         }
-
-        // Rectangle overlay (only once per photo attach)
+        // Rectangle overlay — only once per photo attach (provides real value!)
         .sheet(isPresented: .constant(selectedUIImage != nil && projectId != nil && !areaSelected)) {
             if let img = selectedUIImage, let pid = projectId {
                 RectangleOverlayView(
                     image: img,
                     projectId: pid,
                     userId: service.userId,
-                    onCancel: { areaSelected = true },
+                    onCancel: { areaSelected = true }, // let user bail, but don't block flow
+                    // NewProjectView.swift  (inside the .sheet for RectangleOverlayView, onComplete:)
                     onComplete: { normalized in
-                        Task {
+                        Task { @MainActor in
                             do {
                                 try await service.saveCropRect(projectId: pid, normalized: normalized)
+                                if let id = projectId {
+                                    createdProject = try await service.fetchProject(projectId: id) // ✅ correct label
+                                }
+                                alert("Area saved ✅")
                                 areaSelected = true
-                                alert("Area saved ✓")
                             } catch {
-                                alert("Saving area failed: \(error.localizedDescription)")
+                                alert("Saving area failed:\n\(error.localizedDescription)")
                                 areaSelected = true
                             }
                         }
@@ -110,31 +115,30 @@ struct NewProjectView: View {
                         alert("Overlay error: \(err.localizedDescription)")
                         areaSelected = true
                     }
+
                 )
-                .ignoresSafeArea()
             } else {
                 Text("Preparing overlay…").padding()
             }
         }
-
-        // AR sheet (RoomPlan)
+        // AR (RoomPlan) sheet — enabled after project exists
+        // NewProjectView.swift (AR sheet)
         .sheet(isPresented: $showAR) {
             if let pid = projectId {
                 if #available(iOS 17.0, *) {
                     ARRoomPlanSheet(projectId: pid) { fileURL in
-                        Task {
+                        Task { @MainActor in
                             do {
                                 try await service.uploadARScan(projectId: pid, fileURL: fileURL)
-                                if let p = try? await service.fetchProject(projectId: pid) {
-                                    createdProject = p
+                                if let id = projectId {
+                                    createdProject = try await service.fetchProject(projectId: id) // ✅
                                 }
                                 alert("AR scan attached to your project ✅")
                             } catch {
-                                alert("Failed to attach AR scan: \(error.localizedDescription)")
+                                alert("Failed to attach AR scan:\n\(error.localizedDescription)")
                             }
                         }
                     }
-                    .ignoresSafeArea()
                 } else {
                     Text("RoomPlan requires iOS 17+").padding()
                 }
@@ -142,144 +146,99 @@ struct NewProjectView: View {
                 Text("Create the project first").padding()
             }
         }
-
-        // Alert
-        .alert(alertMessage, isPresented: $showAlert) {
-            Button("OK", role: .cancel) { }
+        .onAppear {
+            if name.isEmpty { name = draftName }
+            if goal.isEmpty { goal = draftGoal }
         }
+        .onChange(of: name) { draftName = $0 }
+        .onChange(of: goal) { draftGoal = $0 }
+        .alert("Status", isPresented: $showAlert) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(alertMessage) }
     }
 
-    // MARK: - Form
+    // MARK: – Form
     private var form: some View {
         ScrollView {
             VStack(spacing: 18) {
-                header
 
-                // Project name
+                header("New Project")
+
                 sectionCard {
-                    sectionLabel("PROJECT NAME")
-                    TextField("e.g. Floating Shelves", text: $name)
+                    sectionLabel("Project name")
+                    TextField("E.g. Floating shelves", text: $name)
                         .textInputAutocapitalization(.words)
-                        .foregroundColor(Color("TextPrimary"))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14)
-                                .fill(Color.white.opacity(0.06))
-                        )
+                        .submitLabel(.done)
+                        .padding()
+                        .background(Color.white.opacity(0.08))
+                        .cornerRadius(12)
                 }
 
-                // Goal / Description
                 sectionCard {
-                    sectionLabel("GOAL / DESCRIPTION")
+                    sectionLabel("Goal / description")
                     TextEditor(text: $goal)
-                        .frame(minHeight: 140)
-                        .scrollContentBackground(.hidden)
-                        .foregroundColor(Color("TextPrimary"))
+                        .frame(minHeight: 120)
                         .padding(12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14)
-                                .fill(Color.white.opacity(0.06))
-                        )
-                        .overlay {
-                            if goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                Text("Describe what you'd like to build...")
-                                    .foregroundColor(Color("TextSecondary"))
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 16)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
+                        .background(Color.white.opacity(0.08))
+                        .cornerRadius(12)
                 }
 
-                // Budget
+                // Budget + Skill pills (kept simple)
                 sectionCard {
-                    sectionLabel("BUDGET")
-                    HStack(spacing: 10) {
-                        ForEach(Array(BudgetSelection.allCases), id: \.self) { opt in
-                            pill(title: opt.label, isOn: budget == opt) { budget = opt }
-                        }
+                    sectionLabel("Budget")
+                    HStack {
+                        pill("$", isOn: budget == .one) { budget = .one }
+                        pill("$$", isOn: budget == .two) { budget = .two }
+                        pill("$$$", isOn: budget == .three) { budget = .three }
                     }
                     helper("Your project budget range.")
                 }
 
-                // Skill level
                 sectionCard {
-                    sectionLabel("SKILL LEVEL")
-                    HStack(spacing: 10) {
-                        ForEach(Array(SkillSelection.allCases), id: \.self) { opt in
-                            pill(title: opt.label, isOn: skill == opt) { skill = opt }
-                        }
+                    sectionLabel("Skill level")
+                    HStack {
+                        pill("Beginner", isOn: skill == .beginner) { skill = .beginner }
+                        pill("Intermediate", isOn: skill == .intermediate) { skill = .intermediate }
+                        pill("Advanced", isOn: skill == .advanced) { skill = .advanced }
                     }
                     helper("Your current DIY experience.")
                 }
 
-                // Room photo
+                // Photo section
                 sectionCard {
-                    sectionLabel("ROOM PHOTO")
+                    sectionLabel("Room photo")
 
                     if let img = selectedUIImage {
-                        HStack(spacing: 12) {
-                            Image(uiImage: img)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 96, height: 96)
-                                .clipped()
-                                .cornerRadius(12)
+                        ProjectCard(image: Image(uiImage: img),
+                                    title: "Photo attached",
+                                    subtitle: areaSelected ? "Area selected ✓" : "Use AR or retake a photo if needed.")
+                            .padding(.bottom, 6)
 
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Photo attached")
-                                    .foregroundColor(Color("TextPrimary"))
-                                    .font(.headline)
-
-                                HStack(spacing: 6) {
-                                    if areaSelected {
-                                        Text("Area selected ✓")
-                                            .foregroundColor(Color("TextSecondary"))
-                                            .font(.subheadline)
-                                    } else {
-                                        Text("Adjust your target area…")
-                                            .foregroundColor(Color("TextSecondary"))
-                                            .font(.subheadline)
-                                    }
-                                }
-
-                                Button("Retake", role: .cancel) {
-                                    selectedUIImage = nil
-                                    areaSelected = false
-                                    isShowingCamera = true
-                                }
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundColor(Color("Accent"))
-                            }
-                            Spacer()
-                        }
-                        .padding(12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14)
-                                .stroke(Color("SurfaceStroke"), lineWidth: 1)
-                                .fill(Color("Surface").opacity(0.6))
-                        )
+                        Button("Retake") { isShowingCamera = true }
+                            .font(.headline)
+                            .foregroundColor(Color("Accent"))
                     } else {
-                        VStack(spacing: 12) {
-                            actionRow(systemName: "photo.on.rectangle", title: "Add a room photo") {
-                                isShowingLibrary = true
-                            }
-                            actionRow(systemName: "camera.viewfinder", title: "Take Photo for Measurements") {
-                                isShowingCamera = true
-                            }
+                        actionRow(systemName: "photo.on.rectangle", title: "Add a room photo") {
+                            isShowingLibrary = true
+                        }
+                        actionRow(systemName: "camera.viewfinder", title: "Take Photo for Measurements") {
+                            isShowingCamera = true
                         }
                     }
                 }
 
-                // AR row
+                // AR row — enabled after project is created (picture attached triggers auto-create)
                 if projectId != nil {
+                    // NewProjectView.swift (where your "Add AR Scan Accuracy" row renders)
                     tappableRow(
-                        icon: "viewfinder.rectangular",
+                        icon: "viewfinder.rectangle",
                         title: "Add AR Scan Accuracy",
-                        subtitle: "Improve measurements with Room Scan",
-                        enabled: true
-                    ) { showAR = true }
+                        subtitle: areaSelected ? "Improve measurements with Room Scan" : "Create the project first",
+                        enabled: areaSelected
+                    ) {
+                        showAR = true          // ✅ will open the AR sheet above
+                    }
+
                 } else {
                     tappableRow(
                         icon: "viewfinder.rectangular",
@@ -295,9 +254,12 @@ struct NewProjectView: View {
                     primaryCTA(title: "Generate AI Plan + Preview") {
                         Task { await createWithPreview() }
                     }
+                    .disabled(isLoading || !isValid)
+
                     secondaryCTA(title: "Create Plan Only (no preview)") {
                         Task { await createWithoutPreview() }
                     }
+                    .disabled(isLoading || !isValid)
                 }
                 .padding(.top, 6)
 
@@ -305,284 +267,294 @@ struct NewProjectView: View {
             }
             .padding(18)
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
-            }
-        }
+        .hideKeyboardOnTap() // ← from your Keyboard.swift helper
         .disabled(isLoading)
-        .overlay(alignment: .center) {
-            if isLoading {
-                ProgressView().scaleEffect(1.2).tint(.white)
-            }
-        }
-    }
-}
-
-// MARK: - Sections & UI helpers
-extension NewProjectView {
-
-    var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
-                Button { dismiss() } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.title2.weight(.semibold))
-                        .foregroundColor(.white)
-                        .padding(8)
-                        .background(Color.white.opacity(0.08), in: Circle())
-                }
-                Spacer()
-            }
-
-            Text("New Project")
-                .font(.system(size: 36, weight: .heavy))
-                .foregroundColor(.white)
-
-            Text("Get everything you need to bring your next DIY idea to life.")
-                .foregroundColor(Color("TextSecondary"))
-                .font(.title3)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.top, 6)
-        .padding(.bottom, 4)
     }
 
-    func sectionCard(@ViewBuilder _ content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 12) { content() }
-            .padding(16)
-            .background(
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(Color("Surface").opacity(0.7))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18)
-                            .stroke(Color("SurfaceStroke"), lineWidth: 1)
-                    )
-            )
-    }
+    // MARK: – Actions
 
-    func sectionLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.footnote.weight(.semibold))
-            .foregroundColor(Color("TextSecondary"))
-            .textCase(.uppercase)
-    }
+    /// Create the project if needed, then upload the selected image.
+    private func createIfNeededAndUpload(_ image: UIImage) async {
+        isLoading = true
+        defer { isLoading = false }
 
-    func helper(_ text: String) -> some View {
-        Text(text)
-            .font(.footnote)
-            .foregroundColor(Color("TextSecondary"))
-    }
-
-    func pill(title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.headline)
-                .foregroundColor(.white.opacity(isOn ? 1 : 0.9))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(isOn ? Color("Accent") : Color.white.opacity(0.08))
-                )
-        }
-    }
-
-    func tappableRow(icon: String, title: String, subtitle: String, enabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: { if enabled { action() } }) {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.title3.weight(.semibold))
-                    .frame(width: 28, height: 28)
-                    .foregroundColor(enabled ? Color("Accent") : Color("AccentSoft"))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .foregroundColor(Color("TextPrimary"))
-                        .font(.headline)
-                    Text(subtitle)
-                        .foregroundColor(Color("TextSecondary"))
-                        .font(.subheadline)
-                }
-                Spacer()
-            }
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color.white.opacity(0.06))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(Color("SurfaceStroke"), lineWidth: 1)
-                    )
-            )
-        }
-        .disabled(!enabled)
-    }
-
-    func actionRow(systemName: String, title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: systemName)
-                    .font(.headline)
-                    .foregroundColor(Color("Accent"))
-                Text(title)
-                    .foregroundColor(Color("TextPrimary"))
-                    .font(.headline)
-                Spacer()
-            }
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(Color.white.opacity(0.06))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(Color("SurfaceStroke"), lineWidth: 1)
-                    )
-            )
-        }
-    }
-
-    func primaryCTA(title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.headline.weight(.semibold))
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(RoundedRectangle(cornerRadius: 20).fill(Color("Accent")))
-        }
-        .disabled(isLoading)
-        .opacity(isLoading ? 0.6 : 1)
-    }
-
-    func secondaryCTA(title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.headline.weight(.semibold))
-                .foregroundColor(Color("TextPrimary"))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(RoundedRectangle(cornerRadius: 18).fill(Color.white.opacity(0.08)))
-        }
-        .disabled(isLoading)
-        .opacity(isLoading ? 0.6 : 1)
-    }
-}
-
-// MARK: - Actions
-extension NewProjectView {
-
-    @MainActor
-    func createIfNeededAndUpload(_ ui: UIImage) async {
         do {
-            isLoading = true
-
-            // 1) Create project if missing
-            if createdProject == nil {
+            if projectId == nil {
                 let p = try await service.createProject(
-                    name: name.isEmpty ? "Untitled" : name,
-                    goal: goal.isEmpty ? "—" : goal,
-                    budget: budget.label,
-                    skillLevel: skill.label
+                    name: name,
+                    goal: goal,
+                    budget: budget.rawValue,
+                    skillLevel: skill.rawValue
                 )
-                createdProject = p
                 projectId = p.id
+                createdProject = p
             }
-
-            // 2) Upload image → save URL
             if let id = projectId {
-                try await service.uploadImage(projectId: id, image: ui)
+                try await service.uploadImage(projectId: id, image: image)
             }
         } catch {
-            alert("Photo attach failed: \(error.localizedDescription)")
+            alert("Failed to attach photo: \(error.localizedDescription)")
         }
-        isLoading = false
     }
 
-    func createWithPreview() async {
-        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return alert("Please enter a project name.") }
-        guard !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return alert("Please enter a goal/description.") }
-
+    private func createWithPreview() async {
+        guard isValid else { alert("Fill name and goal first."); return }
         isLoading = true
         defer { isLoading = false }
 
         do {
-            let id: String
-            if let existing = projectId {
-                id = existing
-            } else {
+            // ensure project exists
+            if projectId == nil {
                 let p = try await service.createProject(
                     name: name,
                     goal: goal,
-                    budget: budget.label,
-                    skillLevel: skill.label
+                    budget: budget.rawValue,
+                    skillLevel: skill.rawValue
                 )
-                createdProject = p
                 projectId = p.id
-                id = p.id
-            }
-
-            // kick off preview generation (ignore URL here; Details loads it)
-            _ = try? await service.generatePreview(projectId: id)
-
-            // refresh + navigate
-            if let p = try? await service.fetchProject(projectId: id) {
                 createdProject = p
             }
+            guard let id = projectId else { return }
+            _ = try await service.generatePreview(projectId: id)
+            // refresh & navigate
+            createdProject = try await service.fetchProject(projectId: id)
             goToDetail = true
         } catch {
-            alert("Failed to create project: \(error.localizedDescription)")
+            alert("Preview failed: \(error.localizedDescription)")
         }
     }
 
-    func createWithoutPreview() async {
-        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return alert("Please enter a project name.") }
-        guard !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return alert("Please enter a goal/description.") }
-
+    private func createWithoutPreview() async {
+        guard isValid else { alert("Fill name and goal first."); return }
         isLoading = true
         defer { isLoading = false }
 
         do {
-            let id: String
-            if let existing = projectId {
-                id = existing
-            } else {
+            if projectId == nil {
                 let p = try await service.createProject(
                     name: name,
                     goal: goal,
-                    budget: budget.label,
-                    skillLevel: skill.label
+                    budget: budget.rawValue,
+                    skillLevel: skill.rawValue
                 )
-                createdProject = p
                 projectId = p.id
-                id = p.id
-            }
-
-            _ = try? await service.generatePlanOnly(projectId: id)
-
-            if let p = try? await service.fetchProject(projectId: id) {
                 createdProject = p
             }
+            guard let id = projectId else { return }
+            _ = try await service.generatePlanOnly(projectId: id)
+            createdProject = try await service.fetchProject(projectId: id)
             goToDetail = true
         } catch {
-            alert("Failed to create project: \(error.localizedDescription)")
+            alert("Plan-only failed: \(error.localizedDescription)")
         }
     }
 
-    func alert(_ text: String) {
+    private func alert(_ text: String) {
         alertMessage = text
         showAlert = true
     }
 }
 
-// MARK: - Small helper to dismiss keyboard on tap
-private extension View {
-    func hideKeyboardOnTap() -> some View {
-        self.onTapGesture {
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        }
+// MARK: – Tiny UI helpers (kept in this file for brevity)
+
+private func header(_ title: String) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+        Text(title).font(.largeTitle.bold()).foregroundColor(.white)
+        Text("Get everything you need to bring your next DIY idea to life.")
+            .foregroundColor(.white.opacity(0.7))
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+}
+
+private func sectionCard<V: View>(_ inner: @escaping () -> V) -> some View {
+    VStack(alignment: .leading, spacing: 12, content: inner)
+        .padding(16)
+        .background(Color.white.opacity(0.06))
+        .cornerRadius(16)
+}
+
+private func sectionLabel(_ title: String) -> some View {
+    Text(title.uppercased())
+        .font(.caption.weight(.semibold))
+        .foregroundColor(.white.opacity(0.7))
+}
+
+private func helper(_ text: String) -> some View {
+    Text(text).font(.footnote).foregroundColor(.white.opacity(0.55))
+}
+
+private func pill(_ title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+        Text(title)
+            .font(.headline.weight(.semibold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 18).padding(.vertical, 10)
+            .background(isOn ? Color("Accent") : Color.white.opacity(0.08))
+            .cornerRadius(14)
     }
 }
 
+private func actionRow(systemName: String, title: String, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+        HStack(spacing: 14) {
+            Image(systemName: systemName).font(.title3)
+            Text(title).font(.headline)
+            Spacer()
+            Image(systemName: "chevron.right").opacity(0.5)
+        }
+        .foregroundColor(.white)
+        .padding()
+        .background(Color.white.opacity(0.08))
+        .cornerRadius(12)
+    }
+}
+
+private func tappableRow(
+    icon: String,
+    title: String,
+    subtitle: String,
+    enabled: Bool,
+    action: @escaping () -> Void
+) -> some View {
+    Button(action: { if enabled { action() } }) {
+        HStack(spacing: 14) {
+            Image(systemName: icon).font(.title3)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.headline)
+                Text(subtitle).font(.footnote).opacity(0.7)
+            }
+            Spacer()
+            Image(systemName: "chevron.right").opacity(0.5)
+        }
+        .foregroundColor(.white)
+        .padding()
+        .background(Color.white.opacity(enabled ? 0.08 : 0.04))
+        .cornerRadius(12)
+        .opacity(enabled ? 1 : 0.5)
+    }
+}
+
+private func primaryCTA(title: String, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+        Text(title)
+            .font(.headline.weight(.semibold))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(LinearGradient(colors: [Color("Accent"), Color.purple], startPoint: .leading, endPoint: .trailing))
+            .foregroundColor(.white)
+            .cornerRadius(16)
+    }
+}
+
+private func secondaryCTA(title: String, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+        Text(title)
+            .font(.headline.weight(.semibold))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(Color.white.opacity(0.08))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.2), lineWidth: 1))
+            .foregroundColor(.white)
+            .cornerRadius(14)
+    }
+}
+
+// MARK: - UI helpers (drop-in)
+
+@ViewBuilder
+private func header(_ title: String) -> some View {
+    Text(title)
+        .font(.largeTitle.bold())
+        .foregroundColor(Color("TextPrimary", bundle: .main).opacity(0.95))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 6)
+}
+
+@ViewBuilder
+private func sectionLabel(_ text: String) -> some View {
+    Text(text.uppercased())
+        .font(.caption.weight(.semibold))
+        .foregroundColor(.white.opacity(0.6))
+        .frame(maxWidth: .infinity, alignment: .leading)
+}
+
+private func sectionCard<Content: View>(
+    @ViewBuilder _ content: () -> Content
+) -> some View {
+    VStack(alignment: .leading, spacing: 12) {
+        content()
+    }
+    .padding(16)
+    .background(Color.white.opacity(0.06))
+    .cornerRadius(16)
+}
+
+private func pill(_ text: String, selected: Bool) -> some View {
+    Text(text)
+        .font(.headline.weight(.semibold))
+        .foregroundColor(selected ? .white : .white.opacity(0.75))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(selected ? Color("Accent") : Color.white.opacity(0.08))
+        )
+}
+
+private func tappableRow(
+    icon: String,
+    title: String,
+    subtitle: String,
+    enabled: Bool = true,
+    action: @escaping () -> Void
+) -> some View {
+    Button(action: action) {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.title3.weight(.semibold))
+                .frame(width: 28, height: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.headline).foregroundColor(.white)
+                Text(subtitle).font(.subheadline).foregroundColor(.white.opacity(0.6))
+            }
+            Spacer()
+            Image(systemName: "chevron.right").opacity(0.4)
+        }
+        .padding(16)
+        .background(Color.white.opacity(0.06))
+        .cornerRadius(16)
+        .opacity(enabled ? 1 : 0.5)
+    }
+    .disabled(!enabled)
+}
+
+private func primaryCTA(title: String, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+        Text(title)
+            .font(.headline.weight(.semibold))
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(
+                LinearGradient(
+                    colors: [
+                        Color(red: 115/255, green: 73/255, blue: 224/255),
+                        Color(red: 146/255, green: 86/255, blue: 255/255)
+                    ],
+                    startPoint: .leading, endPoint: .trailing
+                )
+            )
+            .cornerRadius(18)
+    }
+}
+
+private func secondaryCTA(title: String, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+        Text(title)
+            .font(.headline.weight(.semibold))
+            .foregroundColor(Color("TextPrimary"))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(RoundedRectangle(cornerRadius: 18).fill(Color.white.opacity(0.08)))
+    }
+}
