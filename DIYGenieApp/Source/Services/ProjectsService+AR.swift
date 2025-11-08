@@ -48,5 +48,10 @@ extension ProjectsService {
             .eq("id", value: projectId)
             .execute()
     }
+
+    /// Backwards-compat alias to match earlier callsites.
+    func attachARScan(projectId: String, fileURL: URL) async throws {
+        try await uploadARScan(projectId: projectId, fileURL: fileURL)
+    }
 }
 

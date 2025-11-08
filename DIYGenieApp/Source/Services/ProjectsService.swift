@@ -7,16 +7,13 @@ import Foundation
 import UIKit
 import Supabase
 
-// MARK: - App / Supabase config helpers
-
-
 struct ProjectsService {
 
-    // ✅ Provided by caller
+    // Provided by caller
     let userId: String
     let client: SupabaseClient = SupabaseConfig.client
 
-    // Shared decoder for PostgREST responses
+    // Shared decoder
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
@@ -24,13 +21,17 @@ struct ProjectsService {
     }()
 
     // MARK: - Create project (returns created row)
-    func createProject(name: String, goal: String, budget: String, skillLevel: String) async throws -> Project {
+    func createProject(
+        name: String,
+        goal: String,
+        budget: String,
+        skillLevel: String
+    ) async throws -> Project {
         let payload: [String: AnyEncodable] = [
             "user_id": AnyEncodable(userId),
             "name": AnyEncodable(name),
             "goal": AnyEncodable(goal),
             "budget": AnyEncodable(budget),
-            // 🔧 FIX: correct column name
             "skill_level": AnyEncodable(skillLevel),
             "is_demo": AnyEncodable(false)
         ]
@@ -56,24 +57,48 @@ struct ProjectsService {
         return try decoder.decode([Project].self, from: resp.data)
     }
 
+    // MARK: - Fetch single project by id
+    func fetchProject(projectId: String) async throws -> Project {
+        let resp = try await client
+            .from("projects")
+            .select()
+            .eq("id", value: projectId)
+            .single()
+            .execute()
+
+        return try decoder.decode(Project.self, from: resp.data)
+    }
+
+    // Convenience overload to match callsites: fetchProject(id:)
+    func fetchProject(id: String) async throws -> Project {
+        try await fetchProject(projectId: id)
+    }
+
     // MARK: - Upload image -> Storage, save public URL on project
     func uploadImage(projectId: String, image: UIImage) async throws {
         guard let data = image.jpegData(compressionQuality: 0.85) else {
-            throw NSError(domain: "ProjectsService", code: 200,
-                          userInfo: [NSLocalizedDescriptionKey: "Failed to compress image"])
+            throw NSError(
+                domain: "ProjectsService",
+                code: 200,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to compress image"]
+            )
         }
 
         let path = "\(userId)/\(UUID().uuidString).jpg"
 
-        // Supabase Storage upload (new signature is path:file:options:)
-        try await client.storage
+        // Supabase Storage upload
+        _ = try await client.storage
             .from("uploads")
-            .
-        upload(path: path, file: data, options: FileOptions(contentType: "image/jpeg"))
+            .upload(
+                path: path,
+                file: data,
+                options: FileOptions(contentType: "image/jpeg")
+            )
 
-        let publicURL = AppConfig.publicURL(bucket: "uploads", path: path)
+        // Public URL (use SupabaseConfig helper for consistency)
+        let publicURL = SupabaseConfig.publicURL(bucket: "uploads", path: path).absoluteString
 
-
+        // Save URL on project
         let update: [String: AnyEncodable] = ["input_image_url": AnyEncodable(publicURL)]
         _ = try await client
             .from("projects")
@@ -83,8 +108,6 @@ struct ProjectsService {
     }
 
     // MARK: - Server calls (Decor8 preview + plan fetch)
-
-    /// POST {API}/api/projects/{id}/preview  -> { preview_url }
     func generatePreview(projectId: String) async throws -> String {
         let url = AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)/preview")
         var req = URLRequest(url: url)
@@ -95,38 +118,43 @@ struct ProjectsService {
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
             let body = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw NSError(domain: "ProjectsService", code: (resp as? HTTPURLResponse)?.statusCode ?? -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Preview failed: \(body)"])
+            throw NSError(
+                domain: "ProjectsService",
+                code: (resp as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Preview failed: \(body)"]
+            )
         }
         let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let urlString = obj?["preview_url"] as? String ?? ""
         if urlString.isEmpty {
-            throw NSError(domain: "ProjectsService", code: -2,
-                          userInfo: [NSLocalizedDescriptionKey: "Preview OK but no preview_url returned"])
+            throw NSError(
+                domain: "ProjectsService",
+                code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "Preview OK but no preview_url returned"]
+            )
         }
         return urlString
     }
 
-    /// POST {API}/api/projects/{id}/plan  -> triggers plan generation without preview
-    /// Returns true on any 2xx response.
     func generatePlanOnly(projectId: String) async throws -> Bool {
         let url = AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)/plan")
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        // Legacy handler may accept empty JSON body.
         req.httpBody = Data("{}".utf8)
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
             let body = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw NSError(domain: "ProjectsService", code: (resp as? HTTPURLResponse)?.statusCode ?? -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Plan-only failed: \(body)"])
+            throw NSError(
+                domain: "ProjectsService",
+                code: (resp as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Plan-only failed: \(body)"]
+            )
         }
         return true
     }
 
-    /// GET {API}/api/projects/{id}/plan -> PlanResponse (saved plan_json)
     func fetchPlan(projectId: String) async throws -> PlanResponse {
         let url = AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)/plan")
         var req = URLRequest(url: url)
@@ -136,19 +164,13 @@ struct ProjectsService {
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
             let body = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw NSError(domain: "ProjectsService", code: (resp as? HTTPURLResponse)?.statusCode ?? -1,
-                          userInfo: [NSLocalizedDescriptionKey: "Fetch plan failed: \(body)"])
+            throw NSError(
+                domain: "ProjectsService",
+                code: (resp as? HTTPURLResponse)?.statusCode ?? -1,
+                userInfo: [NSLocalizedDescriptionKey: "Fetch plan failed: \(body)"]
+            )
         }
         return try JSONDecoder().decode(PlanResponse.self, from: data)
     }
 }
-// Optional: queue a preview on the backend (no-op stub for now)
-public func requestPreview(projectId: String) async throws {
-    // Wire this to your backend later; safe no-op for compile/run.
-}
-extension ProjectsService {
-    public func requestPreview(projectId: String) async throws {
-        // TODO: call your backend to kick off Decor8 preview.
-        // Safe no-op so the app compiles and runs for now.
-    }
-}
+
