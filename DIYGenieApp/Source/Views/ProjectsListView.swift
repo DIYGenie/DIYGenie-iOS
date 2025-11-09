@@ -6,162 +6,98 @@
 import SwiftUI
 
 struct ProjectsListView: View {
-    // MARK: - Services
+    // MARK: - Services / State
     private let service = ProjectsService(
         userId: UserDefaults.standard.string(forKey: "user_id") ?? UUID().uuidString
     )
-
-    // MARK: - State
+    
     @State private var projects: [Project] = []
-    @State private var isLoading = false
-    @State private var errorText: String?
-    @State private var showError = false
     @State private var loadTask: Task<Void, Never>?
-
+    @State private var isLoading = false
+    @State private var showError = false
+    @State private var errorText = ""
+    
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Group {
                 if isLoading && projects.isEmpty {
                     ProgressView().tint(.white)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if projects.isEmpty {
-                    VStack(spacing: 10) {
-                        Text("No projects yet").font(.headline).foregroundColor(.white)
-                        Text("Create your first project from the New tab.")
-                            .font(.subheadline).foregroundColor(.white.opacity(0.7))
+                    VStack(spacing: 12) {
+                        Text("No projects yet")
+                            .font(.headline)
+                            .foregroundColor(Color("TextPrimary"))
+                        Text("Create your first DIY Genie project to get started.")
+                            .font(.subheadline)
+                            .foregroundColor(Color("TextSecondary"))
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    List(projects) { p in
-                        NavigationLink(destination: ProjectDetailsView(project: p)) {
-                            ProjectRow(project: p)
+                    List {
+                        ForEach(projects, id: \.id) { p in
+                            NavigationLink {
+                                ProjectDetailsView(project: p)
+                            } label: {
+                                ProjectCard(project: p)
+                            }
+                            .listRowBackground(Color.clear)
                         }
                     }
-                    .listStyle(.insetGrouped)
+                    .listStyle(.plain)
                 }
             }
             .navigationTitle("Projects")
-        }
-        .task { await loadProjects() }
-        .refreshable { await loadProjects() }
-        .alert(errorText ?? "Error", isPresented: $showError) {
-            Button("OK", role: .cancel) {}
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        refresh()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .disabled(isLoading)
+                }
+            }
+            .task {
+                // initial load (cancellable)
+                refresh()
+            }
+            .refreshable {
+                refresh()
+            }
+            .alert("Error", isPresented: $showError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(errorText)
+            }
+            .background(
+                LinearGradient(gradient: Gradient(colors: [Color("BGStart"), Color("BGEnd")]),
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                .ignoresSafeArea()
+            )
         }
     }
-
-    // MARK: - Data loading
-    @MainActor
-    private func loadProjects() async {
+    
+    // MARK: - Loading
+    private func refresh() {
         loadTask?.cancel()
-        isLoading = projects.isEmpty
-        errorText = nil
-
-        loadTask = Task {
+        
+        isLoading = true
+        loadTask = Task { @MainActor in
+            defer { isLoading = false }
             do {
-                try await Task.sleep(nanoseconds: 150_000_000)
-                try Task.checkCancellation()
-
+                try? await Task.sleep(nanoseconds: 120_000_000)
+                try Task.checkCancellation()   // will jump to catch below on cancel
                 let rows = try await service.fetchProjects()
-                await MainActor.run {
-                    self.projects = rows
-                    self.isLoading = false
-                }
+                self.projects = rows
+            } catch is CancellationError {
+                return   // user pulled to refresh again; ignore
             } catch {
-                if error.isURLCancelled { return }
-                await MainActor.run {
-                    self.isLoading = false
+                if !error.isURLCancelled {
+                    print("Error loading projects:", error.localizedDescription)
                     self.errorText = "Failed to load projects."
                     self.showError = true
-                    print("Error loading projects:", error.localizedDescription)
                 }
             }
-        }
-        await loadTask?.value
-    }
-}
-
-// MARK: - Row
-
-private struct ProjectRow: View {
-    let project: Project
-
-    // Prefer preview, else input image
-    private var thumbURL: URL? {
-        if let s = project.preview_url, let u = URL(string: s) { return u }
-        if let s = project.input_image_url, let u = URL(string: s) { return u }
-        return nil
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            // Thumbnail
-            Group {
-                if let url = thumbURL {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .empty:
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color.white.opacity(0.06))
-                                ProgressView()
-                            }
-                        case .success(let img):
-                            img.resizable().scaledToFill()
-                        case .failure:
-                            placeholder
-                        @unknown default:
-                            placeholder
-                        }
-                    }
-                    .frame(width: 72, height: 72)
-                    .clipped()
-                    .cornerRadius(12)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                    )
-                } else {
-                    placeholder
-                        .frame(width: 72, height: 72)
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                        )
-                }
-            }
-
-            // Texts
-            VStack(alignment: .leading, spacing: 4) {
-                Text(project.name)
-                    .font(.headline)
-                if let g = project.goal, !g.isEmpty {
-                    Text(g)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
-                }
-                if project.preview_url != nil {
-                    Text("Has Preview")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color("Accent").opacity(0.85))
-                        .cornerRadius(8)
-                }
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
-    private var placeholder: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white.opacity(0.06))
-            Image(systemName: "photo.on.rectangle")
-                .imageScale(.large)
-                .foregroundColor(.white.opacity(0.6))
         }
     }
 }
-

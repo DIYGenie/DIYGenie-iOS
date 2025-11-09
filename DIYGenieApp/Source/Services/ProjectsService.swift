@@ -33,14 +33,18 @@ struct ProjectsService {
             let photo_url: String?
         }
 
+        // ... inside ProjectsService.createProject(...)
         let body = CreateRow(
             name: name,
             goal: goal,
-            budget: budget,
-            skill_level: skillLevel,
+            budget: budget,                 // "$" | "$$" | "$$$" is fine
+            skill_level: skillLevel
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased(),              // <<— normalize to pass CHECK
             user_id: userId,
             photo_url: nil
         )
+
 
         var req = URLRequest(url: AppConfig.supabaseURL.appendingPathComponent("rest/v1/projects"))
         req.httpMethod = "POST"
@@ -63,7 +67,7 @@ struct ProjectsService {
         return try JSONDecoder().decode(PlanResponse.self, from: data)
     }
 
-    // MARK: - Upload photo → Storage (public 'uploads') → PATCH project.photo_url
+    // MARK: - Upload photo → Storage (public ‘uploads’) → PATCH project image URL
     @discardableResult
     func uploadImage(projectId: String, image: UIImage) async throws -> String {
         guard let data = image.jpegData(compressionQuality: 0.88) else {
@@ -71,14 +75,28 @@ struct ProjectsService {
         }
         let path = "\(userId)/\(UUID().uuidString).jpg"
 
+        // 1) Upload to Storage
         _ = try await client.storage
             .from("uploads")
-            .upload(path: path, file: data, options: FileOptions(contentType: "image/jpeg"))
+            .upload(path, data: data, options: FileOptions(contentType: "image/jpeg"))
 
+        // 2) Public URL
         let publicURL = SupabaseConfig.publicURL(bucket: "uploads", path: path).absoluteString
-        try await patchProject(projectId, ["photo_url": publicURL])
+
+        // 3) Patch row — prefer input_image_url; fall back to photo_url if needed
+        do {
+            try await patchProject(projectId, ["input_image_url": publicURL])
+        } catch {
+            do {
+                try await patchProject(projectId, ["photo_url": publicURL])
+            } catch {
+                throw Self.err("Patch project failed: \(error.localizedDescription)")
+            }
+        }
+
         return publicURL
     }
+
 
     // MARK: - Optional crop rect (best effort)
     func attachCropRectIfAvailable(projectId: String, rect: CGRect) async {
@@ -252,12 +270,4 @@ private func getJSON(_ url: URL) async throws -> Data {
     }
     return data
 }
-import Foundation
 
-extension Error {
-    var isURLCancelled: Bool {
-        if let e = self as? URLError { return e.code == .cancelled }
-        let ns = self as NSError
-        return ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled
-    }
-}
