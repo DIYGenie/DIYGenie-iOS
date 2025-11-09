@@ -1,3 +1,8 @@
+//
+//  NewProjectView.swift
+//  DIYGenieApp
+//
+
 import SwiftUI
 import UIKit
 
@@ -17,29 +22,29 @@ struct NewProjectView: View {
 
     // MARK: - Media & overlay
     @State private var selectedUIImage: UIImage?
-    @State private var pendingCropRect: CGRect?      // normalized (0..1) rect from overlay
-    @State private var showOverlay = false           // fullScreenCover for rectangle overlay
+    @State private var pendingCropRect: CGRect?       // normalized (0..1)
+    @State private var showOverlay = false            // rectangle overlay
+    @State private var showARSheet = false            // RoomPlan
 
-    // MARK: - Sheets & nav
-    @State private var isShowingCamera = false
-    @State private var isShowingLibrary = false
-    @State private var showARSheet = false
+    // MARK: - Created project / nav
+    @State private var projectId: String?             // unlocks AR row
+    @State private var createdProject: Project?
     @State private var goToDetail = false
 
-    // MARK: - Created project
-    @State private var projectId: String?            // unlocks AR row
-    @State private var createdProject: Project?      // nav destination
-
-    // MARK: - UX state
+    // MARK: - UI/Sys
+    @State private var isShowingCamera = false
+    @State private var isShowingLibrary = false
     @State private var isLoading = false
     @State private var alertMessage = ""
     @State private var showAlert = false
 
     // MARK: - Background
-    private let bgGradient = Gradient(colors: [Color("BGStart"), Color("BGEnd")])
     private var background: some View {
-        LinearGradient(gradient: bgGradient, startPoint: .topLeading, endPoint: .bottomTrailing)
-            .ignoresSafeArea()
+        LinearGradient(
+            colors: [Color("BGStart"), Color("BGEnd")],
+            startPoint: .topLeading, endPoint: .bottomTrailing
+        )
+        .ignoresSafeArea()
     }
 
     // MARK: - Body
@@ -48,7 +53,7 @@ struct NewProjectView: View {
             background
             form
         }
-        // Hidden navigation trigger → details
+        // Hidden nav trigger to details
         .background(
             NavigationLink(isActive: $goToDetail) {
                 if let p = createdProject {
@@ -57,27 +62,29 @@ struct NewProjectView: View {
                     EmptyView()
                 }
             } label: { EmptyView() }
-             .hidden()
+            .hidden()
         )
+        // Photo Library
+        .sheet(isPresented: $isShowingLibrary) {
+            ImagePicker(sourceType: .photoLibrary) { ui in
+                guard let ui = ui else { return }
+                selectedUIImage = ui
+                Task { await createIfNeededAndUpload(ui) }   // auto-create + upload
+                showOverlay = true                           // go select area
+            }
+            .ignoresSafeArea()
+        }
         // Camera
         .sheet(isPresented: $isShowingCamera) {
             ImagePicker(sourceType: .camera) { ui in
                 guard let ui = ui else { return }
                 selectedUIImage = ui
+                Task { await createIfNeededAndUpload(ui) }
                 showOverlay = true
             }
             .ignoresSafeArea()
         }
-        // Library
-        .sheet(isPresented: $isShowingLibrary) {
-            ImagePicker(sourceType: .photoLibrary) { ui in
-                guard let ui = ui else { return }
-                selectedUIImage = ui
-                showOverlay = true
-            }
-            .ignoresSafeArea()
-        }
-        // Rectangle overlay (runs BEFORE project exists)
+        // Rectangle overlay (works before/after project exists; we attach later)
         .fullScreenCover(isPresented: $showOverlay) {
             if let img = selectedUIImage {
                 RectangleOverlayView(
@@ -86,20 +93,22 @@ struct NewProjectView: View {
                     userId: service.userId,
                     onCancel: { showOverlay = false },
                     onComplete: { rect in
-                        // 1) Save normalized crop locally
                         pendingCropRect = rect
                         showOverlay = false
-                        // 2) Auto-create project if needed and upload the image + crop
-                        Task { await createIfNeededAndUpload(img) }
+                        // If project exists, persist immediately (best-effort).
+                        if let pid = projectId {
+                            Task { await service.attachCropRectIfAvailable(projectId: pid, rect: rect) }
+                        }
                     },
                     onError: { err in
                         alert("Overlay error: \(err.localizedDescription)")
                         showOverlay = false
                     }
                 )
+                .ignoresSafeArea()
             }
         }
-        // RoomPlan (AR) sheet — only active once project exists
+        // AR (RoomPlan)
         .sheet(isPresented: $showARSheet) {
             if let pid = projectId {
                 if #available(iOS 17.0, *) {
@@ -130,10 +139,7 @@ struct NewProjectView: View {
                         .foregroundColor(Color("TextPrimary"))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14)
-                                .fill(Color.white.opacity(0.06))
-                        )
+                        .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.06)))
                 }
 
                 // Goal
@@ -144,13 +150,10 @@ struct NewProjectView: View {
                         .scrollContentBackground(.hidden)
                         .foregroundColor(Color("TextPrimary"))
                         .padding(12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14)
-                                .fill(Color.white.opacity(0.06))
-                        )
+                        .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.06)))
                         .overlay {
                             if goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                Text("Describe what you'd like to build…")
+                                Text("Describe what you'd like to build...")
                                     .foregroundColor(Color("TextSecondary"))
                                     .padding(.horizontal, 20)
                                     .padding(.vertical, 16)
@@ -209,9 +212,11 @@ struct NewProjectView: View {
                                 }
 
                                 HStack(spacing: 16) {
-                                    Button("Retake", role: .cancel) { showOverlay = true }
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundColor(Color("Accent"))
+                                    Button("Retake", role: .cancel) {
+                                        showOverlay = true
+                                    }
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(Color("Accent"))
 
                                     if projectId != nil {
                                         Button("Re-upload") {
@@ -232,10 +237,12 @@ struct NewProjectView: View {
                         )
                     } else {
                         VStack(spacing: 12) {
-                            actionRow(systemName: "photo.on.rectangle",
-                                      title: "Add a room photo") { isShowingLibrary = true }
-                            actionRow(systemName: "camera.viewfinder",
-                                      title: "Take Photo for Measurements") { isShowingCamera = true }
+                            actionRow(systemName: "photo.on.rectangle", title: "Add a room photo") {
+                                isShowingLibrary = true
+                            }
+                            actionRow(systemName: "camera.viewfinder", title: "Take Photo for Measurements") {
+                                isShowingCamera = true
+                            }
                         }
                     }
                 }
@@ -260,12 +267,12 @@ struct NewProjectView: View {
 
                 // CTAs
                 VStack(spacing: 12) {
-                    primaryCTA(title: "Generate AI Plan + Preview") {
+                    primaryCTA("Generate AI Plan + Preview") {
                         Task { await createAndNavigate(wantsPreview: true) }
                     }
                     .disabled(!isValid || isLoading)
 
-                    secondaryCTA(title: "Create Plan Only (no preview)") {
+                    secondaryCTA("Create Plan Only (no preview)") {
                         Task { await createAndNavigate(wantsPreview: false) }
                     }
                     .disabled(!isValid || isLoading)
@@ -276,10 +283,11 @@ struct NewProjectView: View {
             }
             .padding(18)
         }
-        .hideKeyboardOnTap()
         .disabled(isLoading)
-        .overlay {
-            if isLoading { ProgressView().scaleEffect(1.2).tint(.white) }
+        .overlay(alignment: .center) {
+            if isLoading {
+                ProgressView().scaleEffect(1.2).tint(.white)
+            }
         }
     }
 
@@ -291,42 +299,29 @@ struct NewProjectView: View {
 
     // MARK: - Actions
 
-    /// Auto-creates project (if needed) right after overlay confirm,
-    /// uploads the photo, saves crop, refreshes, and enables AR row.
+    /// Auto-creates the project (once) and uploads the first attached photo.
     @MainActor
     private func createIfNeededAndUpload(_ ui: UIImage) async {
         isLoading = true
         defer { isLoading = false }
 
         do {
-            // 1) Ensure we have a project ID
-            let pid: String
-            if let existing = projectId {
-                pid = existing
-            } else {
-                let fallbackName = name.trimmingCharacters(in: .whitespaces).isEmpty ? "Untitled Project" : name
+            // Ensure project exists
+            if projectId == nil {
                 let created = try await service.createProject(
-                    name: fallbackName,
-                    goal: goal.isEmpty ? " " : goal,
+                    name: name.isEmpty ? "Untitled Project" : name,
+                    goal: goal.isEmpty ? "—" : goal,
                     budget: budget.label,
                     skillLevel: skill.label
                 )
-                pid = created.id
-                projectId = pid
+                projectId = created.id
                 createdProject = created
             }
 
-            // 2) Upload the photo
-            _ = try await service.uploadImage(projectId: pid, image: ui)
-
-            // 3) Save crop (safe no-op if column missing)
-            if let rect = pendingCropRect {
-                await service.attachCropRectIfAvailable(projectId: pid, rect: rect)
+            // Upload the image
+            if let pid = projectId {
+                _ = try await service.uploadImage(projectId: pid, image: ui)
             }
-
-            // 4) Refresh local copy
-            createdProject = try await service.fetchProject(projectId: pid)
-
         } catch {
             alert("Photo upload failed: \(error.localizedDescription)")
         }
@@ -339,34 +334,40 @@ struct NewProjectView: View {
         defer { isLoading = false }
 
         do {
-            // 1) Create project (once)
-            let created = try await service.createProject(
-                name: name,
-                goal: goal,
-                budget: budget.label,
-                skillLevel: skill.label
-            )
-            projectId = created.id
+            // 1) Ensure project exists (works whether or not image was already attached)
+            if projectId == nil {
+                let created = try await service.createProject(
+                    name: name,
+                    goal: goal,
+                    budget: budget.label,
+                    skillLevel: skill.label
+                )
+                projectId = created.id
+                createdProject = created
+            }
 
-            // 2) Upload image if present
+            guard let pid = projectId else { return }
+
+            // 2) If user has a photo but it wasn't sent yet (rare), upload it
             if let img = selectedUIImage {
-                _ = try await service.uploadImage(projectId: created.id, image: img)
+                _ = try? await service.uploadImage(projectId: pid, image: img)
             }
 
-            // 3) Attach crop if present
+            // 3) Persist crop if available (best effort)
             if let rect = pendingCropRect {
-                await service.attachCropRectIfAvailable(projectId: created.id, rect: rect)
+                await service.attachCropRectIfAvailable(projectId: pid, rect: rect)
             }
 
-            // 4) Kick off plan/preview
+            // 4) Trigger backend
             if wantsPreview {
-                _ = try await service.generatePreview(projectId: created.id)
+                _ = try await service.generatePreview(projectId: pid)
             } else {
-                _ = try await service.generatePlanOnly(projectId: created.id)
+                try await service.generatePlanOnly(projectId: pid)
             }
 
-            // 5) Refresh + navigate
-            createdProject = try await service.fetchProject(projectId: created.id)
+            // 5) Fetch + navigate
+            let fresh = try await service.fetchProject(projectId: pid)
+            createdProject = fresh
             goToDetail = true
 
         } catch {
@@ -394,7 +395,8 @@ struct NewProjectView: View {
         do {
             guard let pid = projectId else { return }
             try await service.uploadARScan(projectId: pid, fileURL: fileURL)
-            createdProject = try await service.fetchProject(projectId: pid)
+            let fresh = try await service.fetchProject(projectId: pid)
+            createdProject = fresh
             alert("AR scan attached to your project ✅")
         } catch {
             alert("Failed to attach AR scan: \(error.localizedDescription)")
@@ -407,7 +409,7 @@ struct NewProjectView: View {
     }
 }
 
-// MARK: - Local UI helpers (scoped to this file only)
+// MARK: - Local UI helpers (scoped to this file)
 
 @ViewBuilder
 private func header(_ title: String) -> some View {
@@ -445,20 +447,30 @@ private func pill(_ title: String, isOn: Bool, action: @escaping () -> Void) -> 
         Text(title)
             .font(.headline.weight(.semibold))
             .foregroundColor(.white)
-            .padding(.horizontal, 18).padding(.vertical, 10)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
             .background(isOn ? Color("Accent") : Color.white.opacity(0.08))
             .cornerRadius(14)
     }
 }
 
 @ViewBuilder
-private func tappableRow(
-    icon: String,
-    title: String,
-    subtitle: String,
-    enabled: Bool,
-    action: @escaping () -> Void
-) -> some View {
+private func actionRow(systemName: String, title: String, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+        HStack(spacing: 12) {
+            Image(systemName: systemName).imageScale(.large).frame(width: 28, height: 28)
+            Text(title).font(.headline)
+            Spacer()
+            Image(systemName: "chevron.right").opacity(0.4)
+        }
+        .padding(14)
+        .background(Color.white.opacity(0.06))
+        .cornerRadius(14)
+    }
+}
+
+@ViewBuilder
+private func tappableRow(icon: String, title: String, subtitle: String, enabled: Bool, action: @escaping () -> Void) -> some View {
     Button(action: action) {
         HStack(spacing: 14) {
             Image(systemName: icon).imageScale(.large)
@@ -479,7 +491,7 @@ private func tappableRow(
 }
 
 @ViewBuilder
-private func primaryCTA(title: String, action: @escaping () -> Void) -> some View {
+private func primaryCTA(_ title: String, action: @escaping () -> Void) -> some View {
     Button(action: action) {
         Text(title)
             .font(.headline.weight(.semibold))
@@ -495,7 +507,7 @@ private func primaryCTA(title: String, action: @escaping () -> Void) -> some Vie
 }
 
 @ViewBuilder
-private func secondaryCTA(title: String, action: @escaping () -> Void) -> some View {
+private func secondaryCTA(_ title: String, action: @escaping () -> Void) -> some View {
     Button(action: action) {
         Text(title)
             .font(.headline.weight(.semibold))
@@ -504,23 +516,6 @@ private func secondaryCTA(title: String, action: @escaping () -> Void) -> some V
             .padding(.vertical, 14)
             .background(Color.white.opacity(0.08))
             .cornerRadius(18)
-    }
-}
-
-@ViewBuilder
-private func actionRow(systemName: String, title: String, action: @escaping () -> Void) -> some View {
-    Button(action: action) {
-        HStack(spacing: 12) {
-            Image(systemName: systemName)
-                .imageScale(.large)
-                .frame(width: 28, height: 28)
-            Text(title)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Image(systemName: "chevron.right").opacity(0.35)
-        }
-        .padding(14)
-        .background(Color.white.opacity(0.06))
-        .cornerRadius(14)
     }
 }
 

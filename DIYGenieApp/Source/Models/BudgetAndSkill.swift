@@ -8,8 +8,14 @@ enum BudgetSelection: String, CaseIterable, Identifiable, Equatable, Hashable {
     var label: String { rawValue }
 }
 
-enum SkillSelection: String, CaseIterable, Identifiable, Equatable, Hashable {
+enum SkillSelection: String, CaseIterable {
     case beginner, intermediate, advanced
-    var id: String { rawValue }
-    var label: String { rawValue.capitalized }
+    var label: String {
+        switch self {
+        case .beginner: return "Beginner"
+        case .intermediate: return "Intermediate"
+        case .advanced: return "Advanced"
+        }
+    }
+    var dbValue: String { rawValue }  // "beginner", "intermediate", "advanced"
 }
