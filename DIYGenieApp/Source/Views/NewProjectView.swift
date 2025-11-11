@@ -38,7 +38,7 @@ struct NewProjectView: View {
     // MARK: - Created / nav
     @State private var projectId: String?
     @State private var createdProject: Project?
-    @State private var goToDetail = false
+    @State private var navPath = NavigationPath()
 
     // MARK: - BG
     private var background: some View {
@@ -48,20 +48,17 @@ struct NewProjectView: View {
     }
 
     var body: some View {
-        ZStack {
-            background
-            form
-        }
-        .background(
-            NavigationLink(isActive: $goToDetail) {
-                if let p = createdProject {
+        NavigationStack(path: $navPath) {
+            ZStack {
+                background
+                form
+            }
+            .navigationDestination(for: String.self) { route in
+                if route == "projectDetail", let p = createdProject {
                     ProjectDetailsView(project: p)
-                } else {
-                    EmptyView()
                 }
-            } label: { EmptyView() }
-            .hidden()
-        )
+            }
+        }
         // Photo Library
         .sheet(isPresented: $isShowingLibrary) {
             ImagePicker(sourceType: .photoLibrary) { ui in
@@ -347,7 +344,7 @@ struct NewProjectView: View {
             // 5) Fetch + nav
             let fresh = try await service.fetchProject(projectId: created.id)
             createdProject = fresh
-            goToDetail = true
+            navPath.append("projectDetail")
 
         } catch {
             alert("Failed to create project: \(error.localizedDescription)")

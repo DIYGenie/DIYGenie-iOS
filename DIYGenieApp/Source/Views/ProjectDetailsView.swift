@@ -8,9 +8,7 @@ import SwiftUI
 struct ProjectDetailsView: View {
     let project: Project
     @State private var plan: PlanResponse?
-    @State private var shareImage: UIImage?
     @State private var showingPreview = true
-    @State private var showShareSheet = false
     @State private var alertMessage = ""
     @State private var showAlert = false
     @State private var isLoading = false
@@ -108,20 +106,6 @@ struct ProjectDetailsView: View {
                     }
                     .padding(.horizontal, 20)
                 }
-
-                // MARK: - Share Button
-                if shareImage != nil {
-                    Button {
-                        showShareSheet = true
-                    } label: {
-                        secondaryButton("Share Preview")
-                    }
-                    .sheet(isPresented: $showShareSheet) {
-                        if let image = shareImage {
-                            ShareSheet(activityItems: [image])
-                        }
-                    }
-                }
             }
             .padding(.vertical, 24)
         }
@@ -134,10 +118,6 @@ struct ProjectDetailsView: View {
         )
         .task {
             await loadPlan()
-            await cacheShareImage()
-        }
-        .onChange(of: showingPreview) { _ in
-            Task { await cacheShareImage() }
         }
         .alert("Status", isPresented: $showAlert) {
             Button("OK", role: .cancel) {}
@@ -170,19 +150,6 @@ struct ProjectDetailsView: View {
         }
         isLoading = false
         showAlert = true
-    }
-
-    @MainActor
-    private func cacheShareImage() async {
-        guard let url = currentImageURL else { return }
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            if let img = UIImage(data: data) {
-                self.shareImage = img
-            }
-        } catch {
-            // Silently ignore caching errors; sharing stays hidden if it fails
-        }
     }
 
 

@@ -33,18 +33,16 @@ struct ProjectsService {
             let photo_url: String?
         }
 
-        // ... inside ProjectsService.createProject(...)
         let body = CreateRow(
             name: name,
             goal: goal,
-            budget: budget,                 // "$" | "$$" | "$$$" is fine
+            budget: budget,
             skill_level: skillLevel
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased(),              // <<— normalize to pass CHECK
+                .lowercased(),
             user_id: userId,
             photo_url: nil
         )
-
 
         var req = URLRequest(url: AppConfig.supabaseURL.appendingPathComponent("rest/v1/projects"))
         req.httpMethod = "POST"
@@ -67,39 +65,24 @@ struct ProjectsService {
         return try JSONDecoder().decode(PlanResponse.self, from: data)
     }
 
-    // MARK: - Upload photo → Storage (public ‘uploads’) → PATCH project image URL
+    // MARK: - Upload photo → Storage → PATCH project image URL
     @discardableResult
     func uploadImage(projectId: String, image: UIImage) async throws -> String {
-        let compressed: Data? = try await MainActor.run {
-            image.jpegData(compressionQuality: 0.88)
-        }
-        guard let data = compressed else {
-            throw Self.err("Failed to compress image.")
-        }
+        let compressed: Data? = try await MainActor.run { image.jpegData(compressionQuality: 0.88) }
+        guard let data = compressed else { throw Self.err("Failed to compress image.") }
         let path = "\(userId)/\(UUID().uuidString).jpg"
 
-        // 1) Upload to Storage
         _ = try await client.storage
             .from("uploads")
             .upload(path, data: data, options: .init(contentType: "image/jpeg"))
 
-        // 2) Public URL
         let publicURL = SupabaseConfig.publicURL(bucket: "uploads", path: path).absoluteString
 
-        // 3) Patch row — prefer input_image_url; fall back to photo_url if needed
-        do {
-            try await patchProject(projectId, ["input_image_url": publicURL])
-        } catch {
-            do {
-                try await patchProject(projectId, ["photo_url": publicURL])
-            } catch {
-                throw Self.err("Patch project failed: \(error.localizedDescription)")
-            }
-        }
+        do { try await patchProject(projectId, ["input_image_url": publicURL]) }
+        catch { try await patchProject(projectId, ["photo_url": publicURL]) }
 
         return publicURL
     }
-
 
     // MARK: - Optional crop rect (best effort)
     func attachCropRectIfAvailable(projectId: String, rect: CGRect) async {
@@ -137,8 +120,7 @@ struct ProjectsService {
 
     // MARK: - Fetch single / list
     func fetchProject(projectId: String) async throws -> Project {
-        var comps = URLComponents(url: AppConfig.supabaseURL.appendingPathComponent("rest/v1/projects"),
-                                  resolvingAgainstBaseURL: false)!
+        var comps = URLComponents(url: AppConfig.supabaseURL.appendingPathComponent("rest/v1/projects"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [
             URLQueryItem(name: "id", value: "eq.\(projectId)"),
             URLQueryItem(name: "select", value: "*")
@@ -155,8 +137,7 @@ struct ProjectsService {
     }
 
     func fetchProjects() async throws -> [Project] {
-        var comps = URLComponents(url: AppConfig.supabaseURL.appendingPathComponent("rest/v1/projects"),
-                                  resolvingAgainstBaseURL: false)!
+        var comps = URLComponents(url: AppConfig.supabaseURL.appendingPathComponent("rest/v1/projects"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [
             URLQueryItem(name: "user_id", value: "eq.\(userId)"),
             URLQueryItem(name: "order", value: "created_at.desc"),
@@ -178,12 +159,12 @@ struct ProjectsService {
         let (data, _) = try await postJSON(url, body: [:])
         if let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
            let previewURL = obj["preview_url"] as? String { return previewURL }
-        return "" // OK if backend doesn’t return URL yet
+        return ""
     }
 
     func generatePlanOnly(projectId: String) async throws {
         let url = AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)/plan")
-        _ = try await postJSON(url, body: [:]) // fire-and-forget
+        _ = try await postJSON(url, body: [:])
     }
 
     // MARK: - Telemetry
@@ -195,36 +176,25 @@ struct ProjectsService {
     ) {
         Task.detached {
             do {
-                // Safely wrap arbitrary props into AnyCodable for jsonb
                 let wrappedProps = props.mapValues { AnyCodable($0) }
-
                 var payload: [String: AnyCodable] = [
-                    "user_id":   AnyCodable(self.userId),
+                    "user_id": AnyCodable(self.userId),
                     "event_type": AnyCodable(eventType),
-                    "props":     AnyCodable(wrappedProps)
+                    "props": AnyCodable(wrappedProps)
                 ]
-                if let message {
-                    payload["message"] = AnyCodable(message)
-                }
-                if let pid = projectId {
-                    payload["project_id"] = AnyCodable(pid)
-                }
+                if let message { payload["message"] = AnyCodable(message) }
+                if let pid = projectId { payload["project_id"] = AnyCodable(pid) }
 
-                _ = try await self.client
-                    .from("events")
-                    .insert(payload)   // Encodable ✅
-                    .execute()
+                _ = try await self.client.from("events").insert(payload).execute()
             } catch {
                 print("telemetry log failed:", error.localizedDescription)
             }
         }
     }
 
-
     // MARK: - Internal: PATCH project (REST)
     private func patchProject(_ id: String, _ fields: [String: Any]) async throws {
-        var comps = URLComponents(url: AppConfig.supabaseURL.appendingPathComponent("rest/v1/projects"),
-                                  resolvingAgainstBaseURL: false)!
+        var comps = URLComponents(url: AppConfig.supabaseURL.appendingPathComponent("rest/v1/projects"), resolvingAgainstBaseURL: false)!
         comps.queryItems = [URLQueryItem(name: "id", value: "eq.\(id)")]
 
         var req = URLRequest(url: comps.url!)
@@ -260,7 +230,6 @@ struct ProjectsService {
     }
 }
 
-// MARK: - Simple GET returning Data
 private func getJSON(_ url: URL) async throws -> Data {
     var req = URLRequest(url: url)
     req.httpMethod = "GET"
