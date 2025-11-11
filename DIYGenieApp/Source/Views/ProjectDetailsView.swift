@@ -132,7 +132,13 @@ struct ProjectDetailsView: View {
             ], startPoint: .topLeading, endPoint: .bottomTrailing)
             .ignoresSafeArea()
         )
-        .task { await loadPlan() }
+        .task {
+            await loadPlan()
+            await cacheShareImage()
+        }
+        .onChange(of: showingPreview) { _ in
+            Task { await cacheShareImage() }
+        }
         .alert("Status", isPresented: $showAlert) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -164,6 +170,19 @@ struct ProjectDetailsView: View {
         }
         isLoading = false
         showAlert = true
+    }
+
+    @MainActor
+    private func cacheShareImage() async {
+        guard let url = currentImageURL else { return }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let img = UIImage(data: data) {
+                self.shareImage = img
+            }
+        } catch {
+            // Silently ignore caching errors; sharing stays hidden if it fails
+        }
     }
 
 

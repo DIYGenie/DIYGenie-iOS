@@ -1,92 +1,140 @@
 //
-//  NewProjectView.swift
+//  ARScannerSheet.swift
+//  DIYGenieApp
+//
+//  Self‑contained RealityKit AR sheet.
+//  Note: Data entry and photo/overlay happen on New Project; this sheet only runs the live AR session.
 //
 
 import SwiftUI
+import RealityKit
+import ARKit
+import AVFoundation
 
-struct NewProjectView: View {
-    @State private var capturedImage: UIImage?
-    @State private var overlaySaved = false
-    @AppStorage("overlaySaved_current") private var overlaySavedPersist: Bool = false
-    private var isOverlaySaved: Bool { overlaySaved || overlaySavedPersist }
-
-    @State private var showingOverlayEditor = false
-    @State private var overlayRect: CGRect = .zero
-    @State private var showSaveBanner = false
+struct ARScannerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var cameraDenied = false
+    @State private var sessionError: String?
 
     var body: some View {
-        VStack {
-            // ... other UI elements ...
-
-            Text("AR Scan For Measurement Accuracy")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .padding(.top, 8)
-
-            Button("Start AR") {
-                // Start AR action
-            }
-            .disabled(!isOverlaySaved)
-            .opacity(isOverlaySaved ? 1 : 0.5)
-
-            if !isOverlaySaved {
-                Text("Please save the overlay before starting AR.")
-                    .foregroundColor(.red)
+        ZStack {
+            if ARWorldTrackingConfiguration.isSupported {
+                ARViewContainer(sessionError: $sessionError)
+                    .ignoresSafeArea()
+            } else {
+                UnsupportedView()
             }
 
-            // ... other UI elements ...
-
-            if showSaveBanner || overlaySavedPersist {
-                Text("Photo + Area Saved")
-                    .padding()
-                    .background(Color.green.opacity(0.8))
-                    .cornerRadius(8)
-                    .transition(.opacity)
-            }
-        }
-        .sheet(isPresented: $showingOverlayEditor) {
-            OverlayEditorView(
-                image: capturedImage!,
-                initialRect: overlayRect,
-                onConfirm: { confirmedRect in
-                    self.overlayRect = confirmedRect
-                    self.overlaySaved = true
-                    self.overlaySavedPersist = true
-                    self.showSaveBanner = true
-                    self.showingOverlayEditor = false
-                },
-                onCancel: {
-                    self.showingOverlayEditor = false
+            VStack {
+                HStack {
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 28, weight: .semibold))
+                            .padding(12)
+                    }
+                    Spacer()
                 }
-            )
-        }
-        .onAppear {
-            if overlaySavedPersist {
-                showSaveBanner = true
+                Spacer()
+            }
+
+            if cameraDenied {
+                ErrorOverlay(
+                    title: "Camera Access Needed",
+                    message: "Enable camera in Settings → Privacy → Camera to use AR features."
+                )
+            } else if let sessionError {
+                ErrorOverlay(title: "AR Session Error", message: sessionError)
             }
         }
-        .onChange(of: capturedImage) { _ in
-            // No action needed here for this task
+        .task {
+            let auth = await AVCaptureDevice.requestAccess(for: .video)
+            cameraDenied = !auth
         }
     }
+}
 
-    func capturePhoto() {
-        // After capturing photo:
-        if let image = /* captured image from camera */ nil {
-            self.capturedImage = image
-            self.overlaySaved = false
-            self.overlaySavedPersist = false
-            self.showingOverlayEditor = true
-        }
+private struct ARViewContainer: UIViewRepresentable {
+    @Binding var sessionError: String?
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIView(context: Context) -> ARView {
+        let arView = ARView(frame: .zero)
+        arView.automaticallyConfigureSession = false
+        arView.session.delegate = context.coordinator
+
+        arView.environment.lighting.intensityExponent = 1.0
+        arView.renderOptions.insert(.disableMotionBlur)
+
+        startSession(on: arView)
+        return arView
     }
 
-    func uploadPhoto() {
-        // After uploading photo:
-        if let image = /* uploaded image */ nil {
-            self.capturedImage = image
-            self.overlaySaved = false
-            self.overlaySavedPersist = false
-            self.showingOverlayEditor = true
+    func updateUIView(_ uiView: ARView, context: Context) {}
+
+    func startSession(on arView: ARView) {
+        guard ARWorldTrackingConfiguration.isSupported else { return }
+        let config = ARWorldTrackingConfiguration()
+        config.planeDetection = [.horizontal, .vertical]
+        if ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) {
+            config.sceneReconstruction = .mesh
         }
+        arView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
+    }
+
+    final class Coordinator: NSObject, ARSessionDelegate {
+        private let parent: ARViewContainer
+        init(_ parent: ARViewContainer) { self.parent = parent }
+
+        func session(_ session: ARSession, didFailWithError error: Error) {
+            parent.sessionError = error.localizedDescription
+            print("[AR] didFailWithError:", error)
+        }
+
+        func sessionWasInterrupted(_ session: ARSession) {
+            print("[AR] session interrupted")
+        }
+
+        func sessionInterruptionEnded(_ session: ARSession) {
+            print("[AR] interruption ended — recommend resetting tracking if needed")
+        }
+    }
+}
+
+private struct UnsupportedView: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "arkit")
+                .font(.system(size: 44))
+            Text("AR Not Supported on This Device")
+                .font(.headline)
+            Text("Try on a newer iPhone or iPad with ARKit support.")
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+        }
+        .padding()
+    }
+}
+
+private struct ErrorOverlay: View {
+    let title: String
+    let message: String
+    var body: some View {
+        VStack {
+            Spacer()
+            VStack(spacing: 8) {
+                Text(title).font(.headline)
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding()
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .padding()
+        }
+        .transition(.opacity)
+        .animation(.easeInOut, value: message)
     }
 }
