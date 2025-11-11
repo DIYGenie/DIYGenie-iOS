@@ -23,7 +23,7 @@ struct ARRoomPlanSheet: UIViewRepresentable {
         view.captureSession.delegate = context.coordinator     // session lifecycle
         view.delegate = context.coordinator                    // view callbacks
         // Start scanning immediately
-        var config = RoomCaptureSession.Configuration()
+        let config = RoomCaptureSession.Configuration()
         view.captureSession.run(configuration: config)
         return view
     }
@@ -80,4 +80,3 @@ struct ARRoomPlanSheet: UIViewRepresentable {
     }
 }
 #endif
-

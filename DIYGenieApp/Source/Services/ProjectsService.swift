@@ -70,7 +70,10 @@ struct ProjectsService {
     // MARK: - Upload photo → Storage (public ‘uploads’) → PATCH project image URL
     @discardableResult
     func uploadImage(projectId: String, image: UIImage) async throws -> String {
-        guard let data = image.jpegData(compressionQuality: 0.88) else {
+        let compressed: Data? = try await MainActor.run {
+            image.jpegData(compressionQuality: 0.88)
+        }
+        guard let data = compressed else {
             throw Self.err("Failed to compress image.")
         }
         let path = "\(userId)/\(UUID().uuidString).jpg"
@@ -78,7 +81,7 @@ struct ProjectsService {
         // 1) Upload to Storage
         _ = try await client.storage
             .from("uploads")
-            .upload(path, data: data, options: FileOptions(contentType: "image/jpeg"))
+            .upload(path, data: data, options: .init(contentType: "image/jpeg"))
 
         // 2) Public URL
         let publicURL = SupabaseConfig.publicURL(bucket: "uploads", path: path).absoluteString
@@ -117,10 +120,10 @@ struct ProjectsService {
 
         _ = try await client.storage
             .from("uploads")
-            .upload(path: path, file: data, options: FileOptions(contentType: "model/vnd.usdz+zip"))
+            .upload(path, data: data, options: .init(contentType: "model/vnd.usdz+zip"))
 
         let url = SupabaseConfig.publicURL(bucket: "uploads", path: path).absoluteString
-        let now = ISO8601DateFormatter().string(from: Date())
+        let now = Date().ISO8601Format()
 
         try await patchProject(projectId, [
             "scan_json": [
@@ -198,9 +201,11 @@ struct ProjectsService {
                 var payload: [String: AnyCodable] = [
                     "user_id":   AnyCodable(self.userId),
                     "event_type": AnyCodable(eventType),
-                    "message":   AnyCodable(message),
                     "props":     AnyCodable(wrappedProps)
                 ]
+                if let message {
+                    payload["message"] = AnyCodable(message)
+                }
                 if let pid = projectId {
                     payload["project_id"] = AnyCodable(pid)
                 }
@@ -270,4 +275,3 @@ private func getJSON(_ url: URL) async throws -> Data {
     }
     return data
 }
-

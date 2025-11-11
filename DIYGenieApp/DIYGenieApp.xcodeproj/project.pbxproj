@@ -317,6 +317,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "DIY Genie";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_NSCameraUsageDescription = "DIY Genie uses your camera and LiDAR to scan and measure your room for projects.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "DIY Genie saves preview images to your photo library when you choose to export or share.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -365,6 +366,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "DIY Genie";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_NSCameraUsageDescription = "DIY Genie uses your camera and LiDAR to scan and measure your room for projects.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "DIY Genie saves preview images to your photo library when you choose to export or share.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

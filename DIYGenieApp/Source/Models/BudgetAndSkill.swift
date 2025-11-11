@@ -1,21 +1,40 @@
+//
+//  BudgetAndSkill.swift
+//  DIYGenieApp
+//
+//  Single source of truth for budget/skill enums used across the app.
+//
+
 import Foundation
 
-// MARK: - Budget & Skill models (single source of truth)
+public enum SkillSelection: String, CaseIterable, Identifiable, Codable {
+    case beginner
+    case intermediate
+    case advanced
 
-enum BudgetSelection: String, CaseIterable, Identifiable, Equatable, Hashable {
-    case one = "$", two = "$$", three = "$$$"
-    var id: String { rawValue }
-    var label: String { rawValue }
-}
+    public var id: String { rawValue }
 
-enum SkillSelection: String, CaseIterable {
-    case beginner, intermediate, advanced
-    var label: String {
+    public var label: String {
         switch self {
-        case .beginner: return "Beginner"
+        case .beginner:     return "Beginner"
         case .intermediate: return "Intermediate"
-        case .advanced: return "Advanced"
+        case .advanced:     return "Advanced"
         }
     }
-    var dbValue: String { rawValue }  // "beginner", "intermediate", "advanced"
+}
+
+public enum BudgetSelection: Int, CaseIterable, Identifiable, Codable {
+    case one = 0     // $
+    case two = 1     // $$
+    case three = 2   // $$$
+
+    public var id: Int { rawValue }
+
+    public var label: String {
+        switch self {
+        case .one:   return "$"
+        case .two:   return "$$"
+        case .three: return "$$$"
+        }
+    }
 }
