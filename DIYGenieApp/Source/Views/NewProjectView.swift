@@ -242,13 +242,38 @@ struct NewProjectView: View {
                     }
                 }
 
-                // AR row (enabled when project exists)
-                tappableRow(icon: "viewfinder.rectangular",
-                            title: "Add AR Scan Accuracy",
-                            subtitle: projectId == nil ? "Create the project first" : "Improve measurements with Room Scan",
-                            enabled: projectId != nil) {
+                // AR tools section (always visible header)
+                sectionLabel("AR Scan For Measurement Accuracy")
+
+                // 1) AR Measuring Tool (on photo) — opens the rectangle overlay editor on the saved photo
+                tappableRow(
+                    icon: "ruler",
+                    title: "AR Measuring Tool (on photo)",
+                    subtitle: selectedUIImage != nil ? "Adjust target area on the attached photo" : "Add a photo first",
+                    enabled: selectedUIImage != nil
+                ) {
+                    // Re-open the overlay editor on the current photo
+                    showOverlay = true
+                }
+
+                // 2) AR Room Scan (3D) — requires project + saved photo + confirmed overlay rect
+                tappableRow(
+                    icon: "viewfinder.rectangular",
+                    title: "AR Room Scan (3D)",
+                    subtitle: (projectId == nil)
+                        ? "Create the project first"
+                        : (selectedUIImage == nil)
+                            ? "Add a photo first"
+                            : (pendingCropRect == nil)
+                                ? "Confirm rectangle overlay to enable"
+                                : "Improve measurements with Room Scan",
+                    enabled: (projectId != nil) && (selectedUIImage != nil) && (pendingCropRect != nil)
+                ) {
                     showARSheet = true
                 }
+
+                // Helper hint (always visible under AR tools)
+                helper("Add a photo and confirm the rectangle overlay to enable AR tools.")
 
                 // CTAs
                 VStack(spacing: 12) {
