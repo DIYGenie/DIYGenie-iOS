@@ -2,81 +2,148 @@
 //  ARRoomPlanSheet.swift
 //  DIYGenieApp
 //
-//  SwiftUI wrapper around RoomPlan’s RoomCaptureView.
-//  Exports a .usdz to a temporary URL and returns it via onExport.
+//  SwiftUI wrapper around RoomPlan using a UIViewController so the
+//  RoomCaptureView always fills the screen and the session is started/stopped
+//  at correct lifecycle points (prevents black preview on some devices).
 //
+
 import SwiftUI
-import RoomPlan
 import UIKit
+#if canImport(RoomPlan)
+import RoomPlan
+#endif
 
 #if canImport(RoomPlan)
 @available(iOS 17.0, *)
-struct ARRoomPlanSheet: UIViewRepresentable {
+struct ARRoomPlanSheet: UIViewControllerRepresentable {
     let projectId: String
-    let onExport: (URL) -> Void   // called once with the temp .usdz URL
+    let onExport: (URL) -> Void   // returns temp .usdz URL once
 
     func makeCoordinator() -> Coordinator { Coordinator(onExport: onExport) }
 
-    func makeUIView(context: Context) -> RoomCaptureView {
-        let view = RoomCaptureView(frame: .zero)
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.captureSession.delegate = context.coordinator     // session lifecycle
-        view.delegate = context.coordinator                    // view callbacks
-        // Start scanning immediately
-        let config = RoomCaptureSession.Configuration()
-        view.captureSession.run(configuration: config)
-        return view
+    func makeUIViewController(context: Context) -> ARRoomPlanViewController {
+        let vc = ARRoomPlanViewController()
+        vc.coordinator = context.coordinator
+        return vc
     }
 
-    func updateUIView(_ uiView: RoomCaptureView, context: Context) {
-        // no-op; we don’t stream UI updates during capture
+    func updateUIViewController(_ uiViewController: ARRoomPlanViewController, context: Context) {
+        // no-op
     }
 
-    // MARK: - Coordinator
-    static var supportsSecureCoding: Bool { true }
-    
-    @objc(ARRoomPlanSheetCoordinator) final class Coordinator: NSObject, RoomCaptureSessionDelegate, RoomCaptureViewDelegate, NSSecureCoding {
-       
-        static var supportsSecureCoding: Bool { true }
-        private let onExport: (URL) -> Void
+    // MARK: - Nested VC
+    final class ARRoomPlanViewController: UIViewController, RoomCaptureSessionDelegate, RoomCaptureViewDelegate {
+        var coordinator: Coordinator!
+        let captureView = RoomCaptureView()
         private var hasExported = false
+        private var shouldExport = true
 
-        init(onExport: @escaping (URL) -> Void) {
-            self.onExport = onExport
-        }
-        @objc required init?(coder: NSCoder) {
-            // Not used — needed only to satisfy NSSecureCoding
-            return nil
+        private let closeButton = UIButton(type: .system)
+        private let finishButton = UIButton(type: .system)
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.backgroundColor = .black
+
+            captureView.frame = view.bounds
+            captureView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            view.addSubview(captureView)
+
+            captureView.captureSession.delegate = self
+            captureView.delegate = self
+
+            // UI overlay buttons
+            setupOverlayUI()
         }
 
-        @objc func encode(with coder: NSCoder) {
-            // No-op — we never archive this coordinator
+        private func setupOverlayUI() {
+            // Close button (top-left)
+            closeButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
+            closeButton.tintColor = .white
+            closeButton.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+            closeButton.layer.cornerRadius = 20
+            closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+            closeButton.translatesAutoresizingMaskIntoConstraints = false
+
+            // Finish button (bottom-center)
+            finishButton.setTitle("Finish Scan", for: .normal)
+            finishButton.setTitleColor(.white, for: .normal)
+            finishButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
+            finishButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.9)
+            finishButton.layer.cornerRadius = 12
+            finishButton.contentEdgeInsets = UIEdgeInsets(top: 12, left: 18, bottom: 12, right: 18)
+            finishButton.addTarget(self, action: #selector(finishTapped), for: .touchUpInside)
+            finishButton.translatesAutoresizingMaskIntoConstraints = false
+
+            view.addSubview(closeButton)
+            view.addSubview(finishButton)
+
+            NSLayoutConstraint.activate([
+                // Close: top-left with safe area
+                closeButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
+                closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+                closeButton.widthAnchor.constraint(equalToConstant: 40),
+                closeButton.heightAnchor.constraint(equalToConstant: 40),
+
+                // Finish: bottom-center with safe area
+                finishButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                finishButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16)
+            ])
         }
-        // Live updates if you ever want them
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            // Start after presentation to avoid zero-sized layer issues
+            let config = RoomCaptureSession.Configuration()
+            captureView.captureSession.run(configuration: config)
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            captureView.captureSession.stop()
+        }
+
+        // Live updates if desired
         func captureSession(_ session: RoomCaptureSession, didUpdate room: CapturedRoom) { }
 
-        // Finished capture → export .usdz → hand back URL
-        func captureSession(_ session: RoomCaptureSession,
-                            didEndWith room: CapturedRoom,
-                            error: Error?) {
+        // Finished capture → export .usdz → return URL
+        func captureSession(_ session: RoomCaptureSession, didEndWith room: CapturedRoom, error: Error?) {
             guard !hasExported else { return }
-            if let error = error {
-                print("RoomPlan error:", error.localizedDescription)
-                return
-            }
+            if let error = error { print("RoomPlan error:", error.localizedDescription); return }
             hasExported = true
+            guard shouldExport else { return }
             let tmp = FileManager.default.temporaryDirectory
                 .appendingPathComponent("scan-\(UUID().uuidString).usdz")
             do {
                 try room.export(to: tmp)
-                // Small delay lets the view tear down cleanly before you present next UI
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    self.onExport(tmp)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                    // Hand result back to SwiftUI, then dismiss our controller
+                    self?.coordinator.onExport(tmp)
+                    self?.dismiss(animated: true)
                 }
             } catch {
                 print("Export failed:", error.localizedDescription)
             }
         }
+
+        @objc private func closeTapped() {
+            shouldExport = false
+            captureView.captureSession.stop()
+            dismiss(animated: true)
+        }
+
+        @objc private func finishTapped() {
+            let generator = UIImpactFeedbackGenerator(style: .medium)
+            generator.impactOccurred()
+            shouldExport = true
+            captureView.captureSession.stop() // triggers didEndWith
+        }
+    }
+
+    // MARK: - Coordinator
+    final class Coordinator: NSObject {
+        let onExport: (URL) -> Void
+        init(onExport: @escaping (URL) -> Void) { self.onExport = onExport }
     }
 }
 #endif

@@ -5,6 +5,10 @@
 
 import SwiftUI
 import UIKit
+import AVFoundation
+#if canImport(RoomPlan)
+import RoomPlan
+#endif
 
 struct NewProjectView: View {
 
@@ -19,9 +23,9 @@ struct NewProjectView: View {
     @State private var budget: BudgetSelection = .two
     @State private var skill: SkillSelection = .intermediate
 
-    // MARK: - Media / overlay
+    // MARK: - Media / measurement
     @State private var selectedUIImage: UIImage?
-    @State private var pendingCropRect: CGRect?
+    @State private var measurementArea: [CGPoint]?  // normalized 4 points (TL, TR, BR, BL)
     @State private var showOverlay = false
 
     // MARK: - Sheets
@@ -64,6 +68,7 @@ struct NewProjectView: View {
             ImagePicker(sourceType: .photoLibrary) { ui in
                 guard let ui else { return }
                 selectedUIImage = ui
+                // Auto-open measurement editor after selecting a photo
                 showOverlay = true
             }
             .ignoresSafeArea()
@@ -73,11 +78,12 @@ struct NewProjectView: View {
             ImagePicker(sourceType: .camera) { ui in
                 guard let ui else { return }
                 selectedUIImage = ui
+                // Auto-open measurement editor after taking a photo
                 showOverlay = true
             }
             .ignoresSafeArea()
         }
-        // Overlay (works before project exists)
+        // Measurement editor (works before project exists)
         .fullScreenCover(isPresented: $showOverlay) {
             if let img = selectedUIImage {
                 RectangleOverlayView(
@@ -86,11 +92,23 @@ struct NewProjectView: View {
                     userId: service.userId,
                     onCancel: { showOverlay = false },
                     onComplete: { rect in
-                        pendingCropRect = rect
+                        // Coerce to a centered square, then save 4 normalized corners
+                        let imgSize = img.size
+                        guard imgSize.width > 0, imgSize.height > 0 else { showOverlay = false; return }
+                        let side = min(rect.width, rect.height)
+                        let center = CGPoint(x: rect.midX, y: rect.midY)
+                        let square = CGRect(x: center.x - side/2, y: center.y - side/2, width: side, height: side)
+                        let tl = CGPoint(x: square.minX / imgSize.width, y: square.minY / imgSize.height)
+                        let tr = CGPoint(x: square.maxX / imgSize.width, y: square.minY / imgSize.height)
+                        let br = CGPoint(x: square.maxX / imgSize.width, y: square.maxY / imgSize.height)
+                        let bl = CGPoint(x: square.minX / imgSize.width, y: square.maxY / imgSize.height)
+                        measurementArea = [tl, tr, br, bl]
                         showOverlay = false
+                        // Auto-create/attach immediately after confirming the area
+                        Task { await ensureProjectAfterPhoto() }
                     },
                     onError: { err in
-                        alert("Overlay error: \(err.localizedDescription)")
+                        alert("Measurement editor error: \(err.localizedDescription)")
                         showOverlay = false
                     }
                 )
@@ -113,7 +131,7 @@ struct NewProjectView: View {
         .alert(alertMessage, isPresented: $showAlert) { Button("OK", role: .cancel) {} }
     }
 
-    // MARK: - Form
+    // MARK: - Form (inside struct)
     private var form: some View {
         ScrollView {
             VStack(spacing: 18) {
@@ -190,18 +208,18 @@ struct NewProjectView: View {
                                     .foregroundColor(Color("TextPrimary"))
                                     .font(.headline)
 
-                                if pendingCropRect != nil {
-                                    Text("Area selected ✓")
+                                if measurementArea != nil {
+                                    Text("Measurement area saved ✓")
                                         .font(.subheadline)
                                         .foregroundColor(Color("TextSecondary"))
                                 } else {
-                                    Text("Tap ‘Retake’ to set target area.")
+                                    Text("Tap ‘Edit Area’ to draw a 4-point square.")
                                         .font(.subheadline)
                                         .foregroundColor(Color("TextSecondary"))
                                 }
 
                                 HStack(spacing: 16) {
-                                    Button("Retake", role: .cancel) { showOverlay = true }
+                                    Button("Edit Area", role: .cancel) { showOverlay = true }
                                         .font(.subheadline.weight(.semibold))
                                         .foregroundColor(Color("Accent"))
 
@@ -239,38 +257,59 @@ struct NewProjectView: View {
                     }
                 }
 
-                // AR tools section (always visible header)
-                sectionLabel("AR Scan For Measurement Accuracy")
+                // Measurements & AR
+                sectionLabel("Measurements & AR Tools")
 
-                // 1) AR Measuring Tool (on photo) — opens the rectangle overlay editor on the saved photo
-                tappableRow(
-                    icon: "ruler",
-                    title: "AR Measuring Tool (on photo)",
-                    subtitle: selectedUIImage != nil ? "Adjust target area on the attached photo" : "Add a photo first",
-                    enabled: selectedUIImage != nil
-                ) {
-                    // Re-open the overlay editor on the current photo
-                    showOverlay = true
-                }
-
-                // 2) AR Room Scan (3D) — requires project + saved photo + confirmed overlay rect
+                // Only one row here: AR Room Scan (3D)
                 tappableRow(
                     icon: "viewfinder.rectangular",
                     title: "AR Room Scan (3D)",
                     subtitle: (projectId == nil)
-                        ? "Create the project first"
+                        ? "Project will auto-create after photo"
                         : (selectedUIImage == nil)
                             ? "Add a photo first"
-                            : (pendingCropRect == nil)
-                                ? "Confirm rectangle overlay to enable"
+                            : (measurementArea == nil)
+                                ? "Draw the 4-point area to enable"
                                 : "Improve measurements with Room Scan",
-                    enabled: (projectId != nil) && (selectedUIImage != nil) && (pendingCropRect != nil)
+                    enabled: (selectedUIImage != nil) && (measurementArea != nil)
                 ) {
-                    showARSheet = true
+                    Task { @MainActor in
+                        if projectId == nil { await ensureProjectAfterPhoto() }
+                        guard projectId != nil else {
+                            alert("Please add a photo and draw the 4-point area to continue.")
+                            return
+                        }
+                        guard #available(iOS 17.0, *) else {
+                            alert("RoomPlan requires iOS 17 or later.")
+                            return
+                        }
+#if canImport(RoomPlan)
+                        // Device capability check (prevents black screen on unsupported devices)
+                        guard RoomCaptureSession.isSupported else {
+                            alert("This device doesn't support RoomPlan scanning.")
+                            return
+                        }
+#endif
+                        // Camera permission check (prevents black screen when denied)
+                        let status = AVCaptureDevice.authorizationStatus(for: .video)
+                        if status == .notDetermined {
+                            AVCaptureDevice.requestAccess(for: .video) { granted in
+                                DispatchQueue.main.async {
+                                    if granted { showARSheet = true }
+                                    else { alert("Camera access is required for AR scanning.") }
+                                }
+                            }
+                            return
+                        }
+                        guard status == .authorized else {
+                            alert("Enable Camera access in Settings to use AR scanning.")
+                            return
+                        }
+                        showARSheet = true
+                    }
                 }
 
-                // Helper hint (always visible under AR tools)
-                helper("Add a photo and confirm the rectangle overlay to enable AR tools.")
+                helper("Add a photo + Select Area to Enable AR Scan")
 
                 // CTAs
                 VStack(spacing: 12) {
@@ -292,9 +331,7 @@ struct NewProjectView: View {
         }
         .disabled(isLoading)
         .overlay {
-            if isLoading {
-                ProgressView().scaleEffect(1.2).tint(.white)
-            }
+            if isLoading { ProgressView().scaleEffect(1.2).tint(.white) }
         }
     }
 
@@ -329,8 +366,8 @@ struct NewProjectView: View {
                 )
             }
 
-            // 3) Attach crop rect (best effort)
-            if let rect = pendingCropRect {
+            // 3) Attach measurement area (best effort)
+            if let points = measurementArea, let rect = denormalizedRect(from: points, image: selectedUIImage) {
                 await service.attachCropRectIfAvailable(projectId: created.id, rect: rect)
             }
 
@@ -385,7 +422,7 @@ struct NewProjectView: View {
     }
 }
 
-// MARK: - Tiny local UI helpers
+// MARK: - Tiny local UI helpers (outside struct)
 
 @ViewBuilder
 private func header(_ title: String) -> some View {
@@ -495,5 +532,57 @@ private func actionRow(systemName: String, title: String, action: @escaping () -
         .padding(14)
         .background(Color.white.opacity(0.06))
         .cornerRadius(14)
+    }
+}
+
+// MARK: - Helpers used by the view (inside extension so they can access state)
+extension NewProjectView {
+    @MainActor
+    private func ensureProjectAfterPhoto() async {
+        if let pid = projectId {
+            if let img = selectedUIImage {
+                _ = try? await service.uploadImage(projectId: pid, image: img.dg_resized(maxDimension: 2000))
+            }
+            if let points = measurementArea, let rect = denormalizedRect(from: points, image: selectedUIImage) {
+                await service.attachCropRectIfAvailable(projectId: pid, rect: rect)
+            }
+            if let fresh = try? await service.fetchProject(projectId: pid) { createdProject = fresh }
+            return
+        }
+
+        // Create new project immediately
+        let safeName = name.trimmingCharacters(in: .whitespaces).isEmpty ? "New Project" : name
+        let safeGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Auto-created from photo" : goal
+
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let created = try await service.createProject(
+                name: safeName,
+                goal: safeGoal,
+                budget: budget.label,
+                skillLevel: skill.label
+            )
+            projectId = created.id
+
+            if let img = selectedUIImage {
+                _ = try? await service.uploadImage(projectId: created.id, image: img.dg_resized(maxDimension: 2000))
+            }
+            if let points = measurementArea, let rect = denormalizedRect(from: points, image: selectedUIImage) {
+                await service.attachCropRectIfAvailable(projectId: created.id, rect: rect)
+            }
+
+            if let fresh = try? await service.fetchProject(projectId: created.id) { createdProject = fresh }
+        } catch {
+            alert("Couldn’t create project from photo: \(error.localizedDescription)")
+        }
+    }
+
+    private func denormalizedRect(from points: [CGPoint], image: UIImage?) -> CGRect? {
+        guard points.count == 4, let img = image else { return nil }
+        let xs = points.map { $0.x * img.size.width }
+        let ys = points.map { $0.y * img.size.height }
+        guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else { return nil }
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 }
