@@ -68,7 +68,7 @@ struct ProjectsService {
     // MARK: - Upload photo → Storage → PATCH project image URL
     @discardableResult
     func uploadImage(projectId: String, image: UIImage) async throws -> String {
-        let compressed: Data? = try await MainActor.run { image.jpegData(compressionQuality: 0.88) }
+        let compressed: Data? = await MainActor.run { image.jpegData(compressionQuality: 0.88) }
         guard let data = compressed else { throw Self.err("Failed to compress image.") }
         let path = "\(userId)/\(UUID().uuidString).jpg"
 
@@ -174,7 +174,9 @@ struct ProjectsService {
         props: [String: Any] = [:],
         projectId: String? = nil
     ) {
-        Task.detached {
+        // Use a normal Task and hop to the main actor so we can safely
+        // initialize AnyCodable and access self/client without isolation issues.
+        Task { @MainActor in
             do {
                 let wrappedProps = props.mapValues { AnyCodable($0) }
                 var payload: [String: AnyCodable] = [

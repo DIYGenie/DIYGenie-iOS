@@ -66,12 +66,22 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
             closeButton.translatesAutoresizingMaskIntoConstraints = false
 
             // Finish button (bottom-center)
-            finishButton.setTitle("Finish Scan", for: .normal)
-            finishButton.setTitleColor(.white, for: .normal)
-            finishButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
-            finishButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.9)
-            finishButton.layer.cornerRadius = 12
-            finishButton.contentEdgeInsets = UIEdgeInsets(top: 12, left: 18, bottom: 12, right: 18)
+            if #available(iOS 15.0, *) {
+                var cfg = UIButton.Configuration.filled()
+                cfg.title = "Finish Scan"
+                cfg.baseBackgroundColor = UIColor.systemBlue.withAlphaComponent(0.9)
+                cfg.baseForegroundColor = .white
+                cfg.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 18, bottom: 12, trailing: 18)
+                finishButton.configuration = cfg
+                finishButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
+            } else {
+                finishButton.setTitle("Finish Scan", for: .normal)
+                finishButton.setTitleColor(.white, for: .normal)
+                finishButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
+                finishButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.9)
+                finishButton.layer.cornerRadius = 12
+                finishButton.contentEdgeInsets = UIEdgeInsets(top: 12, left: 18, bottom: 12, right: 18)
+            }
             finishButton.addTarget(self, action: #selector(finishTapped), for: .touchUpInside)
             finishButton.translatesAutoresizingMaskIntoConstraints = false
 
@@ -146,3 +156,4 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
     }
 }
 #endif
+ 

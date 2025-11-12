@@ -49,7 +49,7 @@ struct DetailedBuildPlanView: View {
                         }
 
                         // MARK: - Materials  (non-optional array)
-                        let materials = plan.materials ?? []
+                        let materials = plan.materials
                         if !materials.isEmpty {
                             SectionHeader("Materials")
                             VStack(alignment: .leading, spacing: 8) {
@@ -71,7 +71,7 @@ struct DetailedBuildPlanView: View {
                         }
 
                         // MARK: - Tools  (non-optional array)
-                        let tools = plan.tools ?? []
+                        let tools = plan.tools
                         if !tools.isEmpty {
                             SectionHeader("Tools")
                             VStack(alignment: .leading, spacing: 8) {
