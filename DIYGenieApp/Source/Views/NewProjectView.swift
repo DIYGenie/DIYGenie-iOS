@@ -38,6 +38,7 @@ struct NewProjectView: View {
     @State private var isLoading = false
     @State private var alertMessage = ""
     @State private var showAlert = false
+    @State private var arAttached = false
 
     // MARK: - Created / nav
     @State private var projectId: String?
@@ -264,16 +265,19 @@ struct NewProjectView: View {
                 tappableRow(
                     icon: "viewfinder.rectangular",
                     title: "AR Room Scan (3D)",
-                    subtitle: (projectId == nil)
-                        ? "Project will auto-create after photo"
-                        : (selectedUIImage == nil)
-                            ? "Add a photo first"
-                            : (measurementArea == nil)
-                                ? "Draw the 4-point area to enable"
-                                : "Improve measurements with Room Scan",
+                    subtitle: arAttached
+                        ? "AR scan attached ✓  Tap to rescan"
+                        : (projectId == nil)
+                            ? "Project will auto-create after photo"
+                            : (selectedUIImage == nil)
+                                ? "Add a photo first"
+                                : (measurementArea == nil)
+                                    ? "Draw the 4-point area to enable"
+                                    : "Improve measurements with Room Scan",
                     enabled: (selectedUIImage != nil) && (measurementArea != nil)
                 ) {
                     Task { @MainActor in
+                        arAttached = false
                         if projectId == nil { await ensureProjectAfterPhoto() }
                         guard projectId != nil else {
                             alert("Please add a photo and draw the 4-point area to continue.")
@@ -403,6 +407,9 @@ struct NewProjectView: View {
 
     @MainActor
     private func handleRoomPlanExport(_ fileURL: URL) async {
+        // Close AR sheet first so RealityKit stops rendering (prevents Metal validation crash)
+        showARSheet = false
+
         isLoading = true
         defer { isLoading = false }
         do {
@@ -410,6 +417,7 @@ struct NewProjectView: View {
             try await service.uploadARScan(projectId: pid, fileURL: fileURL)
             let fresh = try await service.fetchProject(projectId: pid)
             createdProject = fresh
+            arAttached = true
             alert("AR scan attached to your project ✅")
         } catch {
             alert("Failed to attach AR scan: \(error.localizedDescription)")

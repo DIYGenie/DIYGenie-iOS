@@ -37,6 +37,7 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
         let captureView = RoomCaptureView()
         private var hasExported = false
         private var shouldExport = true
+        private var isRunning = false
 
         private let closeButton = UIButton(type: .system)
         private let finishButton = UIButton(type: .system)
@@ -84,33 +85,29 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
             }
             finishButton.addTarget(self, action: #selector(finishTapped), for: .touchUpInside)
             finishButton.translatesAutoresizingMaskIntoConstraints = false
+        }
 
-            view.addSubview(closeButton)
-            view.addSubview(finishButton)
-
-            NSLayoutConstraint.activate([
-                // Close: top-left with safe area
-                closeButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
-                closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
-                closeButton.widthAnchor.constraint(equalToConstant: 40),
-                closeButton.heightAnchor.constraint(equalToConstant: 40),
-
-                // Finish: bottom-center with safe area
-                finishButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-                finishButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16)
-            ])
+        private func startSessionIfNeeded() {
+            guard !isRunning else { return }
+            let config = RoomCaptureSession.Configuration()
+            captureView.captureSession.run(configuration: config)
+            isRunning = true
+            print("[ARRoomPlan] Session started")
         }
 
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
             // Start after presentation to avoid zero-sized layer issues
-            let config = RoomCaptureSession.Configuration()
-            captureView.captureSession.run(configuration: config)
+            startSessionIfNeeded()
         }
 
         override func viewWillDisappear(_ animated: Bool) {
             super.viewWillDisappear(animated)
-            captureView.captureSession.stop()
+            if isRunning {
+                captureView.captureSession.stop()
+                isRunning = false
+                print("[ARRoomPlan] Session stopped")
+            }
         }
 
         // Live updates if desired
@@ -126,8 +123,9 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
                 .appendingPathComponent("scan-\(UUID().uuidString).usdz")
             do {
                 try room.export(to: tmp)
-                DispatchQueue.main.async { [weak self] in
-                    // Hand result back to SwiftUI; SwiftUI will close the sheet.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) { [weak self] in
+                    // Hand result back to SwiftUI after a brief delay; SwiftUI will close the sheet.
+                    print("[ARRoomPlan] Exported USDZ to: \(tmp.path)")
                     self?.coordinator.onExport(tmp)
                 }
             } catch {
@@ -137,7 +135,11 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
 
         @objc private func closeTapped() {
             shouldExport = false
-            captureView.captureSession.stop()
+            if isRunning {
+                captureView.captureSession.stop()
+                isRunning = false
+                print("[ARRoomPlan] Session stopped")
+            }
             dismiss(animated: true)
         }
 
@@ -145,7 +147,11 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
             let generator = UIImpactFeedbackGenerator(style: .medium)
             generator.impactOccurred()
             shouldExport = true
-            captureView.captureSession.stop() // triggers didEndWith
+            if isRunning {
+                captureView.captureSession.stop() // triggers didEndWith
+                isRunning = false
+                print("[ARRoomPlan] Session stopped")
+            }
         }
     }
 
