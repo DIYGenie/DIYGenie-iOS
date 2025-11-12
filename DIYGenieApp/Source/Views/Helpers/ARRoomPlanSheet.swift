@@ -116,10 +116,9 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
                 .appendingPathComponent("scan-\(UUID().uuidString).usdz")
             do {
                 try room.export(to: tmp)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                    // Hand result back to SwiftUI, then dismiss our controller
+                DispatchQueue.main.async { [weak self] in
+                    // Hand result back to SwiftUI; SwiftUI will close the sheet.
                     self?.coordinator.onExport(tmp)
-                    self?.dismiss(animated: true)
                 }
             } catch {
                 print("Export failed:", error.localizedDescription)
