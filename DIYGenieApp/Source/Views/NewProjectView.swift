@@ -13,6 +13,8 @@ import RoomPlan
 struct NewProjectView: View {
 
     // MARK: - Services
+    // Callback to notify parent when a project is created
+    var onFinished: ((Project) -> Void)? = nil
     private let service = ProjectsService(
         userId: UserDefaults.standard.string(forKey: "user_id") ?? UUID().uuidString
     )
@@ -43,7 +45,6 @@ struct NewProjectView: View {
     // MARK: - Created / nav
     @State private var projectId: String?
     @State private var createdProject: Project?
-    @State private var navPath = NavigationPath()
 
     // MARK: - BG
     private var background: some View {
@@ -53,16 +54,9 @@ struct NewProjectView: View {
     }
 
     var body: some View {
-        NavigationStack(path: $navPath) {
-            ZStack {
-                background
-                form
-            }
-            .navigationDestination(for: String.self) { route in
-                if route == "projectDetail", let p = createdProject {
-                    ProjectDetailsView(project: p)
-                }
-            }
+        ZStack {
+            background
+            form
         }
         // Photo Library
         .sheet(isPresented: $isShowingLibrary) {
@@ -382,10 +376,10 @@ struct NewProjectView: View {
                 try await service.generatePlanOnly(projectId: created.id)
             }
 
-            // 5) Fetch + nav
+            // 5) Fetch + notify parent
             let fresh = try await service.fetchProject(projectId: created.id)
             createdProject = fresh
-            navPath.append("projectDetail")
+            onFinished?(fresh)
 
         } catch {
             alert("Failed to create project: \(error.localizedDescription)")

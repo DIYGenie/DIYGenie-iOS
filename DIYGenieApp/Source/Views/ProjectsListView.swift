@@ -17,65 +17,63 @@ struct ProjectsListView: View {
     @State private var showError = false
     @State private var errorText = ""
     
-    var body: some View {
-        NavigationStack {
-            Group {
-                if isLoading && projects.isEmpty {
-                    ProgressView().tint(.white)
-                } else if projects.isEmpty {
-                    VStack(spacing: 12) {
-                        Text("No projects yet")
-                            .font(.headline)
-                            .foregroundColor(Color("TextPrimary"))
-                        Text("Create your first DIY Genie project to get started.")
-                            .font(.subheadline)
-                            .foregroundColor(Color("TextSecondary"))
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    List {
-                        ForEach(projects, id: \.id) { p in
-                            NavigationLink {
-                                ProjectDetailsView(project: p)
-                            } label: {
-                                ProjectCard(project: p)
-                            }
-                            .listRowBackground(Color.clear)
-                        }
-                    }
-                    .listStyle(.plain)
-                }
+var body: some View {
+    Group {
+        if isLoading && projects.isEmpty {
+            ProgressView().tint(.white)
+        } else if projects.isEmpty {
+            VStack(spacing: 12) {
+                Text("No projects yet")
+                    .font(.headline)
+                    .foregroundColor(Color("TextPrimary"))
+                Text("Create your first DIY Genie project to get started.")
+                    .font(.subheadline)
+                    .foregroundColor(Color("TextSecondary"))
             }
-            .navigationTitle("Projects")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        refresh()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            List {
+                ForEach(projects, id: \.id) { p in
+                    NavigationLink {
+                        ProjectDetailsView(project: p)
                     } label: {
-                        Image(systemName: "arrow.clockwise")
+                        ProjectCard(project: p)
                     }
-                    .disabled(isLoading)
+                    .listRowBackground(Color.clear)
                 }
             }
-            .task {
-                // initial load (cancellable)
-                refresh()
-            }
-            .refreshable {
-                refresh()
-            }
-            .alert("Error", isPresented: $showError) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(errorText)
-            }
-            .background(
-                LinearGradient(gradient: Gradient(colors: [Color("BGStart"), Color("BGEnd")]),
-                               startPoint: .topLeading, endPoint: .bottomTrailing)
-                .ignoresSafeArea()
-            )
+            .listStyle(.plain)
         }
     }
+    .navigationTitle("Projects")
+    .toolbar {
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Button {
+                refresh()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .disabled(isLoading)
+        }
+    }
+    .task {
+        // initial load (cancellable)
+        refresh()
+    }
+    .refreshable {
+        refresh()
+    }
+    .alert("Error", isPresented: $showError) {
+        Button("OK", role: .cancel) {}
+    } message: {
+        Text(errorText)
+    }
+    .background(
+        LinearGradient(gradient: Gradient(colors: [Color("BGStart"), Color("BGEnd")]),
+                       startPoint: .topLeading, endPoint: .bottomTrailing)
+        .ignoresSafeArea()
+    )
+}
     
     // MARK: - Loading
     private func refresh() {
