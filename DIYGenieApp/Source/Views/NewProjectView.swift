@@ -316,7 +316,7 @@ struct NewProjectView: View {
                     }
                     .disabled(!isValid || isLoading)
 
-                    secondaryCTA(title: "Create Plan Only (no preview)") {
+                    secondaryCTA(title: "Create Plan Only (No Preview)") {
                         Task { await createAndNavigate(wantsPreview: false) }
                     }
                     .disabled(!isValid || isLoading)
@@ -336,13 +336,21 @@ struct NewProjectView: View {
     // MARK: - Derived
     private var isValid: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty &&
-        !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        selectedUIImage != nil
     }
 
     // MARK: - Actions
     @MainActor
     private func createAndNavigate(wantsPreview: Bool) async {
-        guard isValid else { return alert("Please complete name and goal.") }
+        guard isValid else {
+            if selectedUIImage == nil {
+                alert("Please add at least one room photo before continuing.")
+            } else {
+                alert("Please complete name and goal.")
+            }
+            return
+        }
         isLoading = true
         defer { isLoading = false }
 
