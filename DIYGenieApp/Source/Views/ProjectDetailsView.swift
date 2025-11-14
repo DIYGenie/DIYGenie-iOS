@@ -7,195 +7,51 @@ import SwiftUI
 
 struct ProjectDetailsView: View {
     let project: Project
-    @State private var plan: PlanResponse?
-    @State private var showingPreview = true
-    @State private var alertMessage = ""
-    @State private var showAlert = false
-    @State private var isLoading = false
-
-    private let service = ProjectsService(
-        userId: UserDefaults.standard.string(forKey: "user_id") ?? UUID().uuidString
-    )
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-
-                // MARK: - Header
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(project.name)
-                        .font(.largeTitle.bold())
-                        .foregroundColor(.white)
-
-                    Text(project.goal ?? "No description provided.")
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.7))
-                }
-                .padding(.horizontal, 20)
-
-                // MARK: - Image Preview
-                if let imageURL = currentImageURL {
-                    AsyncImage(url: imageURL) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFit()
-                                .cornerRadius(16)
-                                .shadow(radius: 6)
-                        case .failure(_):
-                            placeholderImage("Failed to load image")
-                        default:
-                            ProgressView().tint(.white)
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                } else {
-                    placeholderImage("No image available")
-                }
-
-                // MARK: - Plan Content
-                if let plan = plan {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("AI Project Plan")
-                            .font(.title3.bold())
-                            .foregroundColor(.white)
-
-                        if let summary = plan.summary {
-                            Text(summary)
-                                .foregroundColor(.white.opacity(0.9))
-                        }
-
-                        if !plan.steps.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                ForEach(plan.steps, id: \.self) { step in
-                                    Text("• \(step)")
-                                        .foregroundColor(.white.opacity(0.9))
-                                }
-                            }
-                        }
-
-                        if !plan.materials.isEmpty {
-                            Text("Materials: \(plan.materials.joined(separator: ", "))")
-                                .foregroundColor(.white.opacity(0.8))
-                        }
-
-                        if !plan.tools.isEmpty {
-                            Text("Tools: \(plan.tools.joined(separator: ", "))")
-                                .foregroundColor(.white.opacity(0.8))
-                        }
-
-                        if let cost = plan.estimatedCost {
-                            Text("Estimated Cost: $\(Int(cost))")
-                                .foregroundColor(.white)
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                } else {
-                    VStack {
-                        if isLoading {
-                            ProgressView("Loading Plan...")
-                                .tint(.white)
-                        } else {
-                            Button {
-                                Task { await loadPlan() }
-                            } label: {
-                                primaryButton("Load AI Plan")
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                }
-            }
-            .padding(.vertical, 24)
-        }
-        .background(
-            LinearGradient(colors: [
-                Color(red: 28/255, green: 26/255, blue: 40/255),
-                Color(red: 60/255, green: 35/255, blue: 126/255)
-            ], startPoint: .topLeading, endPoint: .bottomTrailing)
+        ZStack {
+            // Match the NewProjectView gradient-style background so it isn't just black
+            LinearGradient(
+                gradient: Gradient(colors: [Color("BGStart"), Color("BGEnd")]),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
             .ignoresSafeArea()
-        )
-        .task {
-            await loadPlan()
+
+            ScrollView {
+                VStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(project.name)
+                            .font(.largeTitle.bold())
+                            .foregroundColor(.white)
+                        if let goal = project.goal, !goal.isEmpty {
+                            Text(goal)
+                                .foregroundColor(Color.white.opacity(0.8))
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        if let budget = project.budget {
+                            Text("Budget: \(budget)")
+                        }
+                        if let skill = project.skillLevel {
+                            Text("Skill level: \(skill)")
+                        }
+                        Text("Project ID: \(project.id)")
+                            .font(.footnote)
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(Color.white.opacity(0.08))
+                    .cornerRadius(16)
+
+                    Spacer(minLength: 40)
+                }
+                .padding(18)
+            }
         }
-        .alert("Status", isPresented: $showAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(alertMessage)
-        }
-    }
-
-    // MARK: - Computed: Image URL
-    private var currentImageURL: URL? {
-        if showingPreview, let urlString = project.preview_url, let url = URL(string: urlString) {
-            return url
-        } else if let urlString = project.input_image_url, let url = URL(string: urlString) {
-            return url
-        }
-        return nil
-    }
-
-    // MARK: - Helpers
-    @MainActor
-    private func loadPlan() async {
-        let id = project.id
-        isLoading = true
-        do {
-            let result = try await service.fetchPlan(projectId: id)
-            self.plan = result
-            alertMessage = "Plan loaded successfully ✅"
-        } catch {
-            alertMessage = "Failed to load plan: \(error.localizedDescription)"
-        }
-        isLoading = false
-        showAlert = true
-    }
-
-
-    // MARK: - UI Helpers
-    private func placeholderImage(_ text: String) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: 40))
-                .foregroundColor(.white.opacity(0.5))
-            Text(text)
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.6))
-        }
-        .frame(maxWidth: .infinity, minHeight: 180)
-        .background(Color.white.opacity(0.08))
-        .cornerRadius(16)
-        .padding(.horizontal, 20)
-    }
-
-    private func primaryButton(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 18, weight: .bold))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(
-                LinearGradient(colors: [
-                    Color(red: 115/255, green: 73/255, blue: 224/255),
-                    Color(red: 146/255, green: 86/255, blue: 255/255)
-                ], startPoint: .leading, endPoint: .trailing)
-            )
-            .foregroundColor(.white)
-            .cornerRadius(16)
-            .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
-    }
-
-    private func secondaryButton(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 17, weight: .semibold))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 15)
-            .background(Color.white.opacity(0.08))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
-            )
-            .foregroundColor(.white)
-            .cornerRadius(14)
     }
 }

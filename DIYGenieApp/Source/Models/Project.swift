@@ -90,4 +90,3 @@ public struct Project: Codable, Identifiable, Hashable {
         case isDemo              = "is_demo"
     }
 }
-
