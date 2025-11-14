@@ -90,3 +90,49 @@ public struct Project: Codable, Identifiable, Hashable {
         case isDemo              = "is_demo"
     }
 }
+
+extension Project {
+    func replacing(updatedAt: String? = nil,
+                   previewURL: String? = nil,
+                   inputImageURL: String? = nil,
+                   planJson: PlanResponse? = nil,
+                   completedSteps: [Int]? = nil,
+                   currentStepIndex: Int? = nil,
+                   previewStatus: String? = nil,
+                   previewMeta: [String: AnyCodable]? = nil) -> Project {
+        Project(
+            id: id,
+            userId: userId,
+            name: name,
+            goal: goal,
+            budget: budget,
+            budgetTier: budgetTier,
+            skillLevel: skillLevel,
+            status: status,
+            createdAt: createdAt,
+            updatedAt: updatedAt ?? self.updatedAt,
+            preview_url: previewURL ?? self.preview_url,
+            input_image_url: inputImageURL ?? self.input_image_url,
+            arProvider: arProvider,
+            arConfidence: arConfidence,
+            scalePxPerIn: scalePxPerIn,
+            calibrationMethod: calibrationMethod,
+            referenceObject: referenceObject,
+            roomType: roomType,
+            scanJson: scanJson,
+            dimensionsJson: dimensionsJson,
+            floorplanSvg: floorplanSvg,
+            deviceModel: deviceModel,
+            osVersion: osVersion,
+            appVersion: appVersion,
+            scanAt: scanAt,
+            isTest: isTest,
+            planJson: planJson ?? self.planJson,
+            completedSteps: completedSteps ?? self.completedSteps,
+            currentStepIndex: currentStepIndex ?? self.currentStepIndex,
+            previewStatus: previewStatus ?? self.previewStatus,
+            previewMeta: previewMeta ?? self.previewMeta,
+            isDemo: isDemo
+        )
+    }
+}

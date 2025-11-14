@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ProjectCard: View {
     let project: Project
@@ -14,19 +15,28 @@ struct ProjectCard: View {
         VStack(alignment: .leading, spacing: 10) {
             // Thumbnail (Preview Image)
             if let url = thumbnailURL {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(height: 160)
-                            .clipped()
-                            .cornerRadius(16)
-                    case .failure(_):
-                        placeholder
-                    default:
-                        placeholderProgress
+                if url.isFileURL, let image = UIImage(contentsOfFile: url.path) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(height: 160)
+                        .clipped()
+                        .cornerRadius(16)
+                } else {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(height: 160)
+                                .clipped()
+                                .cornerRadius(16)
+                        case .failure(_):
+                            placeholder
+                        default:
+                            placeholderProgress
+                        }
                     }
                 }
             } else {
