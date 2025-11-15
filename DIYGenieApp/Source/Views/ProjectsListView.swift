@@ -8,7 +8,7 @@ import SwiftUI
 struct ProjectsListView: View {
     // MARK: - Services / State
     private let service = ProjectsService(
-        userId: UserDefaults.standard.string(forKey: "user_id") ?? UUID().uuidString
+        userId: UserSession.currentUserID()
     )
     
     @State private var projects: [Project] = []

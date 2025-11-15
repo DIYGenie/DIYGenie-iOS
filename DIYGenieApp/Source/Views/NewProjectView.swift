@@ -14,7 +14,7 @@ struct NewProjectView: View {
 
     // MARK: - Services
     private let service = ProjectsService(
-        userId: UserDefaults.standard.string(forKey: "user_id") ?? UUID().uuidString
+        userId: UserSession.currentUserID()
     )
 
     // MARK: - Form state
@@ -39,6 +39,7 @@ struct NewProjectView: View {
     @State private var alertMessage = ""
     @State private var showAlert = false
     @State private var arAttached = false
+    @State private var arScanFilename: String?
 
     // MARK: - Created / nav
     @State private var projectId: String?
@@ -172,22 +173,24 @@ struct NewProjectView: View {
                 // Budget
                 sectionCard {
                     sectionLabel("BUDGET")
-                    HStack(spacing: 10) {
+                    HStack(spacing: 12) {
                         ForEach(Array(BudgetSelection.allCases), id: \.self) { opt in
                             pill(opt.label, isOn: budget == opt) { budget = opt }
                         }
                     }
+                    .frame(maxWidth: .infinity)
                     helper("Your project budget range.")
                 }
 
                 // Skill
                 sectionCard {
                     sectionLabel("SKILL LEVEL")
-                    HStack(spacing: 10) {
+                    HStack(spacing: 12) {
                         ForEach(Array(SkillSelection.allCases), id: \.self) { opt in
                             pill(opt.label, isOn: skill == opt) { skill = opt }
                         }
                     }
+                    .frame(maxWidth: .infinity)
                     helper("Your current DIY experience.")
                 }
 
@@ -231,6 +234,7 @@ struct NewProjectView: View {
                                         .font(.subheadline.weight(.semibold))
                                         .foregroundColor(Color("Accent"))
                                     }
+                                    .buttonStyle(.plain)
                                 }
                             }
                             Spacer()
@@ -278,6 +282,7 @@ struct NewProjectView: View {
                 ) {
                     Task { @MainActor in
                         arAttached = false
+                        arScanFilename = nil
                         if projectId == nil { await ensureProjectAfterPhoto() }
                         guard projectId != nil else {
                             alert("Please add a photo and draw the 4-point area to continue.")
@@ -314,6 +319,83 @@ struct NewProjectView: View {
                 }
 
                 helper("Add a photo + Select Area to Enable AR Scan")
+
+                if arAttached {
+                    sectionCard {
+                        HStack(alignment: .top, spacing: 14) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color("Accent").opacity(0.18))
+                                    .frame(width: 52, height: 52)
+                                Image(systemName: "checkmark.seal.fill")
+                                    .font(.system(size: 24, weight: .semibold))
+                                    .foregroundStyle(Color("Accent"))
+                            }
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("3D room scan saved")
+                                    .font(.headline)
+                                    .foregroundColor(Color("TextPrimary"))
+
+                                if let project = createdProject {
+                                    Text("Attached to: \(project.name)")
+                                        .font(.subheadline)
+                                        .foregroundColor(Color("TextSecondary"))
+                                }
+
+                                if let filename = arScanFilename {
+                                    Text("File: \(filename)")
+                                        .font(.footnote.monospaced())
+                                        .foregroundColor(Color("TextSecondary"))
+                                }
+
+                                Text("Rescan any time to update measurements.")
+                                    .font(.footnote)
+                                    .foregroundColor(Color("TextSecondary"))
+
+                                HStack(spacing: 12) {
+                                    if createdProject != nil {
+                                        Button {
+                                            navPath = NavigationPath()
+                                            navPath.append("projectDetail")
+                                        } label: {
+                                            Label("Open project", systemImage: "doc.text.magnifyingglass")
+                                                .font(.subheadline.weight(.semibold))
+                                                .foregroundColor(Color("Accent"))
+                                                .padding(.horizontal, 14)
+                                                .padding(.vertical, 10)
+                                                .background(
+                                                    RoundedRectangle(cornerRadius: 14)
+                                                        .fill(Color("Accent").opacity(0.18))
+                                                )
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+
+                                    Button {
+                                        arAttached = false
+                                        arScanFilename = nil
+                                        showARSheet = true
+                                    } label: {
+                                        Label("Rescan", systemImage: "arrow.clockwise")
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundColor(Color("TextPrimary"))
+                                            .padding(.horizontal, 14)
+                                            .padding(.vertical, 10)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 14)
+                                                    .stroke(Color("SurfaceStroke"), lineWidth: 1)
+                                                    .fill(Color.white.opacity(0.05))
+                                            )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
 
                 // CTAs
                 VStack(spacing: 12) {
@@ -393,6 +475,7 @@ struct NewProjectView: View {
             // 5) Fetch + nav
             let fresh = try await service.fetchProject(projectId: created.id)
             createdProject = fresh
+            navPath = NavigationPath()
             navPath.append("projectDetail")
 
         } catch {
@@ -425,6 +508,13 @@ struct NewProjectView: View {
             try await service.uploadARScan(projectId: pid, fileURL: fileURL)
             let fresh = try await service.fetchProject(projectId: pid)
             createdProject = fresh
+            if let localScan = fresh.previewMeta?["local_scan"]?.value as? [String: Any],
+               let fileString = localScan["file_url"] as? String,
+               let savedURL = URL(string: fileString) {
+                arScanFilename = savedURL.lastPathComponent
+            } else {
+                arScanFilename = fileURL.lastPathComponent
+            }
             arAttached = true
             alert("AR scan attached to your project ✅")
         } catch {
@@ -475,11 +565,26 @@ private func pill(_ title: String, isOn: Bool, action: @escaping () -> Void) -> 
     Button(action: action) {
         Text(title)
             .font(.headline.weight(.semibold))
-            .foregroundColor(.white)
-            .padding(.horizontal, 18).padding(.vertical, 10)
-            .background(isOn ? Color("Accent") : Color.white.opacity(0.08))
-            .cornerRadius(14)
+            .foregroundColor(isOn ? Color.white : Color("TextPrimary"))
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(isOn
+                          ? LinearGradient(colors: [Color("Accent"), Color("Accent").opacity(0.75)], startPoint: .leading, endPoint: .trailing)
+                          : Color.white.opacity(0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(isOn ? Color("Accent") : Color.white.opacity(0.22), lineWidth: isOn ? 2 : 1)
+            )
+            .shadow(color: Color("Accent").opacity(isOn ? 0.35 : 0.0), radius: isOn ? 12 : 0, x: 0, y: isOn ? 6 : 0)
+            .animation(.easeInOut(duration: 0.18), value: isOn)
     }
+    .buttonStyle(.plain)
+    .frame(maxWidth: .infinity)
+    .contentShape(RoundedRectangle(cornerRadius: 18))
 }
 
 @ViewBuilder

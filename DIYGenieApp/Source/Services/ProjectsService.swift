@@ -18,6 +18,7 @@ struct ProjectsService {
     private let session: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
+    private let localStore = LocalProjectsStore.shared
 
     init(userId: String, session: URLSession = .shared) {
         self.userId = userId
@@ -36,6 +37,126 @@ struct ProjectsService {
 
     // MARK: - Create
     func createProject(name: String, goal: String, budget: String, skillLevel: String) async throws -> Project {
+        do {
+            return try await createProjectRemote(name: name, goal: goal, budget: budget, skillLevel: skillLevel)
+        } catch {
+            print("⚠️ Falling back to local project creation: \(error.localizedDescription)")
+            do {
+                return try await localStore.createProject(userId: userId, name: name, goal: goal, budget: budget, skillLevel: skillLevel)
+            } catch {
+                throw mapStoreError(error)
+            }
+        }
+    }
+
+    // MARK: - Fetch
+    func fetchProjects() async throws -> [Project] {
+        do {
+            return try await fetchProjectsRemote()
+        } catch {
+            print("⚠️ Falling back to local projects list: \(error.localizedDescription)")
+            return await localStore.fetchProjects(for: userId)
+        }
+    }
+
+    func fetchProject(projectId: String) async throws -> Project {
+        do {
+            return try await fetchProjectRemote(projectId: projectId)
+        } catch {
+            print("⚠️ Falling back to local project fetch: \(error.localizedDescription)")
+            do {
+                return try await localStore.fetchProject(id: projectId)
+            } catch {
+                throw mapStoreError(error)
+            }
+        }
+    }
+
+    // MARK: - Uploads
+    @discardableResult
+    func uploadImage(projectId: String, image: UIImage) async throws -> Project {
+        guard let jpeg = image.jpegData(compressionQuality: 0.85) else {
+            throw ServiceError.decodeFailed
+        }
+        do {
+            return try await uploadImageRemote(projectId: projectId, jpeg: jpeg)
+        } catch {
+            print("⚠️ Falling back to local photo save: \(error.localizedDescription)")
+            do {
+                return try await localStore.saveImage(projectId: projectId, data: jpeg)
+            } catch {
+                throw mapStoreError(error)
+            }
+        }
+    }
+
+    func uploadARScan(projectId: String, fileURL: URL) async throws {
+        do {
+            try await uploadARScanRemote(projectId: projectId, fileURL: fileURL)
+        } catch {
+            print("⚠️ Falling back to local AR scan save: \(error.localizedDescription)")
+            do {
+                try await localStore.saveARScan(projectId: projectId, fileURL: fileURL)
+            } catch {
+                throw mapStoreError(error)
+            }
+        }
+    }
+
+    // MARK: - Preview + Plan
+    func generatePreview(projectId: String) async throws -> Project {
+        do {
+            return try await generatePreviewRemote(projectId: projectId)
+        } catch {
+            print("⚠️ Falling back to local preview generation: \(error.localizedDescription)")
+            do {
+                return try await localStore.generatePlan(projectId: projectId, includePreview: true)
+            } catch {
+                throw mapStoreError(error)
+            }
+        }
+    }
+
+    @discardableResult
+    func generatePlanOnly(projectId: String) async throws -> Project {
+        do {
+            return try await generatePlanOnlyRemote(projectId: projectId)
+        } catch {
+            print("⚠️ Falling back to local plan generation: \(error.localizedDescription)")
+            do {
+                return try await localStore.generatePlan(projectId: projectId, includePreview: false)
+            } catch {
+                throw mapStoreError(error)
+            }
+        }
+    }
+
+    func attachCropRectIfAvailable(projectId: String, rect: CGRect) async {
+        let roi: [String: Any] = [
+            "x": Double(rect.origin.x),
+            "y": Double(rect.origin.y),
+            "w": Double(rect.size.width),
+            "h": Double(rect.size.height)
+        ]
+
+        let patch = SupabaseProjectUpdate(previewMeta: ["roi": AnyCodable(roi)])
+        if (try? await updateProject(id: projectId, patch: patch)) == nil {
+            try? await localStore.saveCropRect(projectId: projectId, rect: rect)
+        }
+    }
+}
+
+// MARK: - Private helpers
+private extension ProjectsService {
+    func mapStoreError(_ error: Error) -> Error {
+        guard let storeError = error as? LocalProjectsStore.StoreError else { return error }
+        switch storeError {
+        case .missingProject: return ServiceError.missingProject
+        case .failedToPersist: return ServiceError.invalidResponse
+        }
+    }
+
+    func createProjectRemote(name: String, goal: String, budget: String, skillLevel: String) async throws -> Project {
         let payload = CreateProjectPayload(
             userId: userId,
             name: name,
@@ -60,15 +181,13 @@ struct ProjectsService {
             throw ServiceError.decodeFailed
         }
 
-        // Ensure goal/skill level fields are persisted for downstream services.
         let patch = SupabaseProjectUpdate(goal: goal, skillLevel: skillLevel, budget: budget)
         _ = try await updateProject(id: id, patch: patch)
 
-        return try await fetchProject(projectId: id)
+        return try await fetchProjectRemote(projectId: id)
     }
 
-    // MARK: - Fetch
-    func fetchProjects() async throws -> [Project] {
+    func fetchProjectsRemote() async throws -> [Project] {
         var components = URLComponents(url: supabaseRESTPath("projects"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "select", value: "*"),
@@ -86,7 +205,7 @@ struct ProjectsService {
         return records.map { $0.toProject() }
     }
 
-    func fetchProject(projectId: String) async throws -> Project {
+    func fetchProjectRemote(projectId: String) async throws -> Project {
         var components = URLComponents(url: supabaseRESTPath("projects"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "select", value: "*"),
@@ -107,13 +226,7 @@ struct ProjectsService {
         return record.toProject()
     }
 
-    // MARK: - Uploads
-    @discardableResult
-    func uploadImage(projectId: String, image: UIImage) async throws -> Project {
-        guard let jpeg = image.jpegData(compressionQuality: 0.85) else {
-            throw ServiceError.decodeFailed
-        }
-
+    func uploadImageRemote(projectId: String, jpeg: Data) async throws -> Project {
         let boundary = "Boundary-\(UUID().uuidString)"
         var request = URLRequest(url: AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)/image"))
         request.httpMethod = "POST"
@@ -129,12 +242,11 @@ struct ProjectsService {
             throw ServiceError.invalidResponse
         }
 
-        // Some environments return { ok: true }, others include URLs. Decode loosely.
         _ = try? decoder.decode(UploadPhotoEnvelope.self, from: data)
-        return try await fetchProject(projectId: projectId)
+        return try await fetchProjectRemote(projectId: projectId)
     }
 
-    func uploadARScan(projectId: String, fileURL: URL) async throws {
+    func uploadARScanRemote(projectId: String, fileURL: URL) async throws {
         let data = try Data(contentsOf: fileURL)
         let path = "projects/\(projectId)/scans/\(UUID().uuidString).usdz"
         _ = try await uploadToStorage(bucket: "room-scans", path: path, data: data, contentType: "model/vnd.usdz+zip")
@@ -153,9 +265,7 @@ struct ProjectsService {
         }
     }
 
-    // MARK: - Preview + Plan
-    func generatePreview(projectId: String) async throws -> Project {
-        // Trigger Decor8 job
+    func generatePreviewRemote(projectId: String) async throws -> Project {
         var triggerRequest = URLRequest(url: AppConfig.apiBaseURL.appendingPathComponent("preview/decor8"))
         triggerRequest.httpMethod = "POST"
         triggerRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -166,7 +276,6 @@ struct ProjectsService {
             throw ServiceError.invalidResponse
         }
 
-        // Poll status a few times (stub returns instantly, live may take a few seconds)
         for attempt in 0..<8 {
             try await Task.sleep(nanoseconds: UInt64(0.75 * Double(NSEC_PER_SEC)))
             var components = URLComponents(url: AppConfig.apiBaseURL.appendingPathComponent("preview/status/\(projectId)"), resolvingAgainstBaseURL: false)!
@@ -177,10 +286,9 @@ struct ProjectsService {
             }
 
             if let status = try? decoder.decode(PreviewStatusEnvelope.self, from: data), status.status.lowercased() == "ready" {
-                // Fetch updated project and ensure plan exists.
-                let project = try await fetchProject(projectId: projectId)
+                let project = try await fetchProjectRemote(projectId: projectId)
                 if project.planJson == nil {
-                    return try await generatePlanOnly(projectId: projectId)
+                    return try await generatePlanOnlyRemote(projectId: projectId)
                 }
                 return project
             }
@@ -190,12 +298,11 @@ struct ProjectsService {
             }
         }
 
-        return try await fetchProject(projectId: projectId)
+        return try await fetchProjectRemote(projectId: projectId)
     }
 
-    @discardableResult
-    func generatePlanOnly(projectId: String) async throws -> Project {
-        let project = try await fetchProject(projectId: projectId)
+    func generatePlanOnlyRemote(projectId: String) async throws -> Project {
+        let project = try await fetchProjectRemote(projectId: projectId)
         let photoURL = project.inputImageURL ?? project.previewURL
         let payload = PlanTriggerPayload(photoUrl: photoURL, prompt: project.goal ?? project.name, measurements: project.dimensionsJson)
 
@@ -231,24 +338,9 @@ struct ProjectsService {
             return record.toProject()
         }
 
-        return try await fetchProject(projectId: projectId)
+        return try await fetchProjectRemote(projectId: projectId)
     }
 
-    func attachCropRectIfAvailable(projectId: String, rect: CGRect) async {
-        let roi: [String: Any] = [
-            "x": Double(rect.origin.x),
-            "y": Double(rect.origin.y),
-            "w": Double(rect.size.width),
-            "h": Double(rect.size.height)
-        ]
-
-        let patch = SupabaseProjectUpdate(previewMeta: ["roi": AnyCodable(roi)])
-        _ = try? await updateProject(id: projectId, patch: patch)
-    }
-}
-
-// MARK: - Private helpers
-private extension ProjectsService {
     func supabaseRESTPath(_ path: String) -> URL {
         AppConfig.supabaseURL.appendingPathComponent("rest/v1/").appendingPathComponent(path)
     }

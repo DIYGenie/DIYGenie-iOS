@@ -158,10 +158,10 @@ struct HomeView: View {
     }
     
     private func loadProjects() async {
-        guard let userId = UserDefaults.standard.string(forKey: "user_id") else { return }
+        let userId = UserSession.currentUserID()
         isLoading = true
         defer { isLoading = false }
-        
+
         let service = ProjectsService(userId: userId)
         do {
             let fetched = try await service.fetchProjects()
