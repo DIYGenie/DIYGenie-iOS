@@ -114,7 +114,7 @@ struct NewProjectView: View {
         .sheet(isPresented: $showARSheet) {
             if let pid = projectId {
                 if #available(iOS 17.0, *) {
-                    ARRoomPlanSheet(projectId: pid) { fileURL in
+                    ARRoomPlanSheet { fileURL in
                         Task { await handleRoomPlanExport(fileURL) }
                     }
                     .ignoresSafeArea()
