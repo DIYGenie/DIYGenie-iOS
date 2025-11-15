@@ -10,6 +10,7 @@
 
 import SwiftUI
 import UIKit
+import QuickLook
 #if canImport(RoomPlan)
 import RoomPlan
 #endif
@@ -44,16 +45,21 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
     }
 
     // MARK: - Nested VC
-    final class ARRoomPlanViewController: UIViewController, RoomCaptureViewDelegate, RoomCaptureSessionDelegate {
+    final class ARRoomPlanViewController: UIViewController, RoomCaptureViewDelegate, RoomCaptureSessionDelegate, QLPreviewControllerDataSource, QLPreviewControllerDelegate {
         var coordinator: Coordinator!
-        
+
         let captureView = RoomCaptureView()
         private var hasExported = false
         private var exportedURL: URL?
-        
+        private var previewItem: PreviewItem?
+
         private let closeButton = UIButton(type: .system)
         private let finishButton = UIButton(type: .system)
         private let confirmButton = UIButton(type: .system)
+        private let finishedStack = UIStackView()
+        private let finishedTitleLabel = UILabel()
+        private let finishedSubtitleLabel = UILabel()
+        private let viewScanButton = UIButton(type: .system)
         
         override func viewDidLoad() {
             super.viewDidLoad()
@@ -106,33 +112,69 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
             finishButton.contentEdgeInsets = UIEdgeInsets(top: 12, left: 18, bottom: 12, right: 18)
             finishButton.addTarget(self, action: #selector(finishTapped), for: .touchUpInside)
             finishButton.translatesAutoresizingMaskIntoConstraints = false
-            
-            confirmButton.setTitle("Confirm", for: .normal)
+
+            confirmButton.setTitle("Confirm Scan & Continue", for: .normal)
             confirmButton.setTitleColor(.white, for: .normal)
             confirmButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
             confirmButton.backgroundColor = UIColor.systemGreen.withAlphaComponent(0.92)
             confirmButton.layer.cornerRadius = 12
             confirmButton.contentEdgeInsets = UIEdgeInsets(top: 12, left: 24, bottom: 12, right: 24)
             confirmButton.translatesAutoresizingMaskIntoConstraints = false
-            confirmButton.alpha = 0
             confirmButton.isEnabled = false
+            confirmButton.alpha = 0.45
             confirmButton.addTarget(self, action: #selector(confirmTapped), for: .touchUpInside)
-            
+
+            finishedStack.axis = .vertical
+            finishedStack.alignment = .center
+            finishedStack.spacing = 8
+            finishedStack.translatesAutoresizingMaskIntoConstraints = false
+            finishedStack.alpha = 0
+
+            finishedTitleLabel.text = "Finished scan ready"
+            finishedTitleLabel.font = .boldSystemFont(ofSize: 18)
+            finishedTitleLabel.textColor = .white
+
+            finishedSubtitleLabel.text = "Preview and confirm to attach it and return to New Project."
+            finishedSubtitleLabel.font = .systemFont(ofSize: 14, weight: .medium)
+            finishedSubtitleLabel.textColor = UIColor.white.withAlphaComponent(0.85)
+            finishedSubtitleLabel.numberOfLines = 2
+            finishedSubtitleLabel.textAlignment = .center
+
+            viewScanButton.setTitle("View Finished Scan", for: .normal)
+            viewScanButton.setTitleColor(.white, for: .normal)
+            viewScanButton.titleLabel?.font = .boldSystemFont(ofSize: 16)
+            viewScanButton.backgroundColor = UIColor.white.withAlphaComponent(0.18)
+            viewScanButton.layer.cornerRadius = 10
+            viewScanButton.contentEdgeInsets = UIEdgeInsets(top: 10, left: 18, bottom: 10, right: 18)
+            viewScanButton.isEnabled = false
+            viewScanButton.alpha = 0.7
+            viewScanButton.addTarget(self, action: #selector(viewScanTapped), for: .touchUpInside)
+
+            finishedStack.addArrangedSubview(finishedTitleLabel)
+            finishedStack.addArrangedSubview(finishedSubtitleLabel)
+            finishedStack.addArrangedSubview(viewScanButton)
+
             view.addSubview(closeButton)
             view.addSubview(finishButton)
             view.addSubview(confirmButton)
-            
+            view.addSubview(finishedStack)
+
             NSLayoutConstraint.activate([
                 closeButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
                 closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
                 closeButton.widthAnchor.constraint(equalToConstant: 40),
                 closeButton.heightAnchor.constraint(equalToConstant: 40),
-                
+
                 finishButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
                 finishButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
-                
+
                 confirmButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-                confirmButton.bottomAnchor.constraint(equalTo: finishButton.topAnchor, constant: -12)
+                confirmButton.bottomAnchor.constraint(equalTo: finishButton.topAnchor, constant: -12),
+
+                finishedStack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                finishedStack.bottomAnchor.constraint(equalTo: confirmButton.topAnchor, constant: -16),
+                finishedStack.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 24),
+                finishedStack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -24)
             ])
         }
         
@@ -146,10 +188,14 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
             if exportedURL != nil {
                 exportedURL = nil
                 hasExported = false
+                previewItem = nil
                 UIView.animate(withDuration: 0.2) {
-                    self.confirmButton.alpha = 0
+                    self.finishedStack.alpha = 0
+                    self.confirmButton.alpha = 0.45
                 }
                 confirmButton.isEnabled = false
+                viewScanButton.isEnabled = false
+                viewScanButton.alpha = 0.7
                 finishButton.setTitle("Finish Scan", for: .normal)
                 let config = RoomCaptureSession.Configuration()
                 captureView.captureSession.run(configuration: config)
@@ -162,8 +208,17 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
         @objc private func confirmTapped() {
             guard let url = exportedURL else { return }
             confirmButton.isEnabled = false
+            confirmButton.alpha = 0.45
             coordinator.onExport(url)
             dismiss(animated: true)
+        }
+
+        @objc private func viewScanTapped() {
+            guard previewItem != nil else { return }
+            let previewController = QLPreviewController()
+            previewController.dataSource = self
+            previewController.delegate = self
+            present(previewController, animated: true)
         }
         
         // MARK: - RoomCaptureSessionDelegate
@@ -179,8 +234,12 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
                     self.exportedURL = nil
                     self.finishButton.isEnabled = true
                     self.confirmButton.isEnabled = false
+                    self.confirmButton.alpha = 0.45
+                    self.previewItem = nil
+                    self.viewScanButton.isEnabled = false
+                    self.viewScanButton.alpha = 0.7
                     UIView.animate(withDuration: 0.2) {
-                        self.confirmButton.alpha = 0
+                        self.finishedStack.alpha = 0
                     }
                     self.dismiss(animated: true)
                 }
@@ -195,11 +254,15 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
                 DispatchQueue.main.async { [weak self] in
                     guard let self = self else { return }
                     self.exportedURL = tmpURL
+                    self.previewItem = PreviewItem(url: tmpURL)
                     self.finishButton.setTitle("Rescan", for: .normal)
                     self.finishButton.isEnabled = true
                     self.confirmButton.isEnabled = true
+                    self.viewScanButton.isEnabled = true
                     UIView.animate(withDuration: 0.25) {
                         self.confirmButton.alpha = 1
+                        self.finishedStack.alpha = 1
+                        self.viewScanButton.alpha = 1
                     }
                 }
             } catch {
@@ -210,14 +273,36 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
                     self.exportedURL = nil
                     self.finishButton.isEnabled = true
                     self.confirmButton.isEnabled = false
+                    self.confirmButton.alpha = 0.45
+                    self.previewItem = nil
+                    self.viewScanButton.isEnabled = false
+                    self.viewScanButton.alpha = 0.7
                     UIView.animate(withDuration: 0.2) {
-                        self.confirmButton.alpha = 0
+                        self.finishedStack.alpha = 0
                     }
                     self.dismiss(animated: true)
                 }
             }
         }
-        
+
+        // MARK: - QLPreviewControllerDataSource
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
+            previewItem == nil ? 0 : 1
+        }
+
+        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
+            previewItem!
+        }
+
+        // MARK: - Preview helper
+        private final class PreviewItem: NSObject, QLPreviewItem {
+            let previewItemURL: URL?
+
+            init(url: URL) {
+                self.previewItemURL = url
+                super.init()
+            }
+        }
     }
 }
 #endif
