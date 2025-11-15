@@ -173,7 +173,7 @@ struct NewProjectView: View {
                 // Budget
                 sectionCard {
                     sectionLabel("BUDGET")
-                    HStack(spacing: 12) {
+                    VStack(spacing: 12) {
                         ForEach(Array(BudgetSelection.allCases), id: \.self) { opt in
                             pill(opt.label, isOn: budget == opt) { budget = opt }
                         }
@@ -185,7 +185,7 @@ struct NewProjectView: View {
                 // Skill
                 sectionCard {
                     sectionLabel("SKILL LEVEL")
-                    HStack(spacing: 12) {
+                    VStack(spacing: 12) {
                         ForEach(Array(SkillSelection.allCases), id: \.self) { opt in
                             pill(opt.label, isOn: skill == opt) { skill = opt }
                         }
@@ -565,7 +565,7 @@ private func pill(_ title: String, isOn: Bool, action: @escaping () -> Void) -> 
     Button(action: action) {
         Text(title)
             .font(.headline.weight(.semibold))
-            .foregroundColor(isOn ? Color.white : Color("TextPrimary"))
+            .foregroundColor(isOn ? Color.white : Color.white.opacity(0.85))
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
@@ -573,11 +573,11 @@ private func pill(_ title: String, isOn: Bool, action: @escaping () -> Void) -> 
                 RoundedRectangle(cornerRadius: 18)
                     .fill(isOn
                           ? LinearGradient(colors: [Color("Accent"), Color("Accent").opacity(0.75)], startPoint: .leading, endPoint: .trailing)
-                          : Color.white.opacity(0.08))
+                          : Color.white.opacity(0.12))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18)
-                    .stroke(isOn ? Color("Accent") : Color.white.opacity(0.22), lineWidth: isOn ? 2 : 1)
+                    .stroke(isOn ? Color("Accent") : Color.white.opacity(0.35), lineWidth: isOn ? 2 : 1)
             )
             .shadow(color: Color("Accent").opacity(isOn ? 0.35 : 0.0), radius: isOn ? 12 : 0, x: 0, y: isOn ? 6 : 0)
             .animation(.easeInOut(duration: 0.18), value: isOn)
