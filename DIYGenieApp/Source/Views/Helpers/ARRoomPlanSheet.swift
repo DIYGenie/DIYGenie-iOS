@@ -120,8 +120,8 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
             confirmButton.layer.cornerRadius = 12
             confirmButton.contentEdgeInsets = UIEdgeInsets(top: 12, left: 24, bottom: 12, right: 24)
             confirmButton.translatesAutoresizingMaskIntoConstraints = false
-            confirmButton.alpha = 0
-            confirmButton.isEnabled = false
+            confirmButton.alpha = 1
+            confirmButton.isEnabled = true
             confirmButton.addTarget(self, action: #selector(confirmTapped), for: .touchUpInside)
 
             finishedStack.axis = .vertical
@@ -185,31 +185,51 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
         }
         
         @objc private func finishTapped() {
+            // Stop live scanning
+            captureView.captureSession.stop()
+
+            // If we already exported, reset and allow rescan
             if exportedURL != nil {
                 exportedURL = nil
                 hasExported = false
                 previewItem = nil
+
                 UIView.animate(withDuration: 0.2) {
                     self.confirmButton.alpha = 0
                     self.finishedStack.alpha = 0
                 }
+
                 confirmButton.isEnabled = false
                 viewScanButton.isEnabled = false
                 viewScanButton.alpha = 0.7
                 finishButton.setTitle("Finish Scan", for: .normal)
+
                 let config = RoomCaptureSession.Configuration()
                 captureView.captureSession.run(configuration: config)
-            } else {
-                finishButton.isEnabled = false
-                captureView.captureSession.stop()
+                return
             }
+
+            // First export – let the session delegate handle export when it ends
+            finishButton.isEnabled = false
+            captureView.captureSession.stop()
         }
         
         @objc private func confirmTapped() {
-            guard let url = exportedURL else { return }
-            confirmButton.isEnabled = false
-            coordinator.onExport(url)
-            dismiss(animated: true)
+            // If we have an exported scan, attach it and return to New Project
+            if let url = exportedURL {
+                confirmButton.isEnabled = false
+                coordinator.onExport(url)
+                return
+            }
+
+            // If no export exists yet, guide the user instead of doing nothing
+            let alert = UIAlertController(
+                title: "Scan Not Ready",
+                message: "Tap \"Finish Scan\" first to capture the room, then tap \"Confirm\" to attach it to your project.",
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
+            present(alert, animated: true)
         }
 
         @objc private func viewScanTapped() {
@@ -224,11 +244,11 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
         func captureSession(_ session: RoomCaptureSession, didEndWith room: CapturedRoom, error: Error?) {
             guard !hasExported else { return }
             hasExported = true
-            
+
             if let error = error {
-                print("RoomPlan error: \(error.localizedDescription)")
-                DispatchQueue.main.async { [weak self] in
-                    guard let self = self else { return }
+                print("RoomPlan error:", error.localizedDescription)
+
+                DispatchQueue.main.async {
                     self.hasExported = false
                     self.exportedURL = nil
                     self.finishButton.isEnabled = true
@@ -236,28 +256,29 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
                     self.previewItem = nil
                     self.viewScanButton.isEnabled = false
                     self.viewScanButton.alpha = 0.7
+
                     UIView.animate(withDuration: 0.2) {
                         self.confirmButton.alpha = 0
                         self.finishedStack.alpha = 0
                     }
-                    self.dismiss(animated: true)
                 }
                 return
             }
-            
+
             let tmpURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("scan-\(UUID().uuidString).usdz")
-            
+
             do {
                 try room.export(to: tmpURL)
-                DispatchQueue.main.async { [weak self] in
-                    guard let self = self else { return }
+                DispatchQueue.main.async {
                     self.exportedURL = tmpURL
                     self.previewItem = PreviewItem(url: tmpURL)
+
                     self.finishButton.setTitle("Rescan", for: .normal)
                     self.finishButton.isEnabled = true
                     self.confirmButton.isEnabled = true
                     self.viewScanButton.isEnabled = true
+
                     UIView.animate(withDuration: 0.25) {
                         self.confirmButton.alpha = 1
                         self.finishedStack.alpha = 1
@@ -265,9 +286,9 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
                     }
                 }
             } catch {
-                print("Export failed: \(error.localizedDescription)")
-                DispatchQueue.main.async { [weak self] in
-                    guard let self = self else { return }
+                print("Export failed:", error.localizedDescription)
+
+                DispatchQueue.main.async {
                     self.hasExported = false
                     self.exportedURL = nil
                     self.finishButton.isEnabled = true
@@ -275,11 +296,11 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
                     self.previewItem = nil
                     self.viewScanButton.isEnabled = false
                     self.viewScanButton.alpha = 0.7
+
                     UIView.animate(withDuration: 0.2) {
                         self.confirmButton.alpha = 0
                         self.finishedStack.alpha = 0
                     }
-                    self.dismiss(animated: true)
                 }
             }
         }
