@@ -228,7 +228,6 @@ struct NewProjectView: View {
                                         .font(.subheadline.weight(.semibold))
                                         .foregroundColor(Color("Accent"))
                                     }
-                                    .buttonStyle(.plain)
                                 }
                             }
                             Spacer()
@@ -348,24 +347,6 @@ struct NewProjectView: View {
                                     .foregroundColor(Color("TextSecondary"))
 
                                 HStack(spacing: 12) {
-                                    if createdProject != nil {
-                                        Button {
-                                            navPath = NavigationPath()
-                                            navPath.append("projectDetail")
-                                        } label: {
-                                            Label("Open project", systemImage: "doc.text.magnifyingglass")
-                                                .font(.subheadline.weight(.semibold))
-                                                .foregroundColor(Color("Accent"))
-                                                .padding(.horizontal, 14)
-                                                .padding(.vertical, 10)
-                                                .background(
-                                                    RoundedRectangle(cornerRadius: 14)
-                                                        .fill(Color("Accent").opacity(0.18))
-                                                )
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-
                                     Button {
                                         arAttached = false
                                         arScanFilename = nil

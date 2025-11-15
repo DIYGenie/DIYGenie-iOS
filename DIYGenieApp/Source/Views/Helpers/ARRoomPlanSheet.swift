@@ -19,38 +19,47 @@ import RoomPlan
 struct ARRoomPlanSheet: UIViewControllerRepresentable {
     let projectId: String
     let onExport: (URL) -> Void
-
+    
     func makeCoordinator() -> Coordinator {
         Coordinator(onExport: onExport)
     }
-
+    
     func makeUIViewController(context: Context) -> ARRoomPlanViewController {
         let vc = ARRoomPlanViewController()
         vc.coordinator = context.coordinator
         return vc
     }
-
+    
     func updateUIViewController(_ uiViewController: ARRoomPlanViewController, context: Context) {
         // No dynamic updates needed for now.
+    }
+    
+    // MARK: - Coordinator
+    final class Coordinator {
+        let onExport: (URL) -> Void
+
+        init(onExport: @escaping (URL) -> Void) {
+            self.onExport = onExport
+        }
     }
 
     // MARK: - Nested VC
     final class ARRoomPlanViewController: UIViewController, RoomCaptureViewDelegate, RoomCaptureSessionDelegate {
         var coordinator: Coordinator!
-
+        
         let captureView = RoomCaptureView()
         private var hasExported = false
         private var exportedURL: URL?
-
+        
         private let closeButton = UIButton(type: .system)
         private let finishButton = UIButton(type: .system)
         private let confirmButton = UIButton(type: .system)
-
+        
         override func viewDidLoad() {
             super.viewDidLoad()
-
+            
             view.backgroundColor = .black
-
+            
             // Add capture view full-screen
             captureView.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(captureView)
@@ -60,26 +69,26 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
                 captureView.topAnchor.constraint(equalTo: view.topAnchor),
                 captureView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
             ])
-
+            
             captureView.delegate = self
             captureView.captureSession.delegate = self
-
+            
             setupOverlayUI()
         }
-
+        
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
             // Start RoomPlan session
             let config = RoomCaptureSession.Configuration()
             captureView.captureSession.run(configuration: config)
         }
-
+        
         override func viewWillDisappear(_ animated: Bool) {
             super.viewWillDisappear(animated)
             // Stop when leaving
             captureView.captureSession.stop()
         }
-
+        
         // MARK: - Overlay UI
         private func setupOverlayUI() {
             closeButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
@@ -88,7 +97,7 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
             closeButton.layer.cornerRadius = 20
             closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
             closeButton.translatesAutoresizingMaskIntoConstraints = false
-
+            
             finishButton.setTitle("Finish Scan", for: .normal)
             finishButton.setTitleColor(.white, for: .normal)
             finishButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
@@ -97,7 +106,7 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
             finishButton.contentEdgeInsets = UIEdgeInsets(top: 12, left: 18, bottom: 12, right: 18)
             finishButton.addTarget(self, action: #selector(finishTapped), for: .touchUpInside)
             finishButton.translatesAutoresizingMaskIntoConstraints = false
-
+            
             confirmButton.setTitle("Confirm", for: .normal)
             confirmButton.setTitleColor(.white, for: .normal)
             confirmButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
@@ -108,31 +117,31 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
             confirmButton.alpha = 0
             confirmButton.isEnabled = false
             confirmButton.addTarget(self, action: #selector(confirmTapped), for: .touchUpInside)
-
+            
             view.addSubview(closeButton)
             view.addSubview(finishButton)
             view.addSubview(confirmButton)
-
+            
             NSLayoutConstraint.activate([
                 closeButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
                 closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
                 closeButton.widthAnchor.constraint(equalToConstant: 40),
                 closeButton.heightAnchor.constraint(equalToConstant: 40),
-
+                
                 finishButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
                 finishButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16),
-
+                
                 confirmButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
                 confirmButton.bottomAnchor.constraint(equalTo: finishButton.topAnchor, constant: -12)
             ])
         }
-
+        
         // MARK: - Buttons
         @objc private func closeTapped() {
             captureView.captureSession.stop()
             dismiss(animated: true)
         }
-
+        
         @objc private func finishTapped() {
             if exportedURL != nil {
                 exportedURL = nil
@@ -149,19 +158,19 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
                 captureView.captureSession.stop()
             }
         }
-
+        
         @objc private func confirmTapped() {
             guard let url = exportedURL else { return }
             confirmButton.isEnabled = false
             coordinator.onExport(url)
             dismiss(animated: true)
         }
-
+        
         // MARK: - RoomCaptureSessionDelegate
         func captureSession(_ session: RoomCaptureSession, didEndWith room: CapturedRoom, error: Error?) {
             guard !hasExported else { return }
             hasExported = true
-
+            
             if let error = error {
                 print("RoomPlan error: \(error.localizedDescription)")
                 DispatchQueue.main.async { [weak self] in
@@ -177,10 +186,10 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
                 }
                 return
             }
-
+            
             let tmpURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("scan-\(UUID().uuidString).usdz")
-
+            
             do {
                 try room.export(to: tmpURL)
                 DispatchQueue.main.async { [weak self] in
@@ -208,13 +217,7 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
                 }
             }
         }
-
-        // MARK: - Coordinator
-        final class Coordinator {
-        let onExport: (URL) -> Void
-        init(onExport: @escaping (URL) -> Void) {
-            self.onExport = onExport
-        }
+        
     }
 }
 #endif
