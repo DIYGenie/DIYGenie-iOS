@@ -120,8 +120,8 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
             confirmButton.layer.cornerRadius = 12
             confirmButton.contentEdgeInsets = UIEdgeInsets(top: 12, left: 24, bottom: 12, right: 24)
             confirmButton.translatesAutoresizingMaskIntoConstraints = false
-            confirmButton.alpha = 1
-            confirmButton.isEnabled = true
+            confirmButton.alpha = 0
+            confirmButton.isEnabled = false
             confirmButton.addTarget(self, action: #selector(confirmTapped), for: .touchUpInside)
 
             finishedStack.axis = .vertical
@@ -215,21 +215,9 @@ struct ARRoomPlanSheet: UIViewControllerRepresentable {
         }
         
         @objc private func confirmTapped() {
-            // If we have an exported scan, attach it and return to New Project
-            if let url = exportedURL {
-                confirmButton.isEnabled = false
-                coordinator.onExport(url)
-                return
-            }
-
-            // If no export exists yet, guide the user instead of doing nothing
-            let alert = UIAlertController(
-                title: "Scan Not Ready",
-                message: "Tap \"Finish Scan\" first to capture the room, then tap \"Confirm\" to attach it to your project.",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
-            present(alert, animated: true)
+            guard let url = exportedURL else { return }
+            confirmButton.isEnabled = false
+            coordinator.onExport(url)
         }
 
         @objc private func viewScanTapped() {
