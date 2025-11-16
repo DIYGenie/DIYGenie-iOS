@@ -36,9 +36,7 @@ struct ProjectsService {
 
     // MARK: - Create
     func createProject(name: String, goal: String, budget: String, skillLevel: String) async throws -> Project {
-        // Backend historically enforced a minimum name length. To avoid brittle validation
-        // without forcing the user to type a long title, we synthesize a safe name that is
-        // at least 10 characters long using the goal as a fallback if needed.
+        // Normalize and harden the name so it always satisfies backend validation.
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -55,15 +53,12 @@ struct ProjectsService {
         if baseName.count >= 10 {
             safeName = baseName
         } else {
-            // Backend enforces a minimum length; instead of padding with spaces (which may
-            // be trimmed), append a short suffix so the stored name is always long enough
-            // without forcing the user to type extra characters.
+            // Append a short suffix rather than padding with spaces so the final value
+            // is always at least 10 characters even if the backend trims whitespace.
             safeName = baseName + " – DIY Genie"
         }
 
-        // Normalize skill level to match Supabase CHECK constraint values.
-        // We keep the semantic meaning (beginner/intermediate/advanced) but
-        // force a lowercase token that the database accepts.
+        // Normalize skill level into the lowercase tokens expected by the backend.
         let normalizedSkill: String
         switch skillLevel.lowercased() {
         case "beginner":
@@ -76,21 +71,18 @@ struct ProjectsService {
             normalizedSkill = "intermediate"
         }
 
-        // Directly insert into Supabase `projects` table via REST instead of using
-        // the Node/Express /api/projects helper. This keeps the iOS app decoupled
-        // from backend validation quirks while still writing the same data. For now
-        // we omit the skill level column to avoid the projects_skill_level_check
-        // constraint, but we still keep skillLevel in memory for AI prompts/UI.
-        let insertPayload = SupabaseProjectInsert(
+        let payload = CreateProjectPayload(
             userId: userId,
             name: safeName,
             goal: goal,
             budget: budget,
-            skillLevel: nil
+            skillLevel: normalizedSkill
         )
 
-        var request = try supabaseRequest(url: supabaseRESTPath("projects"), method: "POST")
-        request.httpBody = try encoder.encode(insertPayload)
+        var request = URLRequest(url: AppConfig.apiBaseURL.appendingPathComponent("api/projects"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(payload)
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
@@ -99,15 +91,17 @@ struct ProjectsService {
 
         guard (200..<300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? "<no body>"
-            print("[ProjectsService] createProject (Supabase insert) failed with status \(http.statusCode). Body: \(body)")
+            print("[ProjectsService] createProject failed with status \(http.statusCode). Body: \(body)")
             throw ServiceError.invalidResponse
         }
 
-        let records = try decoder.decode([SupabaseProjectRecord].self, from: data)
-        guard let record = records.first else {
-            throw ServiceError.decodeFailed
+        let envelope = try decoder.decode(CreateProjectEnvelope.self, from: data)
+        guard let id = envelope.projectId else {
+            throw ServiceError.missingProject
         }
-        return record.toProject()
+
+        // Fetch the full project record from Supabase so the app has a complete model.
+        return try await fetchProject(projectId: id)
     }
 
     // MARK: - Fetch
@@ -168,7 +162,13 @@ struct ProjectsService {
         request.httpBody = body
 
         let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        guard let http = response as? HTTPURLResponse else {
+            throw ServiceError.invalidResponse
+        }
+
+        guard (200..<300).contains(http.statusCode) else {
+            let bodyString = String(data: data, encoding: .utf8) ?? "<no body>"
+            print("[ProjectsService] uploadImage failed with status \(http.statusCode). Body: \(bodyString)")
             throw ServiceError.invalidResponse
         }
 
@@ -191,41 +191,69 @@ struct ProjectsService {
 
     // MARK: - Preview + Plan
     func generatePreview(projectId: String) async throws -> Project {
-        // Trigger Decor8 job
-        var triggerRequest = URLRequest(url: AppConfig.apiBaseURL.appendingPathComponent("preview/decor8"))
-        triggerRequest.httpMethod = "POST"
-        triggerRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        triggerRequest.httpBody = try encoder.encode(PreviewTriggerPayload(projectId: projectId))
+        // Start preview generation for this project via the webhooks API.
+        var components = URLComponents(
+            url: AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)/preview"),
+            resolvingAgainstBaseURL: false
+        )!
+        components.queryItems = [
+            URLQueryItem(name: "user_id", value: userId)
+        ]
 
-        let (_, triggerResponse) = try await session.data(for: triggerRequest)
-        guard let triggerHTTP = triggerResponse as? HTTPURLResponse, (200..<300).contains(triggerHTTP.statusCode) else {
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
             throw ServiceError.invalidResponse
         }
 
-        // Poll status a few times (stub returns instantly, live may take a few seconds)
-        for attempt in 0..<8 {
-            try await Task.sleep(nanoseconds: UInt64(0.75 * Double(NSEC_PER_SEC)))
-            var components = URLComponents(url: AppConfig.apiBaseURL.appendingPathComponent("preview/status/\(projectId)"), resolvingAgainstBaseURL: false)!
-            let statusRequest = URLRequest(url: components.url!)
-            let (data, response) = try await session.data(for: statusRequest)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        guard (200..<300).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "<no body>"
+            print("[ProjectsService] generatePreview trigger failed with status \(http.statusCode). Body: \(body)")
+            throw ServiceError.invalidResponse
+        }
+
+        // If the provider finishes synchronously, we may already be done.
+        if let envelope = try? decoder.decode(PreviewStatusEnvelope.self, from: data),
+           envelope.status.lowercased() == "done" {
+            return try await fetchProject(projectId: projectId)
+        }
+
+        // Otherwise poll the preview status endpoint until it's ready or we time out.
+        for _ in 0..<10 {
+            try await Task.sleep(nanoseconds: UInt64(0.8 * Double(NSEC_PER_SEC)))
+
+            var statusComponents = URLComponents(
+                url: AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)/preview/status"),
+                resolvingAgainstBaseURL: false
+            )!
+            statusComponents.queryItems = [
+                URLQueryItem(name: "user_id", value: userId)
+            ]
+
+            let statusRequest = URLRequest(url: statusComponents.url!)
+            let (statusData, statusResponse) = try await session.data(for: statusRequest)
+            guard let statusHTTP = statusResponse as? HTTPURLResponse,
+                  (200..<300).contains(statusHTTP.statusCode) else {
                 continue
             }
 
-            if let status = try? decoder.decode(PreviewStatusEnvelope.self, from: data), status.status.lowercased() == "ready" {
-                // Fetch updated project and ensure plan exists.
-                let project = try await fetchProject(projectId: projectId)
-                if project.planJson == nil {
-                    return try await generatePlanOnly(projectId: projectId)
-                }
-                return project
-            }
+            if let statusEnvelope = try? decoder.decode(PreviewStatusEnvelope.self, from: statusData) {
+                let normalized = statusEnvelope.status.lowercased()
 
-            if attempt == 7 {
-                break
+                if normalized == "done" {
+                    return try await fetchProject(projectId: projectId)
+                } else if normalized == "failed" {
+                    let body = String(data: statusData, encoding: .utf8) ?? "<no body>"
+                    print("[ProjectsService] generatePreview status failed. Body: \(body)")
+                    throw ServiceError.invalidResponse
+                }
             }
         }
 
+        // If we reach here the preview is still processing; return the latest project state.
         return try await fetchProject(projectId: projectId)
     }
 
@@ -233,15 +261,29 @@ struct ProjectsService {
     func generatePlanOnly(projectId: String) async throws -> Project {
         let project = try await fetchProject(projectId: projectId)
         let photoURL = project.inputImageURL ?? project.previewURL
-        let payload = PlanTriggerPayload(photoUrl: photoURL, prompt: project.goal ?? project.name, measurements: project.dimensionsJson)
+        let prompt = project.goal ?? project.name
+
+        // Build the payload using the PlanTriggerPayload DTO so we always
+        // emit both `photoUrl` and `photo_url` when an image is available.
+        let trigger = PlanTriggerPayload(
+            photoUrl: photoURL,
+            prompt: prompt,
+            measurements: nil
+        )
 
         var planRequest = URLRequest(url: AppConfig.apiBaseURL.appendingPathComponent("plan"))
         planRequest.httpMethod = "POST"
         planRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        planRequest.httpBody = try encoder.encode(payload)
+        planRequest.httpBody = try encoder.encode(trigger)
 
         let (data, response) = try await session.data(for: planRequest)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        guard let http = response as? HTTPURLResponse else {
+            throw ServiceError.invalidResponse
+        }
+
+        guard (200..<300).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "<no body>"
+            print("[ProjectsService] generatePlanOnly /plan failed with status \(http.statusCode). Body: \(body)")
             throw ServiceError.invalidResponse
         }
 
@@ -258,7 +300,13 @@ struct ProjectsService {
         updateRequest.httpBody = try encoder.encode(update)
 
         let (updateData, updateResponse) = try await session.data(for: updateRequest)
-        guard let updateHTTP = updateResponse as? HTTPURLResponse, (200..<300).contains(updateHTTP.statusCode) else {
+        guard let updateHTTP = updateResponse as? HTTPURLResponse else {
+            throw ServiceError.invalidResponse
+        }
+
+        guard (200..<300).contains(updateHTTP.statusCode) else {
+            let body = String(data: updateData, encoding: .utf8) ?? "<no body>"
+            print("[ProjectsService] generatePlanOnly Supabase update failed with status \(updateHTTP.statusCode). Body: \(body)")
             throw ServiceError.invalidResponse
         }
 
@@ -379,6 +427,7 @@ private struct SupabaseProjectInsert: Encodable {
         }
     }
 }
+
 private struct CreateProjectPayload: Encodable {
     let userId: String
     let name: String
@@ -437,6 +486,18 @@ private struct AttachScanPayload: Encodable {
 
 private struct PreviewTriggerPayload: Encodable {
     let projectId: String
+
+    private enum CodingKeys: String, CodingKey {
+        case projectId      // "projectId"
+        case project_id     // "project_id"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        // Send both camelCase and snake_case so the backend can read whichever it expects.
+        try container.encode(projectId, forKey: .projectId)
+        try container.encode(projectId, forKey: .project_id)
+    }
 }
 
 private struct PreviewStatusEnvelope: Decodable {
@@ -449,6 +510,29 @@ private struct PlanTriggerPayload: Encodable {
     let photoUrl: String?
     let prompt: String
     let measurements: [String: AnyCodable]?
+
+    private enum CodingKeys: String, CodingKey {
+        case photoUrl       // "photoUrl"
+        case photo_url      // "photo_url"
+        case prompt
+        case measurements
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        if let photoUrl {
+            // Send both keys so a backend looking for "photo_url" is satisfied,
+            // and any code using "photoUrl" still works.
+            try container.encode(photoUrl, forKey: .photoUrl)
+            try container.encode(photoUrl, forKey: .photo_url)
+        }
+
+        try container.encode(prompt, forKey: .prompt)
+        if let measurements {
+            try container.encode(measurements, forKey: .measurements)
+        }
+    }
 }
 
 private struct PlanEnvelope: Decodable {
