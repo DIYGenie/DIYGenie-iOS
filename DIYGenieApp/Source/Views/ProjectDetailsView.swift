@@ -76,6 +76,31 @@ struct ProjectDetailsView: View {
 
                     PlanSection(plan: project.planJson, completedSteps: project.completedSteps ?? [])
 
+                    // Full build plan button
+                    if project.planJson != nil {
+                        NavigationLink {
+                            DetailedBuildPlanView(
+                                plan: project.planJson,
+                                completedSteps: project.completedSteps ?? []
+                            )
+                        } label: {
+                            Text("Open full build plan")
+                                .font(.headline.weight(.semibold))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 18)
+                                        .fill(Color("Accent"))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 18)
+                                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                        )
+                                )
+                        }
+                        .padding(.top, 8)
+                    }
+
                     Spacer(minLength: 32)
                 }
                 .padding(18)

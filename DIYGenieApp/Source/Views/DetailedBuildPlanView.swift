@@ -19,11 +19,9 @@ struct DetailedBuildPlanView: View {
     var body: some View {
         ZStack {
             LinearGradient(
-                colors: [
-                    Color(red: 28/255, green: 26/255, blue: 40/255),
-                    Color(red: 58/255, green: 35/255, blue: 110/255)
-                ],
-                startPoint: .top, endPoint: .bottom
+                gradient: Gradient(colors: [Color("BGStart"), Color("BGEnd")]),
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
 
@@ -38,7 +36,7 @@ struct DetailedBuildPlanView: View {
                         }
 
                         // MARK: - Title & Overview
-                        Text((plan.summary?.isEmpty == false ? plan.summary! : "Detailed Build Plan"))
+                        Text("Detailed Build Plan")
                             .font(.system(size: 30, weight: .bold))
                             .foregroundColor(.white)
 
@@ -193,4 +191,3 @@ private struct StepCard: View {
         .cornerRadius(12)
     }
 }
-
