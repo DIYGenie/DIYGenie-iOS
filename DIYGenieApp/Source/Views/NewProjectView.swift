@@ -486,6 +486,8 @@ struct NewProjectView: View {
             arAttached = true
             alert("AR scan attached to your project ✅")
         } catch {
+            // Surface the real error so we know if AR upload ever fails again.
+            print("Failed to attach AR scan (upload error):", error)
             alert("Failed to attach AR scan: \(error.localizedDescription)")
         }
     }
