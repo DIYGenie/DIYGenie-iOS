@@ -13,8 +13,9 @@ import RoomPlan
 struct NewProjectView: View {
 
     // MARK: - Services
-    // Callback to notify parent when a project is created
+    /// Callback to notify parent when a project is created
     var onFinished: ((Project) -> Void)? = nil
+
     private let service = ProjectsService(
         userId: UserDefaults.standard.string(forKey: "user_id") ?? UUID().uuidString
     )
@@ -27,14 +28,16 @@ struct NewProjectView: View {
 
     // MARK: - Media / measurement
     @State private var selectedUIImage: UIImage?
-    @State private var measurementArea: [CGPoint]?  // normalized 4 points (TL, TR, BR, BL)
+    /// Normalized 4 points (TL, TR, BR, BL) in [0,1] space
+    @State private var measurementArea: [CGPoint]?
     @State private var showOverlay = false
 
     // MARK: - Sheets
     @State private var isShowingCamera = false
     @State private var isShowingLibrary = false
     @State private var showARSheet = false
-    @State private var isStartingCamera = false // single-session guard
+    /// Single-session guard so we don't open camera twice
+    @State private var isStartingCamera = false
 
     // MARK: - UX
     @State private var isLoading = false
@@ -47,11 +50,14 @@ struct NewProjectView: View {
     @State private var projectId: String?
     @State private var createdProject: Project?
 
-    // MARK: - BG
+    // MARK: - Background
     private var background: some View {
-        LinearGradient(gradient: Gradient(colors: [Color("BGStart"), Color("BGEnd")]),
-                       startPoint: .topLeading, endPoint: .bottomTrailing)
-            .ignoresSafeArea()
+        LinearGradient(
+            gradient: Gradient(colors: [Color("BGStart"), Color("BGEnd")]),
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .ignoresSafeArea()
     }
 
     var body: some View {
@@ -90,16 +96,40 @@ struct NewProjectView: View {
                     onComplete: { rect in
                         // Coerce to a centered square, then save 4 normalized corners
                         let imgSize = img.size
-                        guard imgSize.width > 0, imgSize.height > 0 else { showOverlay = false; return }
+                        guard imgSize.width > 0, imgSize.height > 0 else {
+                            showOverlay = false
+                            return
+                        }
+
                         let side = min(rect.width, rect.height)
                         let center = CGPoint(x: rect.midX, y: rect.midY)
-                        let square = CGRect(x: center.x - side/2, y: center.y - side/2, width: side, height: side)
-                        let tl = CGPoint(x: square.minX / imgSize.width, y: square.minY / imgSize.height)
-                        let tr = CGPoint(x: square.maxX / imgSize.width, y: square.minY / imgSize.height)
-                        let br = CGPoint(x: square.maxX / imgSize.width, y: square.maxY / imgSize.height)
-                        let bl = CGPoint(x: square.minX / imgSize.width, y: square.maxY / imgSize.height)
+                        let square = CGRect(
+                            x: center.x - side / 2,
+                            y: center.y - side / 2,
+                            width: side,
+                            height: side
+                        )
+
+                        let tl = CGPoint(
+                            x: square.minX / imgSize.width,
+                            y: square.minY / imgSize.height
+                        )
+                        let tr = CGPoint(
+                            x: square.maxX / imgSize.width,
+                            y: square.minY / imgSize.height
+                        )
+                        let br = CGPoint(
+                            x: square.maxX / imgSize.width,
+                            y: square.maxY / imgSize.height
+                        )
+                        let bl = CGPoint(
+                            x: square.minX / imgSize.width,
+                            y: square.maxY / imgSize.height
+                        )
+
                         measurementArea = [tl, tr, br, bl]
                         showOverlay = false
+
                         // Auto-create/attach immediately after confirming the area
                         Task { await ensureProjectAfterPhoto() }
                     },
@@ -112,7 +142,7 @@ struct NewProjectView: View {
         }
         // AR sheet (after project exists)
         .sheet(isPresented: $showARSheet) {
-            if let pid = projectId {
+            if projectId != nil {
                 if #available(iOS 17.0, *) {
                     ARRoomPlanSheet { fileURL in
                         Task { await handleRoomPlanExport(fileURL) }
@@ -124,10 +154,12 @@ struct NewProjectView: View {
                 }
             }
         }
-        .alert(alertMessage, isPresented: $showAlert) { Button("OK", role: .cancel) {} }
+        .alert(alertMessage, isPresented: $showAlert) {
+            Button("OK", role: .cancel) {}
+        }
     }
 
-    // MARK: - Form (inside struct)
+    // MARK: - Form content
     private var form: some View {
         ScrollView {
             VStack(spacing: 18) {
@@ -141,27 +173,34 @@ struct NewProjectView: View {
                         .foregroundColor(Color("TextPrimary"))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 12)
-                        .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.06)))
+                        .background(
+                            RoundedRectangle(cornerRadius: 14)
+                                .fill(Color.white.opacity(0.06))
+                        )
                 }
 
                 // Goal
                 sectionCard {
                     sectionLabel("GOAL / DESCRIPTION")
-                    TextEditor(text: $goal)
-                        .frame(minHeight: 140)
-                        .scrollContentBackground(.hidden)
-                        .foregroundColor(Color("TextPrimary"))
-                        .padding(12)
-                        .background(RoundedRectangle(cornerRadius: 14).fill(Color.white.opacity(0.06)))
-                        .overlay {
-                            if goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                Text("Describe what you'd like to build…")
-                                    .foregroundColor(Color("TextSecondary"))
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 16)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
+
+                    ZStack(alignment: .topLeading) {
+                        TextEditor(text: $goal)
+                            .frame(minHeight: 140)
+                            .scrollContentBackground(.hidden)
+                            .foregroundColor(Color("TextPrimary"))
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .fill(Color.white.opacity(0.06))
+                            )
+
+                        if goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Text("Describe what you'd like to build…")
+                                .foregroundColor(Color("TextSecondary"))
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 16)
                         }
+                    }
                 }
 
                 // Budget
@@ -217,9 +256,11 @@ struct NewProjectView: View {
                                 }
 
                                 HStack(spacing: 16) {
-                                    Button("Edit Area", role: .cancel) { showOverlay = true }
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundColor(Color("Accent"))
+                                    Button("Edit Area", role: .cancel) {
+                                        showOverlay = true
+                                    }
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(Color("Accent"))
 
                                     if projectId != nil {
                                         Button("Re-upload") {
@@ -230,6 +271,7 @@ struct NewProjectView: View {
                                     }
                                 }
                             }
+
                             Spacer()
                         }
                         .padding(12)
@@ -240,10 +282,17 @@ struct NewProjectView: View {
                         )
                     } else {
                         VStack(spacing: 12) {
-                            actionRow(systemName: "photo.on.rectangle", title: "Add a room photo") {
+                            actionRow(
+                                systemName: "photo.on.rectangle",
+                                title: "Add a room photo"
+                            ) {
                                 isShowingLibrary = true
                             }
-                            actionRow(systemName: "camera.viewfinder", title: "Take Room Photo") {
+
+                            actionRow(
+                                systemName: "camera.viewfinder",
+                                title: "Take Room Photo"
+                            ) {
                                 CameraAccess.request(
                                     isStarting: $isStartingCamera,
                                     isPresentingCamera: $isShowingCamera,
@@ -260,7 +309,6 @@ struct NewProjectView: View {
                 // Measurements & AR
                 sectionLabel("Measurements & AR Tools")
 
-                // Only one row here: AR Room Scan (3D)
                 let arSubtitle: String = {
                     if arAttached {
                         return "AR scan attached ✓  Tap to rescan"
@@ -286,37 +334,49 @@ struct NewProjectView: View {
                     Task { @MainActor in
                         arAttached = false
                         arScanFilename = nil
-                        if projectId == nil { await ensureProjectAfterPhoto() }
+
+                        if projectId == nil {
+                            await ensureProjectAfterPhoto()
+                        }
+
                         guard projectId != nil else {
                             alert("Please add a photo and draw the 4-point area to continue.")
                             return
                         }
+
                         guard #available(iOS 17.0, *) else {
                             alert("RoomPlan requires iOS 17 or later.")
                             return
                         }
-#if canImport(RoomPlan)
+
+                        #if canImport(RoomPlan)
                         // Device capability check (prevents black screen on unsupported devices)
                         guard RoomCaptureSession.isSupported else {
                             alert("This device doesn't support RoomPlan scanning.")
                             return
                         }
-#endif
+                        #endif
+
                         // Camera permission check (prevents black screen when denied)
                         let status = AVCaptureDevice.authorizationStatus(for: .video)
                         if status == .notDetermined {
                             AVCaptureDevice.requestAccess(for: .video) { granted in
                                 DispatchQueue.main.async {
-                                    if granted { showARSheet = true }
-                                    else { alert("Camera access is required for AR scanning.") }
+                                    if granted {
+                                        showARSheet = true
+                                    } else {
+                                        alert("Camera access is required for AR scanning.")
+                                    }
                                 }
                             }
                             return
                         }
+
                         guard status == .authorized else {
                             alert("Enable Camera access in Settings to use AR scanning.")
                             return
                         }
+
                         showARSheet = true
                     }
                 }
@@ -330,6 +390,7 @@ struct NewProjectView: View {
                                 Circle()
                                     .fill(Color("Accent").opacity(0.18))
                                     .frame(width: 52, height: 52)
+
                                 Image(systemName: "checkmark.seal.fill")
                                     .font(.system(size: 24, weight: .semibold))
                                     .foregroundStyle(Color("Accent"))
@@ -402,11 +463,15 @@ struct NewProjectView: View {
         }
         .disabled(isLoading)
         .overlay {
-            if isLoading { ProgressView().scaleEffect(1.2).tint(.white) }
+            if isLoading {
+                ProgressView()
+                    .scaleEffect(1.2)
+                    .tint(.white)
+            }
         }
     }
 
-    // MARK: - Derived
+    // MARK: - Derived validation
     private var isValid: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty &&
         !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
@@ -414,6 +479,7 @@ struct NewProjectView: View {
     }
 
     // MARK: - Actions
+
     @MainActor
     private func createAndNavigate(wantsPreview: Bool) async {
         guard isValid else {
@@ -424,6 +490,7 @@ struct NewProjectView: View {
             }
             return
         }
+
         isLoading = true
         defer { isLoading = false }
 
@@ -446,11 +513,12 @@ struct NewProjectView: View {
             }
 
             // 3) Attach measurement area (best effort)
-            if let points = measurementArea, let rect = denormalizedRect(from: points, image: selectedUIImage) {
+            if let points = measurementArea,
+               let rect = denormalizedRect(from: points, image: selectedUIImage) {
                 await service.attachCropRectIfAvailable(projectId: created.id, rect: rect)
             }
 
-            // 4) Trigger
+            // 4) Trigger AI
             if wantsPreview {
                 _ = try await service.generatePreview(projectId: created.id)
             } else {
@@ -470,10 +538,15 @@ struct NewProjectView: View {
     @MainActor
     private func uploadCurrentImageIfNeeded(force: Bool = false) async {
         guard let pid = projectId, let img = selectedUIImage else { return }
+
         isLoading = true
         defer { isLoading = false }
+
         do {
-            _ = try await service.uploadImage(projectId: pid, image: img.dg_resized(maxDimension: 2000))
+            _ = try await service.uploadImage(
+                projectId: pid,
+                image: img.dg_resized(maxDimension: 2000)
+            )
             alert("Photo uploaded.")
         } catch {
             alert("Upload failed: \(error.localizedDescription)")
@@ -487,8 +560,10 @@ struct NewProjectView: View {
 
         isLoading = true
         defer { isLoading = false }
+
         do {
             guard let pid = projectId else { return }
+
             try await service.uploadARScan(projectId: pid, fileURL: fileURL)
             let fresh = try await service.fetchProject(projectId: pid)
             createdProject = fresh
@@ -496,7 +571,6 @@ struct NewProjectView: View {
             arAttached = true
             alert("AR scan attached to your project ✅")
         } catch {
-            // Surface the real error so we know if AR upload ever fails again.
             print("Failed to attach AR scan (upload error):", error)
             alert("Failed to attach AR scan: \(error.localizedDescription)")
         }
@@ -508,12 +582,15 @@ struct NewProjectView: View {
     }
 }
 
-// MARK: - Tiny local UI helpers (outside struct)
+// MARK: - Tiny local UI helpers
 
 @ViewBuilder
 private func header(_ title: String) -> some View {
     VStack(alignment: .leading, spacing: 6) {
-        Text(title).font(.largeTitle.bold()).foregroundColor(.white)
+        Text(title)
+            .font(.largeTitle.bold())
+            .foregroundColor(.white)
+
         Text("Get everything you need to bring your next DIY idea to life.")
             .foregroundColor(.white.opacity(0.7))
     }
@@ -528,7 +605,9 @@ private func sectionLabel(_ title: String) -> some View {
 }
 
 @ViewBuilder
-private func sectionCard<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+private func sectionCard<Content: View>(
+    @ViewBuilder _ content: () -> Content
+) -> some View {
     VStack(alignment: .leading, spacing: 12, content: content)
         .padding(16)
         .background(Color.white.opacity(0.06))
@@ -537,11 +616,17 @@ private func sectionCard<Content: View>(@ViewBuilder _ content: () -> Content) -
 
 @ViewBuilder
 private func helper(_ text: String) -> some View {
-    Text(text).font(.footnote).foregroundColor(.white.opacity(0.55))
+    Text(text)
+        .font(.footnote)
+        .foregroundColor(.white.opacity(0.55))
 }
 
 @ViewBuilder
-private func pill(_ title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+private func pill(
+    _ title: String,
+    isOn: Bool,
+    action: @escaping () -> Void
+) -> some View {
     Button(action: action) {
         Text(title)
             .font(.headline.weight(.semibold))
@@ -555,25 +640,49 @@ private func pill(_ title: String, isOn: Bool, action: @escaping () -> Void) -> 
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18)
-                    .stroke(isOn ? Color("Accent") : Color.white.opacity(0.22), lineWidth: isOn ? 2 : 1)
+                    .stroke(
+                        isOn ? Color("Accent") : Color.white.opacity(0.22),
+                        lineWidth: isOn ? 2 : 1
+                    )
             )
-            .shadow(color: Color.black.opacity(isOn ? 0.25 : 0.12), radius: isOn ? 10 : 5, x: 0, y: isOn ? 6 : 3)
+            .shadow(
+                color: Color.black.opacity(isOn ? 0.25 : 0.12),
+                radius: isOn ? 10 : 5,
+                x: 0,
+                y: isOn ? 6 : 3
+            )
             .animation(.easeInOut(duration: 0.2), value: isOn)
     }
     .buttonStyle(.plain)
 }
 
 @ViewBuilder
-private func tappableRow(icon: String, title: String, subtitle: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+private func tappableRow(
+    icon: String,
+    title: String,
+    subtitle: String,
+    enabled: Bool,
+    action: @escaping () -> Void
+) -> some View {
     Button(action: action) {
         HStack(spacing: 14) {
-            Image(systemName: icon).imageScale(.large).frame(width: 28, height: 28)
+            Image(systemName: icon)
+                .imageScale(.large)
+                .frame(width: 28, height: 28)
+
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.headline)
-                Text(subtitle).font(.footnote).foregroundColor(.white.opacity(0.6))
+                Text(title)
+                    .font(.headline)
+
+                Text(subtitle)
+                    .font(.footnote)
+                    .foregroundColor(.white.opacity(0.6))
             }
+
             Spacer()
-            Image(systemName: "chevron.right").opacity(0.4)
+
+            Image(systemName: "chevron.right")
+                .opacity(0.4)
         }
         .padding(14)
         .background(Color.white.opacity(0.06))
@@ -584,7 +693,10 @@ private func tappableRow(icon: String, title: String, subtitle: String, enabled:
 }
 
 @ViewBuilder
-private func primaryCTA(title: String, action: @escaping () -> Void) -> some View {
+private func primaryCTA(
+    title: String,
+    action: @escaping () -> Void
+) -> some View {
     Button(action: action) {
         Text(title)
             .font(.headline.weight(.semibold))
@@ -594,13 +706,19 @@ private func primaryCTA(title: String, action: @escaping () -> Void) -> some Vie
             .background(
                 RoundedRectangle(cornerRadius: 18)
                     .fill(Color("Accent"))
-                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.white.opacity(0.2), lineWidth: 1))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18)
+                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                    )
             )
     }
 }
 
 @ViewBuilder
-private func secondaryCTA(title: String, action: @escaping () -> Void) -> some View {
+private func secondaryCTA(
+    title: String,
+    action: @escaping () -> Void
+) -> some View {
     Button(action: action) {
         Text(title)
             .font(.headline.weight(.semibold))
@@ -613,16 +731,23 @@ private func secondaryCTA(title: String, action: @escaping () -> Void) -> some V
 }
 
 @ViewBuilder
-private func actionRow(systemName: String, title: String, action: @escaping () -> Void) -> some View {
+private func actionRow(
+    systemName: String,
+    title: String,
+    action: @escaping () -> Void
+) -> some View {
     Button(action: action) {
         HStack(spacing: 14) {
             Image(systemName: systemName)
                 .imageScale(.large)
                 .frame(width: 28, height: 28)
+
             Text(title)
                 .font(.headline)
                 .foregroundColor(Color("TextPrimary"))
+
             Spacer()
+
             Image(systemName: "chevron.right")
                 .opacity(0.4)
         }
@@ -632,27 +757,46 @@ private func actionRow(systemName: String, title: String, action: @escaping () -
     }
 }
 
-// MARK: - Helpers used by the view (inside extension so they can access state)
+// MARK: - Helpers used by the view
+
 extension NewProjectView {
+
+    /// Ensures there is a project created once a photo + overlay exist.
     @MainActor
     private func ensureProjectAfterPhoto() async {
+        // If project already exists, just sync image + crop rect
         if let pid = projectId {
             if let img = selectedUIImage {
-                _ = try? await service.uploadImage(projectId: pid, image: img.dg_resized(maxDimension: 2000))
+                _ = try? await service.uploadImage(
+                    projectId: pid,
+                    image: img.dg_resized(maxDimension: 2000)
+                )
             }
-            if let points = measurementArea, let rect = denormalizedRect(from: points, image: selectedUIImage) {
+
+            if let points = measurementArea,
+               let rect = denormalizedRect(from: points, image: selectedUIImage) {
                 await service.attachCropRectIfAvailable(projectId: pid, rect: rect)
             }
-            if let fresh = try? await service.fetchProject(projectId: pid) { createdProject = fresh }
+
+            if let fresh = try? await service.fetchProject(projectId: pid) {
+                createdProject = fresh
+            }
             return
         }
 
-        // Create new project immediately
-        let safeName = name.trimmingCharacters(in: .whitespaces).isEmpty ? "New Project" : name
-        let safeGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Auto-created from photo" : goal
+        // Otherwise create new project immediately
+        let safeName = name.trimmingCharacters(in: .whitespaces).isEmpty
+            ? "New Project"
+            : name
+
+        // goal is NOT NULL in DB; provide safe default when empty
+        let safeGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Auto-created from photo"
+            : goal
 
         isLoading = true
         defer { isLoading = false }
+
         do {
             let created = try await service.createProject(
                 name: safeName,
@@ -663,23 +807,49 @@ extension NewProjectView {
             projectId = created.id
 
             if let img = selectedUIImage {
-                _ = try? await service.uploadImage(projectId: created.id, image: img.dg_resized(maxDimension: 2000))
+                _ = try? await service.uploadImage(
+                    projectId: created.id,
+                    image: img.dg_resized(maxDimension: 2000)
+                )
             }
-            if let points = measurementArea, let rect = denormalizedRect(from: points, image: selectedUIImage) {
+
+            if let points = measurementArea,
+               let rect = denormalizedRect(from: points, image: selectedUIImage) {
                 await service.attachCropRectIfAvailable(projectId: created.id, rect: rect)
             }
 
-            if let fresh = try? await service.fetchProject(projectId: created.id) { createdProject = fresh }
+            if let fresh = try? await service.fetchProject(projectId: created.id) {
+                createdProject = fresh
+            }
         } catch {
             alert("Couldn’t create project from photo: \(error.localizedDescription)")
         }
     }
 
-    private func denormalizedRect(from points: [CGPoint], image: UIImage?) -> CGRect? {
+    /// Converts 4 normalized points back into a CGRect in image coordinates.
+    private func denormalizedRect(
+        from points: [CGPoint],
+        image: UIImage?
+    ) -> CGRect? {
         guard points.count == 4, let img = image else { return nil }
+
         let xs = points.map { $0.x * img.size.width }
         let ys = points.map { $0.y * img.size.height }
-        guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else { return nil }
-        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+
+        guard
+            let minX = xs.min(),
+            let maxX = xs.max(),
+            let minY = ys.min(),
+            let maxY = ys.max()
+        else {
+            return nil
+        }
+
+        return CGRect(
+            x: minX,
+            y: minY,
+            width: maxX - minX,
+            height: maxY - minY
+        )
     }
 }
