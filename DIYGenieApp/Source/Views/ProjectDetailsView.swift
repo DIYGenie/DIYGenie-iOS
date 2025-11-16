@@ -9,6 +9,50 @@ import UIKit
 struct ProjectDetailsView: View {
     let project: Project
 
+    // MARK: - Derived status
+
+    private var statusText: String {
+        if project.planJson != nil {
+            return "Plan ready"
+        }
+
+        if let status = project.previewStatus, !status.isEmpty {
+            switch status.lowercased() {
+            case "pending", "queued":
+                return "Generating…"
+            case "error", "failed":
+                return "Preview failed"
+            default:
+                return status.capitalized
+            }
+        }
+
+        return "Draft"
+    }
+
+    private var statusColor: Color {
+        if project.planJson != nil {
+            return Color.green
+        }
+        if let status = project.previewStatus?.lowercased() {
+            if status == "error" || status == "failed" {
+                return Color.red
+            }
+            if status == "pending" || status == "queued" {
+                return Color.yellow
+            }
+        }
+        return Color.white.opacity(0.8)
+    }
+
+    private var hasPreview: Bool {
+        project.previewURL != nil
+    }
+
+    private var hasInputPhoto: Bool {
+        project.inputImageURL != nil
+    }
+
     var body: some View {
         ZStack {
             // Match the NewProjectView gradient-style background so it isn't just black
@@ -21,46 +65,13 @@ struct ProjectDetailsView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 20) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(project.name)
-                            .font(.largeTitle.bold())
-                            .foregroundColor(.white)
-                        if let goal = project.goal, !goal.isEmpty {
-                            Text(goal)
-                                .foregroundColor(Color.white.opacity(0.8))
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        if let budget = project.budget {
-                            Text("Budget: \(budget)")
-                        }
-                        if let skill = project.skillLevel {
-                            Text("Skill level: \(skill)")
-                        }
-                        if let status = project.previewStatus {
-                            Text("Status: \(status)")
-                                .font(.subheadline)
-                                .foregroundColor(.white.opacity(0.75))
-                        }
-                        Text("Project ID: \(project.id)")
-                            .font(.footnote)
-                            .foregroundColor(.white.opacity(0.7))
-                    }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                    .background(Color.white.opacity(0.08))
-                    .cornerRadius(16)
+                    headerSection
 
-                    if let mediaURL = project.previewURL ?? project.inputImageURL {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Preview")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                            ProjectMediaView(urlString: mediaURL)
-                        }
+                    metaSection
+
+                    if hasPreview || hasInputPhoto {
+                        mediaSection
                     }
 
                     PlanSection(plan: project.planJson, completedSteps: project.completedSteps ?? [])
@@ -70,6 +81,117 @@ struct ProjectDetailsView: View {
                 .padding(18)
             }
         }
+    }
+
+    // MARK: - Sections
+
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Top row: name + status pill
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(project.name)
+                    .font(.largeTitle.bold())
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+
+                Spacer(minLength: 0)
+
+                Text(statusText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.black.opacity(0.9))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill(statusColor.opacity(0.92))
+                    )
+            }
+
+            if let goal = project.goal, !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(goal)
+                    .foregroundColor(Color.white.opacity(0.85))
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var metaSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                if let budget = project.budget, !budget.isEmpty {
+                    pillLabel(title: budget, systemName: "dollarsign.circle")
+                }
+
+                if let skill = project.skillLevel, !skill.isEmpty {
+                    pillLabel(title: skill, systemName: "hammer")
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                if let status = project.previewStatus, !status.isEmpty {
+                    Text("Preview status: \(status)")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.75))
+                }
+
+                Text("Project ID: \(project.id)")
+                    .font(.footnote.monospaced())
+                    .foregroundColor(.white.opacity(0.7))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color.white.opacity(0.08))
+        .cornerRadius(16)
+    }
+
+    private var mediaSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Text(hasPreview ? "AI Preview" : "Room Photo")
+                    .font(.headline)
+                    .foregroundColor(.white)
+
+                if hasPreview, hasInputPhoto {
+                    Text("+ original photo")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.6))
+                }
+            }
+
+            if let mediaURL = project.previewURL ?? project.inputImageURL {
+                ProjectMediaView(urlString: mediaURL)
+            }
+
+            if hasPreview {
+                Text("This is an AI-generated visualization based on your goal and room photo.")
+                    .font(.footnote)
+                    .foregroundColor(.white.opacity(0.7))
+            } else if hasInputPhoto {
+                Text("Preview will be generated from this photo and your project details.")
+                    .font(.footnote)
+                    .foregroundColor(.white.opacity(0.7))
+            }
+        }
+    }
+
+    // MARK: - Small UI helpers
+
+    private func pillLabel(title: String, systemName: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemName)
+                .imageScale(.small)
+            Text(title)
+                .font(.footnote.weight(.semibold))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.white.opacity(0.12))
+        .foregroundColor(.white)
+        .clipShape(Capsule())
     }
 }
 
@@ -106,7 +228,10 @@ private struct ProjectMediaView: View {
         }
         .frame(maxWidth: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.08), lineWidth: 1))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
         .shadow(color: .black.opacity(0.35), radius: 8, x: 0, y: 4)
     }
 

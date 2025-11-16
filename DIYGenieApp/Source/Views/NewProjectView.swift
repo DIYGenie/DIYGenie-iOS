@@ -243,11 +243,13 @@ struct NewProjectView: View {
                             actionRow(systemName: "photo.on.rectangle", title: "Add a room photo") {
                                 isShowingLibrary = true
                             }
-                            actionRow(systemName: "camera.viewfinder", title: "Take Photo for Measurements") {
-                                CameraAccess.request(isStarting: $isStartingCamera,
-                                                     isPresentingCamera: $isShowingCamera,
-                                                     isARPresented: showARSheet,
-                                                     isOverlayPresented: showOverlay) {
+                            actionRow(systemName: "camera.viewfinder", title: "Take Room Photo") {
+                                CameraAccess.request(
+                                    isStarting: $isStartingCamera,
+                                    isPresentingCamera: $isShowingCamera,
+                                    isARPresented: showARSheet,
+                                    isOverlayPresented: showOverlay
+                                ) {
                                     alert("Camera permission is required to take photos.")
                                 }
                             }
@@ -259,18 +261,26 @@ struct NewProjectView: View {
                 sectionLabel("Measurements & AR Tools")
 
                 // Only one row here: AR Room Scan (3D)
+                let arSubtitle: String = {
+                    if arAttached {
+                        return "AR scan attached ✓  Tap to rescan"
+                    }
+                    if selectedUIImage == nil {
+                        return "Add a photo first"
+                    }
+                    if measurementArea == nil {
+                        return "Draw the 4-point area to enable"
+                    }
+                    if projectId == nil {
+                        return "Project will auto-create after you continue"
+                    }
+                    return "Improve measurements with Room Scan"
+                }()
+
                 tappableRow(
                     icon: "viewfinder.rectangular",
                     title: "AR Room Scan (3D)",
-                    subtitle: arAttached
-                        ? "AR scan attached ✓  Tap to rescan"
-                        : (projectId == nil)
-                            ? "Project will auto-create after photo"
-                            : (selectedUIImage == nil)
-                                ? "Add a photo first"
-                                : (measurementArea == nil)
-                                    ? "Draw the 4-point area to enable"
-                                    : "Improve measurements with Room Scan",
+                    subtitle: arSubtitle,
                     enabled: (selectedUIImage != nil) && (measurementArea != nil)
                 ) {
                     Task { @MainActor in

@@ -58,6 +58,16 @@ struct ProjectsService {
             safeName = baseName + " – DIY Genie"
         }
 
+        // Ensure goal is always non-empty and normalized, similar to name
+        let safeGoal: String
+        if !trimmedGoal.isEmpty {
+            safeGoal = trimmedGoal
+        } else {
+            // If the user doesn't type a goal, fall back to the safe name so the
+            // backend always receives a meaningful, non-empty goal string.
+            safeGoal = safeName
+        }
+
         // Normalize skill level into the lowercase tokens expected by the backend.
         let normalizedSkill: String
         switch skillLevel.lowercased() {
@@ -74,7 +84,7 @@ struct ProjectsService {
         let payload = CreateProjectPayload(
             userId: userId,
             name: safeName,
-            goal: goal,
+            goal: safeGoal,
             budget: budget,
             skillLevel: normalizedSkill
         )
