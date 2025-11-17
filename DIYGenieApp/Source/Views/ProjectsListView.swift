@@ -69,8 +69,11 @@ var body: some View {
         Text(errorText)
     }
     .background(
-        LinearGradient(gradient: Gradient(colors: [Color("BGStart"), Color("BGEnd")]),
-                       startPoint: .topLeading, endPoint: .bottomTrailing)
+        LinearGradient(
+            gradient: Gradient(colors: [Color("BGStart"), Color("BGEnd")]),
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
         .ignoresSafeArea()
     )
 }

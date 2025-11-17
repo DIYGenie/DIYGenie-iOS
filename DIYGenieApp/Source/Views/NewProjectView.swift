@@ -448,12 +448,15 @@ struct NewProjectView: View {
                     primaryCTA(title: "Generate AI Plan + Preview") {
                         Task { await createAndNavigate(wantsPreview: true) }
                     }
-                    .disabled(!isValid || isLoading)
+                    .disabled(!canGeneratePreview || isLoading)
 
                     secondaryCTA(title: "Create Plan Only (No Preview)") {
                         Task { await createAndNavigate(wantsPreview: false) }
                     }
-                    .disabled(!isValid || isLoading)
+                    .disabled(!canCreatePlanOnly || isLoading)
+
+                    helper("Preview requires a room photo. You can always start with plan only and add a photo later.")
+                        .multilineTextAlignment(.center)
                 }
                 .padding(.top, 6)
 
@@ -474,8 +477,15 @@ struct NewProjectView: View {
     // MARK: - Derived validation
     private var isValid: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty &&
-        !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        selectedUIImage != nil
+        !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canGeneratePreview: Bool {
+        isValid && selectedUIImage != nil
+    }
+
+    private var canCreatePlanOnly: Bool {
+        isValid
     }
 
     // MARK: - Actions
@@ -483,11 +493,12 @@ struct NewProjectView: View {
     @MainActor
     private func createAndNavigate(wantsPreview: Bool) async {
         guard isValid else {
-            if selectedUIImage == nil {
-                alert("Please add at least one room photo before continuing.")
-            } else {
-                alert("Please complete name and goal.")
-            }
+            alert("Please add a project name and goal.")
+            return
+        }
+
+        if wantsPreview && selectedUIImage == nil {
+            alert("Add a room photo to generate a visual preview, or choose \"Create Plan Only (No Preview)\" to continue without a photo.")
             return
         }
 
