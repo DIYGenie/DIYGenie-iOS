@@ -1,5 +1,7 @@
 import Foundation
 
+// MARK: - Preview service
+
 /// Service responsible for talking to the Decor8 preview endpoints on the backend.
 final class PreviewService {
 
@@ -38,9 +40,11 @@ final class PreviewService {
 
             guard let data = data else {
                 DispatchQueue.main.async {
-                    completion(.failure(NSError(domain: "PreviewService",
-                                               code: -1,
-                                               userInfo: [NSLocalizedDescriptionKey: "Empty response"])))
+                    completion(.failure(NSError(
+                        domain: "PreviewService",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "Empty response"]
+                    )))
                 }
                 return
             }
@@ -74,9 +78,11 @@ final class PreviewService {
 
             guard let data = data else {
                 DispatchQueue.main.async {
-                    completion(.failure(NSError(domain: "PreviewService",
-                                               code: -1,
-                                               userInfo: [NSLocalizedDescriptionKey: "Empty response"])))
+                    completion(.failure(NSError(
+                        domain: "PreviewService",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "Empty response"]
+                    )))
                 }
                 return
             }

@@ -208,10 +208,14 @@ struct ProjectsService {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        // Reuse the PreviewTriggerPayload so we send both projectId and project_id
-        // and stay compatible with the backend contract.
-        let payload = PreviewTriggerPayload(projectId: projectId)
-        request.httpBody = try encoder.encode(payload)
+        // Build the JSON body manually so key casing is preserved exactly
+        // and the backend always receives both "projectId" and "project_id".
+        let body: [String: Any] = [
+            "projectId": projectId,
+            "project_id": projectId
+        ]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
