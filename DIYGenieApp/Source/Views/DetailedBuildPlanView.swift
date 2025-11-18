@@ -47,7 +47,7 @@ struct DetailedBuildPlanView: View {
                         }
 
                         // MARK: - Materials  (non-optional array)
-                        let materials = plan.materials
+                        let materials = plan.materials.map { String(describing: $0) }
                         if !materials.isEmpty {
                             SectionHeader("Materials")
                             VStack(alignment: .leading, spacing: 8) {
@@ -69,7 +69,7 @@ struct DetailedBuildPlanView: View {
                         }
 
                         // MARK: - Tools  (non-optional array)
-                        let tools = plan.tools
+                        let tools = plan.tools.map { String(describing: $0) }
                         if !tools.isEmpty {
                             SectionHeader("Tools")
                             VStack(alignment: .leading, spacing: 8) {
@@ -120,7 +120,11 @@ struct DetailedBuildPlanView: View {
                         if !steps.isEmpty {
                             SectionHeader("Steps")
                             VStack(alignment: .leading, spacing: 12) {
-                                ForEach(Array(steps.enumerated()), id: \.0) { (idx, text) in
+                                ForEach(Array(steps.enumerated()), id: \.offset) { pair in
+                                    let idx = pair.offset
+                                    let step = pair.element
+                                    let text = String(describing: step)
+
                                     StepCard(
                                         number: idx + 1,
                                         text: text,

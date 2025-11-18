@@ -5,49 +5,49 @@
 
 import Foundation
 
-public struct Project: Codable, Identifiable, Hashable {
-    public let id: String
-    public let userId: String
-    public let name: String
-    public let goal: String?
-    public let budget: String?            // '$' | '$$' | '$$$'
-    public let budgetTier: String?        // optional legacy
-    public let skillLevel: String?        // 'beginner' | 'intermediate' | 'advanced'
-    public let status: String?            // 'draft' | 'active' | etc.
+struct Project: Codable, Identifiable {
+    let id: String
+    let userId: String
+    let name: String
+    let goal: String?
+    let budget: String?            // '$' | '$$' | '$$$'
+    let budgetTier: String?        // optional legacy
+    let skillLevel: String?        // 'beginner' | 'intermediate' | 'advanced'
+    let status: String?            // 'draft' | 'active' | etc.
 
-    public let createdAt: String?
-    public let updatedAt: String?
+    let createdAt: String?
+    let updatedAt: String?
 
-    public let preview_url: String?
-    public let input_image_url: String?
+    let preview_url: String?
+    let input_image_url: String?
 
-    public let arProvider: String?        // 'roomplan' when AR scan saved
-    public let arConfidence: Double?
-    public let scalePxPerIn: Double?
-    public let calibrationMethod: String?
-    public let referenceObject: String?
-    public let roomType: String?
+    let arProvider: String?        // 'roomplan' when AR scan saved
+    let arConfidence: Double?
+    let scalePxPerIn: Double?
+    let calibrationMethod: String?
+    let referenceObject: String?
+    let roomType: String?
 
-    public let scanJson: [String: AnyCodable]?
-    public let dimensionsJson: [String: AnyCodable]?
-    public let floorplanSvg: String?
+    let scanJson: [String: AnyCodable]?
+    let dimensionsJson: [String: AnyCodable]?
+    let floorplanSvg: String?
 
-    public let deviceModel: String?
-    public let osVersion: String?
-    public let appVersion: String?
-    public let scanAt: String?
+    let deviceModel: String?
+    let osVersion: String?
+    let appVersion: String?
+    let scanAt: String?
 
-    public let isTest: Bool?
-    public let planJson: PlanResponse?
-    public let completedSteps: [Int]?
-    public let currentStepIndex: Int?
-    public let previewStatus: String?
-    public let previewMeta: [String: AnyCodable]?
-    public let isDemo: Bool?
+    let isTest: Bool?
+    let planJson: PlanResponse?
+    let completedSteps: [Int]?
+    let currentStepIndex: Int?
+    let previewStatus: String?
+    let previewMeta: [String: AnyCodable]?
+    let isDemo: Bool?
 
     // Convenience accessors used by UI
-    public var previewURL: String? { preview_url }
-    public var inputImageURL: String? { input_image_url }
+    var previewURL: String? { preview_url }
+    var inputImageURL: String? { input_image_url }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -134,5 +134,17 @@ extension Project {
             previewMeta: previewMeta ?? self.previewMeta,
             isDemo: isDemo
         )
+    }
+}
+
+extension Project: Equatable {
+    static func == (lhs: Project, rhs: Project) -> Bool {
+        return lhs.id == rhs.id
+    }
+}
+
+extension Project: Hashable {
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
 }

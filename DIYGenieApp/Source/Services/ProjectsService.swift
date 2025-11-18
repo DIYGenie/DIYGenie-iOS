@@ -201,18 +201,17 @@ struct ProjectsService {
 
     // MARK: - Preview + Plan
     func generatePreview(projectId: String) async throws -> Project {
-        // Start preview generation for this project via the webhooks API.
-        var components = URLComponents(
-            url: AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)/preview"),
-            resolvingAgainstBaseURL: false
-        )!
-        components.queryItems = [
-            URLQueryItem(name: "user_id", value: userId)
-        ]
+        // Call the new synchronous Decor8 preview endpoint on the backend.
+        let url = AppConfig.apiBaseURL.appendingPathComponent("preview/decor8")
 
-        var request = URLRequest(url: components.url!)
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        // Reuse the PreviewTriggerPayload so we send both projectId and project_id
+        // and stay compatible with the backend contract.
+        let payload = PreviewTriggerPayload(projectId: projectId)
+        request.httpBody = try encoder.encode(payload)
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
@@ -221,49 +220,19 @@ struct ProjectsService {
 
         guard (200..<300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? "<no body>"
-            print("[ProjectsService] generatePreview trigger failed with status \(http.statusCode). Body: \(body)")
+            print("[ProjectsService] generatePreview /preview/decor8 failed with status \(http.statusCode). Body: \(body)")
             throw ServiceError.invalidResponse
         }
 
-        // If the provider finishes synchronously, we may already be done.
-        if let envelope = try? decoder.decode(PreviewStatusEnvelope.self, from: data),
-           envelope.status.lowercased() == "done" {
-            return try await fetchProject(projectId: projectId)
+        // The backend already updates Supabase with preview_url and preview_status.
+        // We can optionally try to decode the response, but we don't depend on it.
+        struct PreviewDecor8Response: Decodable {
+            let ok: Bool?
+            let previewUrl: String?
         }
+        _ = try? decoder.decode(PreviewDecor8Response.self, from: data)
 
-        // Otherwise poll the preview status endpoint until it's ready or we time out.
-        for _ in 0..<10 {
-            try await Task.sleep(nanoseconds: UInt64(0.8 * Double(NSEC_PER_SEC)))
-
-            var statusComponents = URLComponents(
-                url: AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)/preview/status"),
-                resolvingAgainstBaseURL: false
-            )!
-            statusComponents.queryItems = [
-                URLQueryItem(name: "user_id", value: userId)
-            ]
-
-            let statusRequest = URLRequest(url: statusComponents.url!)
-            let (statusData, statusResponse) = try await session.data(for: statusRequest)
-            guard let statusHTTP = statusResponse as? HTTPURLResponse,
-                  (200..<300).contains(statusHTTP.statusCode) else {
-                continue
-            }
-
-            if let statusEnvelope = try? decoder.decode(PreviewStatusEnvelope.self, from: statusData) {
-                let normalized = statusEnvelope.status.lowercased()
-
-                if normalized == "done" {
-                    return try await fetchProject(projectId: projectId)
-                } else if normalized == "failed" {
-                    let body = String(data: statusData, encoding: .utf8) ?? "<no body>"
-                    print("[ProjectsService] generatePreview status failed. Body: \(body)")
-                    throw ServiceError.invalidResponse
-                }
-            }
-        }
-
-        // If we reach here the preview is still processing; return the latest project state.
+        // Return the freshest project record, including preview_url / preview_status.
         return try await fetchProject(projectId: projectId)
     }
 
@@ -559,3 +528,4 @@ private struct PlanUpdatePayload: Encodable {
         case status
     }
 }
+

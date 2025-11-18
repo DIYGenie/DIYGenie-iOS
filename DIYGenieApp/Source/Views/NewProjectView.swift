@@ -476,7 +476,7 @@ struct NewProjectView: View {
 
     // MARK: - Derived validation
     private var isValid: Bool {
-        !name.trimmingCharacters(in: .whitespaces).isEmpty &&
+        // For this build, the goal/description is required; name is optional.
         !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -493,7 +493,7 @@ struct NewProjectView: View {
     @MainActor
     private func createAndNavigate(wantsPreview: Bool) async {
         guard isValid else {
-            alert("Please add a project name and goal.")
+            alert("Please add a project goal/description.")
             return
         }
 
@@ -507,9 +507,13 @@ struct NewProjectView: View {
 
         do {
             // 1) Create
+            let trimmedName = name.trimmingCharacters(in: .whitespaces)
+            let safeName = trimmedName.isEmpty ? "New Project" : trimmedName
+            let trimmedGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
+
             let created = try await service.createProject(
-                name: name,
-                goal: goal,
+                name: safeName,
+                goal: trimmedGoal,
                 budget: budget.label,
                 skillLevel: skill.label
             )
@@ -801,9 +805,10 @@ extension NewProjectView {
             : name
 
         // goal is NOT NULL in DB; provide safe default when empty
-        let safeGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let trimmedGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
+        let safeGoal = trimmedGoal.isEmpty
             ? "Auto-created from photo"
-            : goal
+            : trimmedGoal
 
         isLoading = true
         defer { isLoading = false }

@@ -297,52 +297,7 @@ private struct PlanSection: View {
                 .foregroundColor(.white)
 
             if let plan {
-                if let summary = plan.summary, !summary.isEmpty {
-                    Text(summary)
-                        .font(.body)
-                        .foregroundColor(.white.opacity(0.85))
-                }
-
-                if !plan.materials.isEmpty {
-                    sectionHeader("Materials")
-                    bulletList(plan.materials)
-                }
-
-                if !plan.tools.isEmpty {
-                    sectionHeader("Tools")
-                    bulletList(plan.tools)
-                }
-
-                if let estimate = plan.estimatedCost {
-                    sectionHeader("Estimated Cost")
-                    Text("$\(Int(estimate))")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(Color.white.opacity(0.1))
-                        .cornerRadius(12)
-                }
-
-                if !plan.steps.isEmpty {
-                    sectionHeader("Steps")
-                    let completed = Set(completedSteps)
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(Array(plan.steps.enumerated()), id: \.0) { index, step in
-                            HStack(alignment: .top, spacing: 10) {
-                                Image(systemName: completed.contains(index) ? "checkmark.circle.fill" : "circle")
-                                    .foregroundColor(completed.contains(index) ? .green : .white.opacity(0.6))
-                                    .font(.system(size: 18, weight: .medium))
-                                Text(step)
-                                    .foregroundColor(.white.opacity(0.9))
-                                    .font(.body)
-                            }
-                        }
-                    }
-                    .padding(14)
-                    .background(Color.white.opacity(0.08))
-                    .cornerRadius(14)
-                }
+                planContents(for: plan)
             } else {
                 Text("Plan is generating. Check back in a moment.")
                     .foregroundColor(.white.opacity(0.75))
@@ -353,6 +308,59 @@ private struct PlanSection: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.06))
         .cornerRadius(18)
+    }
+
+    @ViewBuilder
+    private func planContents(for plan: PlanResponse) -> some View {
+        if let summary = plan.summary, !summary.isEmpty {
+            Text(summary)
+                .font(.body)
+                .foregroundColor(.white.opacity(0.85))
+        }
+
+        if !plan.materials.isEmpty {
+            sectionHeader("Materials")
+            let materialStrings = plan.materials.map { String(describing: $0) }
+            bulletList(materialStrings)
+        }
+
+        if !plan.tools.isEmpty {
+            sectionHeader("Tools")
+            let toolStrings = plan.tools.map { String(describing: $0) }
+            bulletList(toolStrings)
+        }
+
+        if let estimate = plan.estimatedCost {
+            sectionHeader("Estimated Cost")
+            Text("$\(Int(estimate))")
+                .font(.headline)
+                .foregroundColor(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color.white.opacity(0.1))
+                .cornerRadius(12)
+        }
+
+        if !plan.steps.isEmpty {
+            sectionHeader("Steps")
+            let completed = Set(completedSteps)
+
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(plan.steps.enumerated()), id: \.0) { index, step in
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: completed.contains(index) ? "checkmark.circle.fill" : "circle")
+                            .foregroundColor(completed.contains(index) ? .green : .white.opacity(0.6))
+                            .font(.system(size: 18, weight: .medium))
+                        Text(String(describing: step))
+                            .foregroundColor(.white.opacity(0.9))
+                            .font(.body)
+                    }
+                }
+            }
+            .padding(14)
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(14)
+        }
     }
 
     private func sectionHeader(_ title: String) -> some View {
