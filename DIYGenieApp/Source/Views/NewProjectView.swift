@@ -16,8 +16,19 @@ struct NewProjectView: View {
     /// Callback to notify parent when a project is created
     var onFinished: ((Project) -> Void)? = nil
 
+    /// Stable per-device user id (stored in UserDefaults)
+    private static func resolveUserId() -> String {
+        let key = "user_id"
+        if let existing = UserDefaults.standard.string(forKey: key) {
+            return existing
+        }
+        let newId = UUID().uuidString
+        UserDefaults.standard.set(newId, forKey: key)
+        return newId
+    }
+
     private let service = ProjectsService(
-        userId: UserDefaults.standard.string(forKey: "user_id") ?? UUID().uuidString
+        userId: NewProjectView.resolveUserId()
     )
 
     // MARK: - Form state
@@ -533,11 +544,16 @@ struct NewProjectView: View {
                 await service.attachCropRectIfAvailable(projectId: created.id, rect: rect)
             }
 
-            // 4) Trigger AI
-            if wantsPreview {
-                _ = try await service.generatePreview(projectId: created.id)
-            } else {
-                try await service.generatePlanOnly(projectId: created.id)
+            // 4) Trigger AI (defensive)
+            do {
+                if wantsPreview {
+                    _ = try await service.generatePreview(projectId: created.id)
+                } else {
+                    try await service.generatePlanOnly(projectId: created.id)
+                }
+            } catch {
+                alert("AI generation failed: \(error.localizedDescription)")
+                return
             }
 
             // 5) Fetch + notify parent

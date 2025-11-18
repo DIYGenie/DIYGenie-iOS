@@ -230,14 +230,14 @@ private struct ProjectMediaView: View {
             if let image = localImage {
                 Image(uiImage: image)
                     .resizable()
-                    .aspectRatio(contentMode: .fit)
+                    .scaledToFill()
             } else if let url = remoteURL {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):
                         image
                             .resizable()
-                            .aspectRatio(contentMode: .fit)
+                            .scaledToFill()
                     case .failure:
                         placeholder
                     case .empty:
@@ -252,6 +252,8 @@ private struct ProjectMediaView: View {
             }
         }
         .frame(maxWidth: .infinity)
+        .frame(height: 260) // keep the media card at a sane height
+        .clipped()
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
@@ -261,14 +263,13 @@ private struct ProjectMediaView: View {
     }
 
     private var placeholder: some View {
-        RoundedRectangle(cornerRadius: 16)
-            .fill(Color.white.opacity(0.08))
-            .frame(height: 220)
-            .overlay(
-                Image(systemName: "photo.on.rectangle")
-                    .font(.system(size: 36, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.7))
-            )
+        ZStack {
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.08))
+            Image(systemName: "photo.on.rectangle")
+                .font(.system(size: 36, weight: .semibold))
+                .foregroundColor(.white.opacity(0.7))
+        }
     }
 
     private var url: URL? {
