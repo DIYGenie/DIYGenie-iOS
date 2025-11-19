@@ -1,98 +1,43 @@
 import Foundation
 
-// MARK: - Preview service
-
-/// Service responsible for talking to the Decor8 preview endpoints on the backend.
+/// Lightweight compatibility wrapper so any legacy callers can still trigger
+/// Decor8 previews without duplicating network logic. All preview requests now
+/// flow through `ProjectsService.generatePreview(projectId:)` so payload casing
+/// stays consistent with the backend.
 final class PreviewService {
-
     static let shared = PreviewService()
 
-    private init() {}
+    private let projectsService: ProjectsService
 
-    private let baseURL = URL(string: "https://api.diygenieapp.com")!
-
-    // MARK: - Trigger Preview
-
-    func requestPreview(
-        for projectId: String,
-        completion: @escaping (Result<PreviewTriggerResponse, Error>) -> Void
-    ) {
-        let url = baseURL.appendingPathComponent("preview/decor8")
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let body = PreviewRequestBody(projectId: projectId)
-
-        do {
-            request.httpBody = try JSONEncoder().encode(body)
-        } catch {
-            completion(.failure(error))
-            return
+    init(userDefaults: UserDefaults = .standard, session: URLSession = .shared) {
+        let identifier = userDefaults.string(forKey: "user_id") ?? UUID().uuidString
+        if userDefaults.string(forKey: "user_id") == nil {
+            userDefaults.set(identifier, forKey: "user_id")
         }
-
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                DispatchQueue.main.async { completion(.failure(error)) }
-                return
-            }
-
-            guard let data = data else {
-                DispatchQueue.main.async {
-                    completion(.failure(NSError(
-                        domain: "PreviewService",
-                        code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "Empty response"]
-                    )))
-                }
-                return
-            }
-
-            do {
-                let decoded = try JSONDecoder().decode(PreviewTriggerResponse.self, from: data)
-                DispatchQueue.main.async { completion(.success(decoded)) }
-            } catch {
-                DispatchQueue.main.async { completion(.failure(error)) }
-            }
-        }.resume()
+        self.projectsService = ProjectsService(userId: identifier, session: session)
     }
 
-    // MARK: - Fetch Existing Status
+    /// Convenience async helper for SwiftUI/Combine callers.
+    func requestPreview(for projectId: String) async throws -> Project {
+        try await projectsService.generatePreview(projectId: projectId)
+    }
 
-    func fetchPreviewStatus(
+    /// Legacy completion-based API retained for UIKit call sites.
+    func requestPreview(
         for projectId: String,
-        completion: @escaping (Result<PreviewStatusResponse, Error>) -> Void
+        completion: @escaping (Result<Project, Error>) -> Void
     ) {
-        let url = baseURL.appendingPathComponent("preview/status/\(projectId)")
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = 15
-
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            if let error = error {
-                DispatchQueue.main.async { completion(.failure(error)) }
-                return
-            }
-
-            guard let data = data else {
-                DispatchQueue.main.async {
-                    completion(.failure(NSError(
-                        domain: "PreviewService",
-                        code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "Empty response"]
-                    )))
-                }
-                return
-            }
-
+        Task {
             do {
-                let decoded = try JSONDecoder().decode(PreviewStatusResponse.self, from: data)
-                DispatchQueue.main.async { completion(.success(decoded)) }
+                let project = try await projectsService.generatePreview(projectId: projectId)
+                await MainActor.run {
+                    completion(.success(project))
+                }
             } catch {
-                DispatchQueue.main.async { completion(.failure(error)) }
+                await MainActor.run {
+                    completion(.failure(error))
+                }
             }
-        }.resume()
+        }
     }
 }

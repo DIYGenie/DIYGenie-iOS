@@ -313,54 +313,63 @@ private struct PlanSection: View {
 
     @ViewBuilder
     private func planContents(for plan: PlanResponse) -> some View {
-        if let summary = plan.summary, !summary.isEmpty {
-            Text(summary)
-                .font(.body)
-                .foregroundColor(.white.opacity(0.85))
-        }
+        VStack(alignment: .leading, spacing: 16) {
+            if let summary = plan.summary, !summary.isEmpty {
+                Text(summary)
+                    .font(.body)
+                    .foregroundColor(.white.opacity(0.85))
+            }
 
-        if !plan.materials.isEmpty {
-            sectionHeader("Materials")
-            let materialStrings = plan.materials.map { String(describing: $0) }
-            bulletList(materialStrings)
-        }
+            infoRows(for: plan)
 
-        if !plan.tools.isEmpty {
-            sectionHeader("Tools")
-            let toolStrings = plan.tools.map { String(describing: $0) }
-            bulletList(toolStrings)
-        }
+            materialsSection(for: plan.materials)
 
-        if let estimate = plan.estimatedCost {
-            sectionHeader("Estimated Cost")
-            Text("$\(Int(estimate))")
-                .font(.headline)
-                .foregroundColor(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Color.white.opacity(0.1))
-                .cornerRadius(12)
-        }
+            toolsSection(for: plan.tools)
 
-        if !plan.steps.isEmpty {
-            sectionHeader("Steps")
-            let completed = Set(completedSteps)
+            if let breakdown = plan.costBreakdown {
+                sectionHeader("Cost breakdown")
+                if breakdown.isEmpty {
+                    emptyState("No cost breakdown yet.")
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(breakdown.enumerated()), id: \.offset) { index, item in
+                            HStack {
+                                Text(item.category)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(.white)
+                                Spacer()
+                                Text(item.amount)
+                                    .font(.subheadline)
+                                    .foregroundColor(.white.opacity(0.85))
+                            }
+                            if let notes = item.notes, !notes.isEmpty {
+                                Text(notes)
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
 
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(plan.steps.enumerated()), id: \.0) { index, step in
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: completed.contains(index) ? "checkmark.circle.fill" : "circle")
-                            .foregroundColor(completed.contains(index) ? .green : .white.opacity(0.6))
-                            .font(.system(size: 18, weight: .medium))
-                        Text(String(describing: step))
-                            .foregroundColor(.white.opacity(0.9))
-                            .font(.body)
+                            if index < breakdown.count - 1 {
+                                Divider().background(Color.white.opacity(0.12))
+                            }
+                        }
                     }
+                    .padding(14)
+                    .background(Color.white.opacity(0.08))
+                    .cornerRadius(14)
                 }
             }
-            .padding(14)
-            .background(Color.white.opacity(0.08))
-            .cornerRadius(14)
+
+            stepsSection(for: plan)
+
+            if let notes = plan.notes, !notes.isEmpty {
+                sectionHeader("Notes")
+                Text(notes)
+                    .font(.body)
+                    .foregroundColor(.white.opacity(0.85))
+                    .padding(14)
+                    .background(Color.white.opacity(0.08))
+                    .cornerRadius(14)
+            }
         }
     }
 
@@ -370,22 +379,149 @@ private struct PlanSection: View {
             .foregroundColor(.white)
     }
 
-    private func bulletList(_ items: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(items, id: \.self) { item in
-                HStack(alignment: .top, spacing: 8) {
-                    Circle()
-                        .fill(Color.white.opacity(0.6))
-                        .frame(width: 6, height: 6)
-                        .padding(.top, 6)
-                    Text(item)
-                        .foregroundColor(.white.opacity(0.85))
-                        .font(.body)
+    @ViewBuilder
+    private func infoRows(for plan: PlanResponse) -> some View {
+        if let cost = plan.estimatedCost, !cost.isEmpty {
+            infoRow(label: "Estimated cost", value: cost)
+        }
+
+        if let duration = plan.estimatedDuration, !duration.isEmpty {
+            infoRow(label: "Estimated duration", value: duration)
+        }
+
+        if let skill = plan.skillLevel, !skill.isEmpty {
+            infoRow(label: "Skill level", value: skill.capitalized)
+        }
+    }
+
+    private func infoRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.7))
+            Spacer()
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.white)
+        }
+        .padding(12)
+        .background(Color.white.opacity(0.08))
+        .cornerRadius(12)
+    }
+
+    @ViewBuilder
+    private func materialsSection(for materials: [PlanMaterial]) -> some View {
+        sectionHeader("Materials")
+        if materials.isEmpty {
+            emptyState("No materials listed yet.")
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(materials.enumerated()), id: \.offset) { index, material in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(material.name)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.white)
+                        if let quantity = material.quantity, !quantity.isEmpty {
+                            Text(quantity)
+                                .font(.footnote)
+                                .foregroundColor(.white.opacity(0.75))
+                        }
+                        if let notes = material.notes, !notes.isEmpty {
+                            Text(notes)
+                                .font(.footnote)
+                                .foregroundColor(.white.opacity(0.6))
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 6)
+
+                    if index < materials.count - 1 {
+                        Divider().background(Color.white.opacity(0.12))
+                    }
                 }
             }
+            .padding(14)
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(14)
         }
-        .padding(14)
-        .background(Color.white.opacity(0.08))
-        .cornerRadius(14)
+    }
+
+    @ViewBuilder
+    private func toolsSection(for tools: [PlanTool]) -> some View {
+        sectionHeader("Tools")
+        if tools.isEmpty {
+            emptyState("No tools required yet.")
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(tools.enumerated()), id: \.offset) { index, tool in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(tool.name)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.white)
+                        if let notes = tool.notes, !notes.isEmpty {
+                            Text(notes)
+                                .font(.footnote)
+                                .foregroundColor(.white.opacity(0.65))
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 6)
+
+                    if index < tools.count - 1 {
+                        Divider().background(Color.white.opacity(0.12))
+                    }
+                }
+            }
+            .padding(14)
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(14)
+        }
+    }
+
+    @ViewBuilder
+    private func stepsSection(for plan: PlanResponse) -> some View {
+        sectionHeader("Steps")
+        let orderedPairs = plan.steps.orderedWithOriginalIndices()
+        if orderedPairs.isEmpty {
+            emptyState("No steps yet.")
+        } else {
+            let completed = Set(completedSteps)
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(orderedPairs.enumerated()), id: \.offset) { entry in
+                    let displayIndex = entry.offset
+                    let pair = entry.element
+                    let isDone = completed.contains(pair.originalIndex)
+
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
+                            .foregroundColor(isDone ? .green : .white.opacity(0.6))
+                            .font(.system(size: 18, weight: .medium))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Step \(displayIndex + 1): \(pair.step.title)")
+                                .foregroundColor(.white)
+                                .font(.subheadline.weight(.semibold))
+                            if let details = pair.step.details, !details.isEmpty {
+                                Text(details)
+                                    .foregroundColor(.white.opacity(0.8))
+                                    .font(.footnote)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(14)
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(14)
+        }
+    }
+
+    private func emptyState(_ message: String) -> some View {
+        Text(message)
+            .font(.subheadline)
+            .foregroundColor(.white.opacity(0.65))
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.white.opacity(0.04))
+            .cornerRadius(12)
     }
 }

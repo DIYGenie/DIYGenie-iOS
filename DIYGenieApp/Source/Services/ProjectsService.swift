@@ -199,7 +199,7 @@ struct ProjectsService {
         print("[ProjectsService] AR scan uploaded to:\n\(publicURL)")
     }
 
-    // MARK: - Preview + Plan
+    // MARK: - Preview
     func generatePreview(projectId: String) async throws -> Project {
         // Call the new synchronous Decor8 preview endpoint on the backend.
         let url = AppConfig.apiBaseURL.appendingPathComponent("preview/decor8")
@@ -208,14 +208,8 @@ struct ProjectsService {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        // Build the JSON body manually so key casing is preserved exactly
-        // and the backend always receives both "projectId" and "project_id".
-        let body: [String: Any] = [
-            "projectId": projectId,
-            "project_id": projectId
-        ]
-
-        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+        let payload = PreviewTriggerPayload(projectId: projectId)
+        request.httpBody = try encoder.encode(payload)
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
@@ -224,7 +218,7 @@ struct ProjectsService {
 
         guard (200..<300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? "<no body>"
-            print("[ProjectsService] generatePreview /preview/decor8 failed with status \(http.statusCode). Body: \(body)")
+            print("[ProjectsService] generatePreview failed for project \(projectId) – status: \(http.statusCode), body: \(body)")
             throw ServiceError.invalidResponse
         }
 
@@ -240,6 +234,19 @@ struct ProjectsService {
         return try await fetchProject(projectId: projectId)
     }
 
+    func attachCropRectIfAvailable(projectId: String, rect: CGRect) async {
+        let roi: [String: Any] = [
+            "x": Double(rect.origin.x),
+            "y": Double(rect.origin.y),
+            "w": Double(rect.size.width),
+            "h": Double(rect.size.height)
+        ]
+
+        let patch = SupabaseProjectUpdate(previewMeta: ["roi": AnyCodable(roi)])
+        _ = try? await updateProject(id: projectId, patch: patch)
+    }
+
+    // MARK: - Plan
     @discardableResult
     func generatePlanOnly(projectId: String) async throws -> Project {
         // Always work from the latest project state in Supabase
@@ -253,31 +260,20 @@ struct ProjectsService {
             throw ServiceError.invalidResponse
         }
 
-        struct PlanRequestPayload: Encodable {
-            let projectId: String
-            let goal: String
-
-            private enum CodingKeys: String, CodingKey {
-                case projectId      // "projectId"
-                case project_id     // "project_id"
-                case goal
-            }
-
-            func encode(to encoder: Encoder) throws {
-                var container = encoder.container(keyedBy: CodingKeys.self)
-                // Send both camelCase and snake_case so the backend can read whichever it expects.
-                try container.encode(projectId, forKey: .projectId)
-                try container.encode(projectId, forKey: .project_id)
-                try container.encode(goal, forKey: .goal)
-            }
-        }
-
         let payload = PlanRequestPayload(projectId: projectId, goal: trimmedGoal)
 
         var planRequest = URLRequest(url: AppConfig.apiBaseURL.appendingPathComponent("plan"))
         planRequest.httpMethod = "POST"
         planRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        planRequest.httpBody = try encoder.encode(payload)
+        let requestBody = try encoder.encode(payload)
+
+#if DEBUG
+        if let json = String(data: requestBody, encoding: .utf8) {
+            print("[ProjectsService] /plan payload for project \(projectId): \(json)")
+        }
+#endif
+
+        planRequest.httpBody = requestBody
 
         let (data, response) = try await session.data(for: planRequest)
         guard let http = response as? HTTPURLResponse else {
@@ -286,7 +282,7 @@ struct ProjectsService {
 
         guard (200..<300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? "<no body>"
-            print("[ProjectsService] generatePlanOnly /plan failed with status \(http.statusCode). Body: \(body)")
+            print("[ProjectsService] generatePlanOnly failed for project \(projectId) – status: \(http.statusCode), body: \(body)")
             throw ServiceError.invalidResponse
         }
 
@@ -313,7 +309,7 @@ struct ProjectsService {
 
         guard (200..<300).contains(updateHTTP.statusCode) else {
             let body = String(data: updateData, encoding: .utf8) ?? "<no body>"
-            print("[ProjectsService] generatePlanOnly Supabase update failed with status \(updateHTTP.statusCode). Body: \(body)")
+            print("[ProjectsService] generatePlanOnly Supabase update failed for project \(projectId) – status: \(updateHTTP.statusCode), body: \(body)")
             throw ServiceError.invalidResponse
         }
 
@@ -324,18 +320,6 @@ struct ProjectsService {
 
         // Fallback: re-fetch the project to ensure we return a consistent model
         return try await fetchProject(projectId: projectId)
-    }
-
-    func attachCropRectIfAvailable(projectId: String, rect: CGRect) async {
-        let roi: [String: Any] = [
-            "x": Double(rect.origin.x),
-            "y": Double(rect.origin.y),
-            "w": Double(rect.size.width),
-            "h": Double(rect.size.height)
-        ]
-
-        let patch = SupabaseProjectUpdate(previewMeta: ["roi": AnyCodable(roi)])
-        _ = try? await updateProject(id: projectId, patch: patch)
     }
 }
 
@@ -518,6 +502,24 @@ private struct PreviewStatusEnvelope: Decodable {
 private struct PlanEnvelope: Decodable {
     let ok: Bool?
     let plan: PlanResponse?
+}
+
+private struct PlanRequestPayload: Encodable {
+    let projectId: String
+    let goal: String
+
+    private enum CodingKeys: String, CodingKey {
+        case projectId      // "projectId"
+        case project_id     // "project_id"
+        case goal
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(projectId, forKey: .projectId)
+        try container.encode(projectId, forKey: .project_id)
+        try container.encode(goal, forKey: .goal)
+    }
 }
 
 private struct PlanUpdatePayload: Encodable {
