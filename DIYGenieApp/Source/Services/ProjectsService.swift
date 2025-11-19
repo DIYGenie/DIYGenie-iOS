@@ -242,22 +242,42 @@ struct ProjectsService {
 
     @discardableResult
     func generatePlanOnly(projectId: String) async throws -> Project {
+        // Always work from the latest project state in Supabase
         let project = try await fetchProject(projectId: projectId)
-        let photoURL = project.inputImageURL ?? project.previewURL
-        let prompt = project.goal ?? project.name
 
-        // Build the payload using the PlanTriggerPayload DTO so we always
-        // emit both `photoUrl` and `photo_url` when an image is available.
-        let trigger = PlanTriggerPayload(
-            photoUrl: photoURL,
-            prompt: prompt,
-            measurements: nil
-        )
+        // The backend now requires both a projectId and a non-empty goal in the payload.
+        let rawGoal = project.goal ?? project.name
+        let trimmedGoal = rawGoal.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedGoal.isEmpty else {
+            print("[ProjectsService] generatePlanOnly aborted: missing goal for project \(projectId)")
+            throw ServiceError.invalidResponse
+        }
+
+        struct PlanRequestPayload: Encodable {
+            let projectId: String
+            let goal: String
+
+            private enum CodingKeys: String, CodingKey {
+                case projectId      // "projectId"
+                case project_id     // "project_id"
+                case goal
+            }
+
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                // Send both camelCase and snake_case so the backend can read whichever it expects.
+                try container.encode(projectId, forKey: .projectId)
+                try container.encode(projectId, forKey: .project_id)
+                try container.encode(goal, forKey: .goal)
+            }
+        }
+
+        let payload = PlanRequestPayload(projectId: projectId, goal: trimmedGoal)
 
         var planRequest = URLRequest(url: AppConfig.apiBaseURL.appendingPathComponent("plan"))
         planRequest.httpMethod = "POST"
         planRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        planRequest.httpBody = try encoder.encode(trigger)
+        planRequest.httpBody = try encoder.encode(payload)
 
         let (data, response) = try await session.data(for: planRequest)
         guard let http = response as? HTTPURLResponse else {
@@ -276,10 +296,14 @@ struct ProjectsService {
         }
 
         let update = PlanUpdatePayload(planJson: plan, status: "plan_ready")
-        var updateRequest = try supabaseRequest(url: supabaseRESTPath("projects"), method: "PATCH", queryItems: [
-            URLQueryItem(name: "id", value: "eq.\(projectId)"),
-            URLQueryItem(name: "select", value: "*")
-        ])
+        var updateRequest = try supabaseRequest(
+            url: supabaseRESTPath("projects"),
+            method: "PATCH",
+            queryItems: [
+                URLQueryItem(name: "id", value: "eq.\(projectId)"),
+                URLQueryItem(name: "select", value: "*")
+            ]
+        )
         updateRequest.httpBody = try encoder.encode(update)
 
         let (updateData, updateResponse) = try await session.data(for: updateRequest)
@@ -298,6 +322,7 @@ struct ProjectsService {
             return record.toProject()
         }
 
+        // Fallback: re-fetch the project to ensure we return a consistent model
         return try await fetchProject(projectId: projectId)
     }
 
@@ -489,34 +514,6 @@ private struct PreviewStatusEnvelope: Decodable {
     let previewUrl: String?
 }
 
-private struct PlanTriggerPayload: Encodable {
-    let photoUrl: String?
-    let prompt: String
-    let measurements: [String: AnyCodable]?
-
-    private enum CodingKeys: String, CodingKey {
-        case photoUrl       // "photoUrl"
-        case photo_url      // "photo_url"
-        case prompt
-        case measurements
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-
-        if let photoUrl {
-            // Send both keys so a backend looking for "photo_url" is satisfied,
-            // and any code using "photoUrl" still works.
-            try container.encode(photoUrl, forKey: .photoUrl)
-            try container.encode(photoUrl, forKey: .photo_url)
-        }
-
-        try container.encode(prompt, forKey: .prompt)
-        if let measurements {
-            try container.encode(measurements, forKey: .measurements)
-        }
-    }
-}
 
 private struct PlanEnvelope: Decodable {
     let ok: Bool?
