@@ -53,6 +53,11 @@ struct ProjectDetailsView: View {
         project.inputImageURL != nil
     }
 
+    private var previewFailed: Bool {
+        guard let status = project.previewStatus?.lowercased() else { return false }
+        return status.contains("failed") || status.contains("error")
+    }
+
     var body: some View {
         ZStack {
             // Match the NewProjectView gradient-style background so it isn't just black
@@ -191,7 +196,11 @@ struct ProjectDetailsView: View {
                 ProjectMediaView(urlString: mediaURL)
             }
 
-            if hasPreview {
+            if previewFailed {
+                Text("Preview generation failed. You can still follow the AI plan below.")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundColor(Color.red.opacity(0.85))
+            } else if hasPreview {
                 Text("This is an AI-generated visualization based on your goal and room photo.")
                     .font(.footnote)
                     .foregroundColor(.white.opacity(0.7))

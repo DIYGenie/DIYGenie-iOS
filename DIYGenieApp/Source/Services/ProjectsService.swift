@@ -12,6 +12,7 @@ struct ProjectsService {
         case decodeFailed
         case missingProject
         case unsupported
+        case backend(message: String)
     }
 
     let userId: String
@@ -209,7 +210,14 @@ struct ProjectsService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let payload = PreviewTriggerPayload(projectId: projectId)
-        request.httpBody = try encoder.encode(payload)
+        let previewEncoder = JSONEncoder()
+        previewEncoder.dateEncodingStrategy = .iso8601
+        previewEncoder.keyEncodingStrategy = .useDefaultKeys
+        let body = try previewEncoder.encode(payload)
+        if let json = String(data: body, encoding: .utf8) {
+            print("[ProjectsService] /preview/decor8 payload:", json)
+        }
+        request.httpBody = body
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
@@ -222,13 +230,13 @@ struct ProjectsService {
             throw ServiceError.invalidResponse
         }
 
-        // The backend already updates Supabase with preview_url and preview_status.
-        // We can optionally try to decode the response, but we don't depend on it.
-        struct PreviewDecor8Response: Decodable {
-            let ok: Bool?
-            let previewUrl: String?
+        if let envelope = try? decoder.decode(PreviewEnvelope.self, from: data), envelope.hasMeaningfulContent {
+            if envelope.ok == false {
+                print("[ProjectsService] /preview/decor8 error:", envelope.error ?? "unknown")
+                let message = envelope.message ?? envelope.error ?? "Preview generation failed."
+                throw ServiceError.backend(message: message)
+            }
         }
-        _ = try? decoder.decode(PreviewDecor8Response.self, from: data)
 
         // Return the freshest project record, including preview_url / preview_status.
         return try await fetchProject(projectId: projectId)
@@ -271,11 +279,9 @@ struct ProjectsService {
         planEncoder.keyEncodingStrategy = .useDefaultKeys
         let requestBody = try planEncoder.encode(payload)
 
-#if DEBUG
         if let json = String(data: requestBody, encoding: .utf8) {
-            print("[ProjectsService] /plan payload for project \(projectId): \(json)")
+            print("[ProjectsService] /plan payload:", json)
         }
-#endif
 
         planRequest.httpBody = requestBody
 
@@ -290,8 +296,22 @@ struct ProjectsService {
             throw ServiceError.invalidResponse
         }
 
-        let planEnvelope = try decoder.decode(PlanEnvelope.self, from: data)
-        guard let plan = planEnvelope.plan else {
+        var plan: PlanResponse?
+        if let planEnvelope = try? decoder.decode(PlanEnvelope.self, from: data), planEnvelope.hasMeaningfulContent {
+            if planEnvelope.ok == false {
+                print("[ProjectsService] /plan error:", planEnvelope.error ?? "unknown", "fields_missing:", planEnvelope.fieldsMissing ?? [])
+                let message = planEnvelope.message ?? planEnvelope.error ?? "Plan generation failed."
+                throw ServiceError.backend(message: message)
+            }
+
+            plan = planEnvelope.plan
+        }
+
+        if plan == nil {
+            plan = try? decoder.decode(PlanResponse.self, from: data)
+        }
+
+        guard let plan else {
             throw ServiceError.decodeFailed
         }
 
@@ -324,6 +344,23 @@ struct ProjectsService {
 
         // Fallback: re-fetch the project to ensure we return a consistent model
         return try await fetchProject(projectId: projectId)
+    }
+}
+
+extension ProjectsService.ServiceError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .invalidResponse:
+            return "The server response was invalid."
+        case .decodeFailed:
+            return "We couldn't read the server response."
+        case .missingProject:
+            return "We couldn't find that project."
+        case .unsupported:
+            return "This action isn't supported."
+        case .backend(let message):
+            return message
+        }
     }
 }
 
@@ -482,18 +519,6 @@ private struct AttachScanPayload: Encodable {
 
 private struct PreviewTriggerPayload: Encodable {
     let projectId: String
-
-    private enum CodingKeys: String, CodingKey {
-        case projectId      // "projectId"
-        case project_id     // "project_id"
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        // Send both camelCase and snake_case so the backend can read whichever it expects.
-        try container.encode(projectId, forKey: .projectId)
-        try container.encode(projectId, forKey: .project_id)
-    }
 }
 
 private struct PreviewStatusEnvelope: Decodable {
@@ -505,7 +530,25 @@ private struct PreviewStatusEnvelope: Decodable {
 
 private struct PlanEnvelope: Decodable {
     let ok: Bool?
+    let error: String?
+    let message: String?
+    let fieldsMissing: [String]?
     let plan: PlanResponse?
+
+    var hasMeaningfulContent: Bool {
+        ok != nil || error != nil || message != nil || plan != nil || (fieldsMissing?.isEmpty == false)
+    }
+}
+
+private struct PreviewEnvelope: Decodable {
+    let ok: Bool?
+    let error: String?
+    let message: String?
+    let previewUrl: String?
+
+    var hasMeaningfulContent: Bool {
+        ok != nil || error != nil || message != nil || previewUrl != nil
+    }
 }
 
 private struct PlanRequestPayload: Encodable {

@@ -54,11 +54,18 @@ struct PlanResponse: Codable {
         case notes
     }
 
+    private enum LegacyCodingKeys: String, CodingKey {
+        case projectIdSnake = "project_id"
+    }
+
     /// Provide safe fallbacks if the API ever omits arrays
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let legacy = try? decoder.container(keyedBy: LegacyCodingKeys.self)
 
-        projectId         = try container.decodeIfPresent(String.self, forKey: .projectId)
+        let camelId = try container.decodeIfPresent(String.self, forKey: .projectId)
+        let snakeId = try legacy?.decodeIfPresent(String.self, forKey: .projectIdSnake)
+        projectId         = camelId ?? snakeId
         summary           = try container.decodeIfPresent(String.self, forKey: .summary)
         estimatedCost     = try container.decodeIfPresent(String.self, forKey: .estimatedCost)
         estimatedDuration = try container.decodeIfPresent(String.self, forKey: .estimatedDuration)
