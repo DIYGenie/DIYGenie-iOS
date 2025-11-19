@@ -61,6 +61,9 @@ struct NewProjectView: View {
     @State private var projectId: String?
     @State private var createdProject: Project?
 
+    // MARK: - Entitlements
+    @State private var entitlements: BackendEntitlements = .default
+
     // MARK: - Background
     private var background: some View {
         LinearGradient(
@@ -168,6 +171,7 @@ struct NewProjectView: View {
         .alert(alertMessage, isPresented: $showAlert) {
             Button("OK", role: .cancel) {}
         }
+        .task { await loadEntitlements() }
     }
 
     // MARK: - Form content
@@ -490,6 +494,10 @@ struct NewProjectView: View {
         isValid && selectedUIImage != nil
     }
 
+    private var shouldRequestPreview: Bool {
+        entitlements.previewAllowed && selectedUIImage != nil
+    }
+
 
     // MARK: - Actions
 
@@ -538,24 +546,27 @@ struct NewProjectView: View {
             }
 
             // 4) Always generate the plan first
+            var latestProject: Project
             do {
-                try await service.generatePlanOnly(projectId: created.id)
+                latestProject = try await service.generatePlanOnly(projectId: created.id)
             } catch {
                 alert("AI plan generation failed: \(error.localizedDescription)")
                 return
             }
 
             // 5) Best-effort preview (may fail for Free tier and that's OK)
-            do {
-                _ = try await service.generatePreview(projectId: created.id)
-            } catch {
-                print("[DIYGenie] Preview generation failed (maybe Free tier):", error)
+            if shouldRequestPreview {
+                do {
+                    latestProject = try await service.generatePreview(projectId: created.id)
+                } catch {
+                    print("[DIYGenie] Preview generation failed:", error)
+                    alert("Preview generation failed. You can still use the step-by-step plan.")
+                }
             }
 
-            // 6) Fetch + notify parent
-            let fresh = try await service.fetchProject(projectId: created.id)
-            createdProject = fresh
-            onFinished?(fresh)
+            // 6) Notify parent with the freshest project
+            createdProject = latestProject
+            onFinished?(latestProject)
 
         } catch {
             alert("Failed to create project: \(error.localizedDescription)")
@@ -606,6 +617,21 @@ struct NewProjectView: View {
     private func alert(_ text: String) {
         alertMessage = text
         showAlert = true
+    }
+
+    @MainActor
+    private func loadEntitlements() async {
+        await withCheckedContinuation { continuation in
+            EntitlementsService.shared.fetchEntitlements(userId: service.userId) { result in
+                switch result {
+                case .success(let ent):
+                    entitlements = ent
+                case .failure:
+                    entitlements = .default
+                }
+                continuation.resume()
+            }
+        }
     }
 }
 
