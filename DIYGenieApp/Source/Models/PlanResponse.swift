@@ -206,3 +206,23 @@ struct PlanCostItem: Codable, Identifiable, Hashable {
         case notes
     }
 }
+
+// MARK: - Helpers
+
+extension Array where Element == PlanStep {
+    /// Returns the steps sorted by their optional `order`, while also preserving
+    /// the original index. The original index is useful for matching existing
+    /// completion state stored in Supabase.
+    func orderedWithOriginalIndices() -> [(originalIndex: Int, step: PlanStep)] {
+        enumerated()
+            .sorted { lhs, rhs in
+                let lhsOrder = lhs.element.order ?? Int.max
+                let rhsOrder = rhs.element.order ?? Int.max
+                if lhsOrder == rhsOrder {
+                    return lhs.offset < rhs.offset
+                }
+                return lhsOrder < rhsOrder
+            }
+            .map { (originalIndex: $0.offset, step: $0.element) }
+    }
+}

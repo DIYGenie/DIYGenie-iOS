@@ -456,12 +456,12 @@ struct NewProjectView: View {
 
                 // CTAs
                 VStack(spacing: 12) {
-                    primaryCTA(title: "Generate AI Plan + Preview") {
+                    primaryCTA(title: "Generate Plan") {
                         Task { await createAndNavigate() }
                     }
                     .disabled(!canGeneratePreview || isLoading)
 
-                    helper("Add a room photo to generate your full AI plan and preview.")
+                    helper("Add a room photo so Genie can generate your full AI plan and preview.")
                         .multilineTextAlignment(.center)
                 }
                 .padding(.top, 6)
