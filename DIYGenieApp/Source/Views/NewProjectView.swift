@@ -457,16 +457,11 @@ struct NewProjectView: View {
                 // CTAs
                 VStack(spacing: 12) {
                     primaryCTA(title: "Generate AI Plan + Preview") {
-                        Task { await createAndNavigate(wantsPreview: true) }
+                        Task { await createAndNavigate() }
                     }
                     .disabled(!canGeneratePreview || isLoading)
 
-                    secondaryCTA(title: "Create Plan Only (No Preview)") {
-                        Task { await createAndNavigate(wantsPreview: false) }
-                    }
-                    .disabled(!canCreatePlanOnly || isLoading)
-
-                    helper("Preview requires a room photo. You can always start with plan only and add a photo later.")
+                    helper("Add a room photo to generate your full AI plan and preview.")
                         .multilineTextAlignment(.center)
                 }
                 .padding(.top, 6)
@@ -495,21 +490,19 @@ struct NewProjectView: View {
         isValid && selectedUIImage != nil
     }
 
-    private var canCreatePlanOnly: Bool {
-        isValid
-    }
 
     // MARK: - Actions
 
     @MainActor
-    private func createAndNavigate(wantsPreview: Bool) async {
+    private func createAndNavigate() async {
         guard isValid else {
             alert("Please add a project goal/description.")
             return
         }
 
-        if wantsPreview && selectedUIImage == nil {
-            alert("Add a room photo to generate a visual preview, or choose \"Create Plan Only (No Preview)\" to continue without a photo.")
+        // For this build, this flow always requires a room photo
+        guard selectedUIImage != nil else {
+            alert("Add a room photo to generate your AI plan and preview.")
             return
         }
 
@@ -544,19 +537,22 @@ struct NewProjectView: View {
                 await service.attachCropRectIfAvailable(projectId: created.id, rect: rect)
             }
 
-            // 4) Trigger AI (defensive)
+            // 4) Always generate the plan first
             do {
-                if wantsPreview {
-                    _ = try await service.generatePreview(projectId: created.id)
-                } else {
-                    try await service.generatePlanOnly(projectId: created.id)
-                }
+                try await service.generatePlanOnly(projectId: created.id)
             } catch {
-                alert("AI generation failed: \(error.localizedDescription)")
+                alert("AI plan generation failed: \(error.localizedDescription)")
                 return
             }
 
-            // 5) Fetch + notify parent
+            // 5) Best-effort preview (may fail for Free tier and that's OK)
+            do {
+                _ = try await service.generatePreview(projectId: created.id)
+            } catch {
+                print("[DIYGenie] Preview generation failed (maybe Free tier):", error)
+            }
+
+            // 6) Fetch + notify parent
             let fresh = try await service.fetchProject(projectId: created.id)
             createdProject = fresh
             onFinished?(fresh)

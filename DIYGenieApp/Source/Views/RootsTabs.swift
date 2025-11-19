@@ -40,11 +40,11 @@ struct RootTabs: View {
             // PROJECTS
             NavigationStack(path: $projectsPath) {
                 ProjectsListView()
-            }
-            .navigationDestination(for: String.self) { route in
-                if route == "projectDetail", let p = selectedProject {
-                    ProjectDetailsView(project: p)
-                }
+                    .navigationDestination(for: String.self) { route in
+                        if route == "projectDetail", let p = selectedProject {
+                            ProjectDetailsView(project: p)
+                        }
+                    }
             }
             .tabItem {
                 Label("Projects", systemImage: "hammer")
