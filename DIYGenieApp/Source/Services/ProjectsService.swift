@@ -265,7 +265,11 @@ struct ProjectsService {
         var planRequest = URLRequest(url: AppConfig.apiBaseURL.appendingPathComponent("plan"))
         planRequest.httpMethod = "POST"
         planRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let requestBody = try encoder.encode(payload)
+
+        let planEncoder = JSONEncoder()
+        planEncoder.dateEncodingStrategy = .iso8601
+        planEncoder.keyEncodingStrategy = .useDefaultKeys
+        let requestBody = try planEncoder.encode(payload)
 
 #if DEBUG
         if let json = String(data: requestBody, encoding: .utf8) {
@@ -509,16 +513,8 @@ private struct PlanRequestPayload: Encodable {
     let goal: String
 
     private enum CodingKeys: String, CodingKey {
-        case projectId      // "projectId"
-        case project_id     // "project_id"
+        case projectId
         case goal
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(projectId, forKey: .projectId)
-        try container.encode(projectId, forKey: .project_id)
-        try container.encode(goal, forKey: .goal)
     }
 }
 
