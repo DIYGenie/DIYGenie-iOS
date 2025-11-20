@@ -150,7 +150,7 @@ struct PlanStep: Codable, Identifiable, Hashable {
         order         = try container.decodeIfPresent(Int.self, forKey: .order)
         title         = try container.decodeIfPresent(String.self, forKey: .title) ?? "Step"
         details       = try container.decodeIfPresent(String.self, forKey: .details)
-        estimatedTime = try container.decodeIfPresent(String.self, forKey: .estimatedTime)
+        estimatedTime = try container.decodeStringOrNumber(forKey: .estimatedTime)
         localId       = Int.random(in: 1...1_000_000)
     }
 }

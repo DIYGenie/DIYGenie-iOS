@@ -20,19 +20,16 @@ final class ProjectDecodingTests: XCTestCase {
                 "preview_url": null,
                 "input_image_url": "https://example.com/image.jpg",
                 "plan_json": {
-                    "summary": "Floating shelves plan",
-                    "estimated_cost": "$120",
-                    "estimated_duration": "1 day",
-                    "steps": [
-                        {"order": 1, "title": "Measure and mark", "details": "Use a level"}
-                    ],
-                    "materials": [
-                        {"name": "Shelf board", "quantity": "3"}
-                    ],
-                    "tools": [
-                        {"name": "Drill"}
-                    ],
-                    "notes": "Use wall anchors"
+                    "notes": "Wear eye and hearing protection.",
+                    "steps": [ { "order":1,"title":"Plan & mark studs","details":"Use a stud finder and painter's tape to mark stud centers.","estimatedTime":15 } ],
+                    "tools": [ { "name":"Drill/driver","notes":"Already have" } ],
+                    "summary":"Modern floating shelves - I want 3 floating shelves in my wall",
+                    "materials":[ { "name":"birch plywood 3/4\" (4x8)","quantity":"1 sheet","notes":"" } ],
+                    "projectId":"d7ae7eac-5a72-4da1-85f8-0eadaac2521d",
+                    "skillLevel":"Intermediate",
+                    "costBreakdown":[ { "category":"Materials","amount":122.3,"notes":"" } ],
+                    "estimatedCost":152.66,
+                    "estimatedDuration":110
                 },
                 "completed_steps": [],
                 "current_step_index": 0,
@@ -43,8 +40,8 @@ final class ProjectDecodingTests: XCTestCase {
                 "is_demo": false,
                 "photo_url": null,
                 "planJson": {
-                    "summary": "Floating shelves plan",
-                    "steps": [],
+                    "summary": "Modern floating shelves - I want 3 floating shelves in my wall",
+                    "steps": [ { "order":1,"title":"Plan & mark studs","details":"Use a stud finder and painter's tape to mark stud centers.","estimatedTime":15 } ],
                     "materials": [],
                     "tools": []
                 },
@@ -53,23 +50,23 @@ final class ProjectDecodingTests: XCTestCase {
         }
         """.data(using: .utf8)!
 
-        struct Envelope: Decodable {
-            let ok: Bool
-            let project: Project
-        }
-
         let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.keyDecodingStrategy = .useDefaultKeys
 
-        let decoded = try decoder.decode(Envelope.self, from: json)
+        let decoded = try decoder.decode(ProjectAPIResponse.self, from: json)
+        let project = decoded.project.toProject()
 
-        XCTAssertEqual(decoded.project.id, "d7ae7eac-5a72-4da1-85f8-0eadaac2521d")
-        XCTAssertEqual(decoded.project.userId, "99198c4b-8470-49e2-895c-75593c5aa181")
-        XCTAssertEqual(decoded.project.previewStatus, "idle")
-        XCTAssertEqual(decoded.project.currentStepIndex, 0)
-        XCTAssertEqual(decoded.project.completedSteps, [])
-        XCTAssertEqual(decoded.project.planJson?.summary, "Floating shelves plan")
-        XCTAssertEqual(decoded.project.planJson?.steps.first?.title, "Measure and mark")
+        XCTAssertEqual(project.id, "d7ae7eac-5a72-4da1-85f8-0eadaac2521d")
+        XCTAssertEqual(project.userId, "99198c4b-8470-49e2-895c-75593c5aa181")
+        XCTAssertEqual(project.previewStatus, "idle")
+        XCTAssertEqual(project.currentStepIndex, 0)
+        XCTAssertEqual(project.completedSteps, [])
+        XCTAssertEqual(project.planJson?.summary, "Modern floating shelves - I want 3 floating shelves in my wall")
+        XCTAssertEqual(project.planJson?.skillLevel, "Intermediate")
+        XCTAssertEqual(project.planJson?.costBreakdown?.first?.amount, "122.30")
+        XCTAssertEqual(project.planJson?.estimatedCost, "152.66")
+        XCTAssertEqual(project.planJson?.estimatedDuration, "110")
+        XCTAssertEqual(project.planJson?.steps.first?.title, "Plan & mark studs")
+        XCTAssertEqual(project.planJson?.steps.first?.estimatedTime, "15")
     }
 }
