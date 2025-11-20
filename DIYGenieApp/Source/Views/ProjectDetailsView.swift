@@ -111,6 +111,12 @@ struct ProjectDetailsView: View {
                 .padding(18)
             }
         }
+        .onAppear {
+            print("[ProjectDetailsView] planJson is nil?", project.planJson == nil)
+            if let status = project.previewStatus {
+                print("[ProjectDetailsView] previewStatus:", status)
+            }
+        }
     }
 
     // MARK: - Sections
@@ -534,3 +540,4 @@ private struct PlanSection: View {
             .cornerRadius(12)
     }
 }
+

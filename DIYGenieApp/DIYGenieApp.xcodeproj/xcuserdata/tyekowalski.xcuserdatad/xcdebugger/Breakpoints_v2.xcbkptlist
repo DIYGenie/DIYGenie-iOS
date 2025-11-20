@@ -30,8 +30,10 @@
             filePath = "Source/Views/NewProjectView.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "884"
-            endingLineNumber = "884">
+            startingLineNumber = "887"
+            endingLineNumber = "887"
+            landmarkName = "denormalizedRect(from:image:)"
+            landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
@@ -44,10 +46,10 @@
             filePath = "Source/Views/NewProjectView.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "883"
-            endingLineNumber = "883"
-            landmarkName = "NewProjectView"
-            landmarkType = "21">
+            startingLineNumber = "886"
+            endingLineNumber = "886"
+            landmarkName = "denormalizedRect(from:image:)"
+            landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy

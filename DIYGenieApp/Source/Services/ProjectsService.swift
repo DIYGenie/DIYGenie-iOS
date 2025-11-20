@@ -296,54 +296,15 @@ struct ProjectsService {
             throw ServiceError.invalidResponse
         }
 
-        var plan: PlanResponse?
-        if let planEnvelope = try? decoder.decode(PlanEnvelope.self, from: data), planEnvelope.hasMeaningfulContent {
-            if planEnvelope.ok == false {
-                print("[ProjectsService] /plan error:", planEnvelope.error ?? "unknown", "fields_missing:", planEnvelope.fieldsMissing ?? [])
-                let message = planEnvelope.message ?? planEnvelope.error ?? "Plan generation failed."
-                throw ServiceError.backend(message: message)
-            }
-
-            plan = planEnvelope.plan
+        // The backend persists the plan into the project's plan_json; fetch the fresh project now.
+        do {
+            let refreshed = try await fetchProject(projectId: projectId)
+            return refreshed
+        } catch {
+            // As a fallback, try a short delay then fetch again in case of eventual consistency.
+            try? await Task.sleep(nanoseconds: 250_000_000) // 250ms
+            return try await fetchProject(projectId: projectId)
         }
-
-        if plan == nil {
-            plan = try? decoder.decode(PlanResponse.self, from: data)
-        }
-
-        guard let plan else {
-            throw ServiceError.decodeFailed
-        }
-
-        let update = PlanUpdatePayload(planJson: plan, status: "plan_ready")
-        var updateRequest = try supabaseRequest(
-            url: supabaseRESTPath("projects"),
-            method: "PATCH",
-            queryItems: [
-                URLQueryItem(name: "id", value: "eq.\(projectId)"),
-                URLQueryItem(name: "select", value: "*")
-            ]
-        )
-        updateRequest.httpBody = try encoder.encode(update)
-
-        let (updateData, updateResponse) = try await session.data(for: updateRequest)
-        guard let updateHTTP = updateResponse as? HTTPURLResponse else {
-            throw ServiceError.invalidResponse
-        }
-
-        guard (200..<300).contains(updateHTTP.statusCode) else {
-            let body = String(data: updateData, encoding: .utf8) ?? "<no body>"
-            print("[ProjectsService] generatePlanOnly Supabase update failed for project \(projectId) – status: \(updateHTTP.statusCode), body: \(body)")
-            throw ServiceError.invalidResponse
-        }
-
-        let updated = try decoder.decode([SupabaseProjectRecord].self, from: updateData)
-        if let record = updated.first {
-            return record.toProject()
-        }
-
-        // Fallback: re-fetch the project to ensure we return a consistent model
-        return try await fetchProject(projectId: projectId)
     }
 }
 

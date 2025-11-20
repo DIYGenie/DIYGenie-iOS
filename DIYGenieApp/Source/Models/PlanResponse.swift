@@ -67,8 +67,8 @@ struct PlanResponse: Codable {
         let snakeId = try legacy?.decodeIfPresent(String.self, forKey: .projectIdSnake)
         projectId         = camelId ?? snakeId
         summary           = try container.decodeIfPresent(String.self, forKey: .summary)
-        estimatedCost     = try container.decodeIfPresent(String.self, forKey: .estimatedCost)
-        estimatedDuration = try container.decodeIfPresent(String.self, forKey: .estimatedDuration)
+        estimatedCost     = try container.decodeStringOrNumber(forKey: .estimatedCost)
+        estimatedDuration = try container.decodeStringOrNumber(forKey: .estimatedDuration)
         skillLevel        = try container.decodeIfPresent(String.self, forKey: .skillLevel)
         notes             = try container.decodeIfPresent(String.self, forKey: .notes)
         costBreakdown     = try container.decodeIfPresent([PlanCostItem].self, forKey: .costBreakdown)
@@ -212,6 +212,21 @@ struct PlanCostItem: Codable, Identifiable, Hashable {
         case amount
         case notes
     }
+
+    init(category: String, amount: String, notes: String?) {
+        self.category = category
+        self.amount = amount
+        self.notes = notes
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.category = try container.decode(String.self, forKey: .category)
+        // Decode amount as string or number, defaulting to an empty string if missing
+        let decodedAmount = try container.decodeStringOrNumber(forKey: .amount) ?? ""
+        self.amount = decodedAmount
+        self.notes = try container.decodeIfPresent(String.self, forKey: .notes)
+    }
 }
 
 // MARK: - Helpers
@@ -231,5 +246,23 @@ extension Array where Element == PlanStep {
                 return lhsOrder < rhsOrder
             }
             .map { (originalIndex: $0.offset, step: $0.element) }
+    }
+}
+
+private extension KeyedDecodingContainer {
+    /// Decodes a value that may be a String, Int, or Double and returns it as a String.
+    /// If the key is missing or the value can't be decoded as any of those types, returns nil.
+    func decodeStringOrNumber(forKey key: Key) throws -> String? {
+        if let s = try? decode(String.self, forKey: key) { return s }
+        if let i = try? decode(Int.self, forKey: key) { return String(i) }
+        if let d = try? decode(Double.self, forKey: key) {
+            // Trim trailing .0 for whole numbers, otherwise keep up to 2 decimals
+            if d.rounded() == d {
+                return String(Int(d))
+            } else {
+                return String(format: "%.2f", d)
+            }
+        }
+        return nil
     }
 }

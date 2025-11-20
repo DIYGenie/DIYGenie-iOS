@@ -545,28 +545,31 @@ struct NewProjectView: View {
                 await service.attachCropRectIfAvailable(projectId: created.id, rect: rect)
             }
 
-            // 4) Always generate the plan first
-            var latestProject: Project
+            // 4) Generate the plan first and navigate immediately with the updated project
+            let planProject: Project
             do {
-                latestProject = try await service.generatePlanOnly(projectId: created.id)
+                planProject = try await service.generatePlanOnly(projectId: created.id)
             } catch {
                 alert("AI plan generation failed: \(error.localizedDescription)")
                 return
             }
 
-            // 5) Best-effort preview (may fail for Free tier and that's OK)
+            // Update local state and notify parent right away so details shows the plan
+            createdProject = planProject
+            onFinished?(planProject)
+
+            // 5) Best-effort preview (may fail for Free tier and that's OK),
+            // but don't block navigation or overwrite the plan-driven details view.
             if shouldRequestPreview {
-                do {
-                    latestProject = try await service.generatePreview(projectId: created.id)
-                } catch {
-                    print("[DIYGenie] Preview generation failed:", error)
-                    alert("Preview generation failed. You can still use the step-by-step plan.")
+                Task {
+                    do {
+                        _ = try await service.generatePreview(projectId: created.id)
+                    } catch {
+                        print("[DIYGenie] Preview generation failed:", error)
+                        alert("Preview generation failed. You can still use the step-by-step plan.")
+                    }
                 }
             }
-
-            // 6) Notify parent with the freshest project
-            createdProject = latestProject
-            onFinished?(latestProject)
 
         } catch {
             alert("Failed to create project: \(error.localizedDescription)")
@@ -907,3 +910,4 @@ extension NewProjectView {
         )
     }
 }
+
