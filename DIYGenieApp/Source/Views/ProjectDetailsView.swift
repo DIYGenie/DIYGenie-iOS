@@ -112,7 +112,13 @@ struct ProjectDetailsView: View {
             }
         }
         .onAppear {
-            print("[ProjectDetailsView] planJson is nil?", project.planJson == nil)
+            if let plan = project.planJson {
+                print("[ProjectDetailsView] HAS PLAN for project \(project.id)")
+                print("[ProjectDetailsView] summary:", plan.summary ?? "<no summary>")
+            } else {
+                print("[ProjectDetailsView] NO PLAN for project \(project.id)")
+            }
+
             if let status = project.previewStatus {
                 print("[ProjectDetailsView] previewStatus:", status)
             }

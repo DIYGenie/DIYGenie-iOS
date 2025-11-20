@@ -155,6 +155,29 @@ struct ProjectsService {
         return record.toProject()
     }
 
+    // Fetch a single project via the App API (not Supabase REST)
+    func fetchProjectFromAPI(projectId: String) async throws -> Project {
+        let url = AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw ServiceError.invalidResponse
+        }
+
+        do {
+            let wrapper = try decoder.decode(ProjectAPIResponse.self, from: data)
+            return wrapper.project
+        } catch {
+            // Log body for debugging and then surface a decode error
+            let body = String(data: data, encoding: .utf8) ?? "<no body>"
+            print("[ProjectsService] fetchProjectFromAPI decode failed. Body: \(body)")
+            throw ServiceError.decodeFailed
+        }
+    }
+
     // MARK: - Uploads
     @discardableResult
     func uploadImage(projectId: String, image: UIImage) async throws -> Project {
@@ -296,14 +319,19 @@ struct ProjectsService {
             throw ServiceError.invalidResponse
         }
 
-        // The backend persists the plan into the project's plan_json; fetch the fresh project now.
+        // The backend persists the plan into the project's plan_json; fetch the fresh project now via App API.
         do {
-            let refreshed = try await fetchProject(projectId: projectId)
+            let refreshed = try await fetchProjectFromAPI(projectId: projectId)
             return refreshed
         } catch {
             // As a fallback, try a short delay then fetch again in case of eventual consistency.
             try? await Task.sleep(nanoseconds: 250_000_000) // 250ms
-            return try await fetchProject(projectId: projectId)
+            do {
+                return try await fetchProjectFromAPI(projectId: projectId)
+            } catch {
+                // Last resort: fall back to Supabase REST.
+                return try await fetchProject(projectId: projectId)
+            }
         }
     }
 }
@@ -488,6 +516,10 @@ private struct PreviewStatusEnvelope: Decodable {
     let previewUrl: String?
 }
 
+private struct ProjectAPIResponse: Codable {
+    let ok: Bool
+    let project: Project
+}
 
 private struct PlanEnvelope: Decodable {
     let ok: Bool?
