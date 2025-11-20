@@ -173,7 +173,7 @@ struct ProjectsService {
         } catch {
             // Log body for debugging and then surface a decode error
             let body = String(data: data, encoding: .utf8) ?? "<no body>"
-            print("[ProjectsService] fetchProjectFromAPI decode failed. Body: \(body)")
+            print("[ProjectsService] fetchProjectFromAPI decode failed: \(error). Body: \(body)")
             throw ServiceError.decodeFailed
         }
     }
@@ -261,7 +261,7 @@ struct ProjectsService {
             }
         }
 
-        // Return the freshest project record, including preview_url / preview_status.
+        // Return the freshest project record, including previewUrl / previewStatus.
         return try await fetchProject(projectId: projectId)
     }
 
