@@ -460,7 +460,7 @@ struct NewProjectView: View {
 
                 // CTAs
                 VStack(spacing: 12) {
-                    primaryCTA(title: "Generate Plan") {
+                    primaryCTA(title: isLoading ? "Generating Plan…" : "Generate Plan") {
                         Task { await createAndNavigate() }
                     }
                     .disabled(!canGeneratePreview || isLoading)
@@ -477,9 +477,27 @@ struct NewProjectView: View {
         .disabled(isLoading)
         .overlay {
             if isLoading {
-                ProgressView()
-                    .scaleEffect(1.2)
-                    .tint(.white)
+                ZStack {
+                    Color.black.opacity(0.35)
+                        .ignoresSafeArea()
+
+                    VStack(spacing: 10) {
+                        ProgressView()
+                            .scaleEffect(1.2)
+                            .tint(.white)
+
+                        Text("Genie is building your plan…")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+
+                        Text("This might take up to a minute for larger projects.")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.8))
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(24)
+                }
             }
         }
     }
