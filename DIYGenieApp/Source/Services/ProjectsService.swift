@@ -169,11 +169,16 @@ struct ProjectsService {
 
         do {
             let wrapper = try decoder.decode(ProjectAPIResponse.self, from: data)
-            return wrapper.project
+            return wrapper.project.toProject()
         } catch {
             // Log body for debugging and then surface a decode error
             let body = String(data: data, encoding: .utf8) ?? "<no body>"
-            print("[ProjectsService] fetchProjectFromAPI decode failed: \(error). Body: \(body)")
+            if let decodingError = error as? DecodingError {
+                print("[ProjectsService] fetchProjectFromAPI decode failed: \(decodingError.humanReadableDescription)")
+            } else {
+                print("[ProjectsService] fetchProjectFromAPI decode failed: \(error)")
+            }
+            print("[ProjectsService] fetchProjectFromAPI decode failed. Body: \(body)")
             throw ServiceError.decodeFailed
         }
     }
@@ -353,6 +358,30 @@ extension ProjectsService.ServiceError: LocalizedError {
     }
 }
 
+private extension DecodingError {
+    var humanReadableDescription: String {
+        switch self {
+        case .typeMismatch(let type, let context):
+            return "Type mismatch for \(type) at \(context.codingPathDescription): \(context.debugDescription)"
+        case .valueNotFound(let type, let context):
+            return "Missing value for \(type) at \(context.codingPathDescription): \(context.debugDescription)"
+        case .keyNotFound(let key, let context):
+            return "Missing key \(key.stringValue) at \(context.codingPathDescription): \(context.debugDescription)"
+        case .dataCorrupted(let context):
+            return "Data corrupted at \(context.codingPathDescription): \(context.debugDescription)"
+        @unknown default:
+            return localizedDescription
+        }
+    }
+}
+
+private extension DecodingError.Context {
+    var codingPathDescription: String {
+        let path = codingPath.map { $0.stringValue }.joined(separator: ".")
+        return path.isEmpty ? "<root>" : path
+    }
+}
+
 // MARK: - Private helpers
 private extension ProjectsService {
     func supabaseRESTPath(_ path: String) -> URL {
@@ -516,9 +545,9 @@ private struct PreviewStatusEnvelope: Decodable {
     let previewUrl: String?
 }
 
-private struct ProjectAPIResponse: Codable {
+struct ProjectAPIResponse: Decodable {
     let ok: Bool
-    let project: Project
+    let project: SupabaseProjectRecord
 }
 
 private struct PlanEnvelope: Decodable {
