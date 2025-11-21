@@ -272,10 +272,12 @@ struct DetailedBuildPlanView: View {
     }
 
     private func shouldShowCutList(for materials: [PlanMaterial]) -> Bool {
-        materials.contains { material in
+        let numericCharacters = CharacterSet(charactersIn: "0123456789.")
+
+        return materials.contains { material in
             [material.quantity, material.notes].contains { value in
                 guard let value, !value.isEmpty else { return false }
-                return value.rangeOfCharacter(in: .decimalDigits) != nil
+                return value.rangeOfCharacter(in: numericCharacters) != nil
             }
         }
     }
