@@ -13,6 +13,8 @@ struct DetailedBuildPlanView: View {
     @State private var showingShareSheet = false
     @State private var shareItems: [Any] = []
 
+    private let cardBackground = Color.white.opacity(0.06)
+
     init(plan: PlanResponse?, completedSteps: [Int] = []) {
         self.plan = plan
         self.completedSteps = completedSteps
@@ -34,9 +36,11 @@ struct DetailedBuildPlanView: View {
                         summarySection(for: plan)
                         recommendedToolsSection(for: plan.tools)
                         shoppingListSection(for: plan.materials)
-                        cutListSection(for: plan.materials)
-                        planNotesSection(notes: plan.notes)
+                        if shouldShowCutList(for: plan.materials) {
+                            cutListSection(for: plan.materials)
+                        }
                         stepsSection(for: plan)
+                        notesSection(notes: plan.notes)
                         savePlanButton
                     }
                     .padding(.horizontal, 20)
@@ -72,7 +76,7 @@ struct DetailedBuildPlanView: View {
                     Text("DIY Build Plan")
                         .font(.system(size: 28, weight: .bold))
                         .foregroundColor(.white)
-                    if let duration = plan.estimatedDuration, !duration.isEmpty {
+                    if let duration = timelineValue(from: plan.estimatedDuration) {
                         Text(duration)
                             .font(.subheadline)
                             .foregroundColor(.white.opacity(0.8))
@@ -96,8 +100,8 @@ struct DetailedBuildPlanView: View {
                 if let cost = plan.estimatedCost, !cost.isEmpty {
                     infoRow(title: "Estimated cost", value: cost)
                 }
-                if let duration = plan.estimatedDuration, !duration.isEmpty {
-                    infoRow(title: "Duration", value: duration)
+                if let duration = timelineValue(from: plan.estimatedDuration) {
+                    infoRow(title: "Timeline", value: duration)
                 }
                 if let skill = plan.skillLevel, !skill.isEmpty {
                     infoRow(title: "Skill level", value: skill.capitalized)
@@ -106,8 +110,8 @@ struct DetailedBuildPlanView: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.08))
-        .cornerRadius(18)
+        .background(cardBackground)
+        .cornerRadius(16)
     }
 
     private func infoRow(title: String, value: String) -> some View {
@@ -229,6 +233,7 @@ struct DetailedBuildPlanView: View {
                         title: pair.step.title,
                         description: pair.step.details,
                         imageName: nil,
+                        estimatedTime: pair.step.estimatedTime,
                         isComplete: Set(completedSteps).contains(pair.originalIndex)
                     )
                 }
@@ -238,8 +243,8 @@ struct DetailedBuildPlanView: View {
         }
     }
 
-    private func planNotesSection(notes: String?) -> some View {
-        planListSection(title: "Plan Notes", hasContent: notes?.isEmpty == false) {
+    private func notesSection(notes: String?) -> some View {
+        planListSection(title: "Notes", hasContent: notes?.isEmpty == false) {
             Text(notes ?? "")
                 .font(.body)
                 .foregroundColor(.white.opacity(0.85))
@@ -251,14 +256,41 @@ struct DetailedBuildPlanView: View {
 
     // MARK: - Helpers
 
+    private func timelineValue(from estimatedDuration: String?) -> String? {
+        guard let duration = estimatedDuration?.trimmingCharacters(in: .whitespacesAndNewlines), !duration.isEmpty else {
+            return nil
+        }
+
+        let hasLetters = duration.rangeOfCharacter(from: CharacterSet.letters) != nil
+        let hasDigits = duration.rangeOfCharacter(from: CharacterSet.decimalDigits) != nil
+
+        if hasDigits && !hasLetters {
+            return "\(duration) min"
+        }
+
+        return duration
+    }
+
+    private func shouldShowCutList(for materials: [PlanMaterial]) -> Bool {
+        let measurementCharacters = CharacterSet.decimalDigits
+            .union(CharacterSet(charactersIn: "."))
+
+        return materials.contains { material in
+            [material.quantity, material.notes].contains { value in
+                guard let value, !value.isEmpty else { return false }
+                return value.rangeOfCharacter(from: measurementCharacters) != nil
+            }
+        }
+    }
+
     private func planEmptyState(_ message: String) -> some View {
         Text(message)
             .font(.subheadline)
             .foregroundColor(.white.opacity(0.65))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
-            .background(Color.white.opacity(0.04))
-            .cornerRadius(14)
+            .background(cardBackground)
+            .cornerRadius(16)
     }
 
     @ViewBuilder
@@ -277,7 +309,7 @@ struct DetailedBuildPlanView: View {
                 VStack(alignment: .leading, spacing: 0, content: content)
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.white.opacity(0.08))
+                    .background(cardBackground)
                     .cornerRadius(16)
             } else {
                 emptyContent()
@@ -315,29 +347,37 @@ private struct PlanStepView: View {
     let title: String
     let description: String?
     let imageName: String?
+    let estimatedTime: String?
     let isComplete: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 12) {
                 Text("Step \(number)")
-                    .font(.subheadline.weight(.bold))
-                    .padding(8)
-                    .background(Color.white.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .font(.headline.weight(.bold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.white.opacity(0.18))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 Spacer()
                 Image(systemName: isComplete ? "checkmark.circle.fill" : "circle")
                     .foregroundColor(isComplete ? Color.green : Color.white.opacity(0.7))
             }
 
             Text(title)
-                .font(.headline)
+                .font(.title3.weight(.semibold))
                 .foregroundColor(.white)
 
             if let description, !description.isEmpty {
                 Text(description)
                     .font(.body)
                     .foregroundColor(.white.opacity(0.9))
+            }
+
+            if let estimatedTime, !estimatedTime.isEmpty {
+                Text("Estimated time: \(estimatedTime)")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundColor(.white.opacity(0.85))
             }
 
             if let imageName {
@@ -350,6 +390,6 @@ private struct PlanStepView: View {
         }
         .padding(14)
         .background(Color.white.opacity(0.06))
-        .cornerRadius(14)
+        .cornerRadius(16)
     }
 }
