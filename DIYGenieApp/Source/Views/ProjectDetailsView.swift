@@ -227,7 +227,12 @@ struct ProjectDetailsView: View {
                         .cornerRadius(14)
                 }
 
-                if let materials = project.materials ?? plan.materials.map({ $0.name }), !materials.isEmpty {
+                let planMaterialNames: [String]? = {
+                    let mapped = plan.materials.map { $0.name }
+                    return mapped.isEmpty ? nil : mapped
+                }()
+
+                if let materials = project.materials ?? planMaterialNames, !materials.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Materials")
                             .font(.headline)
