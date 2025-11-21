@@ -6,10 +6,15 @@ struct ShareSheet: UIViewControllerRepresentable {
     var applicationActivities: [UIActivity]? = nil
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: applicationActivities)
+        // Create the activity view controller with the items and any custom activities.
+        UIActivityViewController(activityItems: activityItems,
+                                 applicationActivities: applicationActivities)
     }
 
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
-        uiViewController.activityItemsConfiguration = UIActivityItemsConfiguration(objects: activityItems)
+    func updateUIViewController(_ uiViewController: UIActivityViewController,
+                                context: Context) {
+        // Nothing to update; if you need to update items later,
+        // recreate the controller instead of modifying activityItemsConfiguration
     }
 }
+
