@@ -256,28 +256,29 @@ struct DetailedBuildPlanView: View {
 
     // MARK: - Helpers
 
+    // Parses the timeline and appends "min" if the value is purely numeric.
     private func timelineValue(from estimatedDuration: String?) -> String? {
-        guard let duration = estimatedDuration?.trimmingCharacters(in: .whitespacesAndNewlines), !duration.isEmpty else {
+        guard let duration = estimatedDuration?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !duration.isEmpty else {
             return nil
         }
-
-        let hasLetters = duration.rangeOfCharacter(in: .letters) != nil
-        let hasDigits = duration.rangeOfCharacter(in: .decimalDigits) != nil
-
+        let hasLetters = duration.rangeOfCharacter(from: CharacterSet.letters) != nil
+        let hasDigits = duration.rangeOfCharacter(from: CharacterSet.decimalDigits) != nil
+        // If it’s all digits (e.g. "110") append " min"
         if hasDigits && !hasLetters {
             return "\(duration) min"
         }
-
         return duration
     }
 
+    // Determines if there is at least one material with a numeric quantity or notes field (indicating a cut list).
     private func shouldShowCutList(for materials: [PlanMaterial]) -> Bool {
         let numericCharacters = CharacterSet(charactersIn: "0123456789.")
-
         return materials.contains { material in
-            [material.quantity, material.notes].contains { value in
-                guard let value, !value.isEmpty else { return false }
-                return value.rangeOfCharacter(in: numericCharacters) != nil
+            // Unwrap non-empty quantity and notes strings
+            let values = [material.quantity, material.notes].compactMap { $0?.isEmpty == false ? $0 : nil }
+            return values.contains { value in
+                return value.rangeOfCharacter(from: numericCharacters) != nil
             }
         }
     }
