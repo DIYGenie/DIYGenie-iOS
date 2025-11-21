@@ -93,6 +93,9 @@ struct ProjectDetailsView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 22) {
+                    // Decor8 Preview Hero Section
+                    previewHeroSection
+                    
                     headerSection
                     toolsSection
                     progressCard
@@ -115,6 +118,82 @@ struct ProjectDetailsView: View {
             if !availableImageKinds.contains(selectedImage), let first = availableImageKinds.first {
                 selectedImage = first
             }
+        }
+    }
+
+    // MARK: - Preview Hero Section
+    
+    private var previewHeroSection: some View {
+        Group {
+            if let previewURL = project.previewURL {
+                // Decor8 preview image
+                ZStack(alignment: .bottomLeading) {
+                    AsyncImage(url: previewURL) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        case .failure:
+                            previewPlaceholder
+                        case .empty:
+                            ZStack {
+                                Color.white.opacity(0.06)
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            }
+                        @unknown default:
+                            previewPlaceholder
+                        }
+                    }
+                    .frame(height: 240)
+                    .clipped()
+                    
+                    // Subtle gradient overlay for better text readability if needed
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            Color.clear,
+                            Color.black.opacity(0.3)
+                        ]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 240)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color("SurfaceStroke").opacity(0.5), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
+            } else {
+                // Placeholder when preview is not available yet
+                previewPlaceholder
+            }
+        }
+    }
+    
+    private var previewPlaceholder: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color("SurfaceStroke").opacity(0.5), lineWidth: 1)
+                )
+            
+            VStack(spacing: 12) {
+                Image(systemName: "photo.on.rectangle")
+                    .font(.system(size: 40, weight: .semibold))
+                    .foregroundColor(Color("TextSecondary"))
+                
+                Text(project.previewStatus == "pending" || project.previewStatus == "processing" 
+                     ? "Preview generating…" 
+                     : "Preview not available yet")
+                    .font(.subheadline)
+                    .foregroundColor(Color("TextSecondary"))
+            }
+            .frame(height: 240)
         }
     }
 
