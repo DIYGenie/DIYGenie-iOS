@@ -401,7 +401,8 @@ struct ProjectDetailsView: View {
         let stepsText = planSteps.enumerated().map { index, step in
             "Step \(index + 1): \(step.title)\n\(step.details ?? "")"
         }.joined(separator: "\n\n")
-        UIPasteboard.general.string = stepsText
+        shareItems = [stepsText]
+        isShowingShareSheet = true
     }
 
     private func sharePlan() {
