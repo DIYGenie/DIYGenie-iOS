@@ -12,6 +12,7 @@ struct ProjectDetailsView: View {
     @State private var selectedImage: ImageKind = .preview
     @State private var isShowingShareSheet = false
     @State private var shareItems: [Any] = []
+    @State private var showAllSteps = false
 
     private var background: some View {
         LinearGradient(
@@ -94,12 +95,14 @@ struct ProjectDetailsView: View {
             background
 
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 18) {
+                VStack(spacing: 22) {
                     headerSection
                     toolsSection
                     progressCard
                     mediaSection
+                        .padding(.top, 6)
                     planSummarySection
+                        .padding(.top, 6)
 
                     NavigationLink {
                         BuildPlanView(plan: project.planJSON)
@@ -196,7 +199,7 @@ struct ProjectDetailsView: View {
                 }
             }
             .padding(14)
-            .background(Color.white.opacity(0.08))
+            .background(Color.white.opacity(0.06))
             .cornerRadius(14)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -209,7 +212,7 @@ struct ProjectDetailsView: View {
         return VStack(alignment: .leading, spacing: 14) {
             sectionHeader("Build Progress")
 
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 16) {
                 HStack {
                     Text("\(Int(progress * 100))% complete")
                         .font(.headline.weight(.semibold))
@@ -223,8 +226,11 @@ struct ProjectDetailsView: View {
                 ProgressView(value: progress)
                     .tint(Color("Accent"))
 
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(Array(planSteps.enumerated()), id: \.offset) { index, step in
+                VStack(alignment: .leading, spacing: 14) {
+                    let shouldCollapse = planSteps.count > 4
+                    let stepsToShow = shouldCollapse && !showAllSteps ? Array(planSteps.prefix(4)) : planSteps
+
+                    ForEach(Array(stepsToShow.enumerated()), id: \.offset) { index, step in
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: completed.contains(step.id) ? "checkmark.circle.fill" : "circle")
                                 .foregroundColor(completed.contains(step.id) ? Color.green : Color.white.opacity(0.7))
@@ -235,21 +241,32 @@ struct ProjectDetailsView: View {
                                     .foregroundColor(.white.opacity(0.8))
                                 Text(step.title)
                                     .foregroundColor(.white)
-                                    .font(.subheadline)
+                                    .font(.callout.weight(.semibold))
                                 if let details = step.details, !details.isEmpty {
                                     Text(details)
                                         .foregroundColor(.white.opacity(0.75))
-                                        .font(.footnote)
+                                        .font(.caption)
+                                        .lineSpacing(3)
                                 }
                             }
                         }
-                        if index < planSteps.count - 1 {
+                        if index < stepsToShow.count - 1 {
                             Divider().background(Color.white.opacity(0.15))
                         }
                     }
                     if planSteps.isEmpty {
                         Text("Steps will appear after your plan is ready.")
                             .foregroundColor(.white.opacity(0.7))
+                    } else if planSteps.count > 4 {
+                        Button(action: { showAllSteps.toggle() }) {
+                            Text(showAllSteps ? "Show Fewer Steps" : "Show All Steps")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundColor(Color("Accent"))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(Color.white.opacity(0.06))
+                                .cornerRadius(10)
+                        }
                     }
                 }
 
@@ -278,7 +295,7 @@ struct ProjectDetailsView: View {
                 }
             }
             .padding(16)
-            .background(Color.white.opacity(0.08))
+            .background(Color.white.opacity(0.06))
             .cornerRadius(16)
         }
     }
@@ -332,33 +349,58 @@ struct ProjectDetailsView: View {
             sectionHeader("Plan Overview")
 
             if let plan = project.planJSON {
-                if let summary = plan.summary, !summary.isEmpty {
-                    Text(summary)
-                        .foregroundColor(.white.opacity(0.85))
-                        .font(.body)
-                        .padding(14)
-                        .background(Color.white.opacity(0.08))
-                        .cornerRadius(14)
-                }
-
-                let planMaterialNames: [String]? = {
-                    let mapped = plan.materials.map { $0.name }
-                    return mapped.isEmpty ? nil : mapped
-                }()
-
-                if let materials = project.materials ?? planMaterialNames, !materials.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Materials")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        ForEach(materials, id: \.self) { item in
-                            Text("• \(item)")
-                                .foregroundColor(.white.opacity(0.8))
+                VStack(alignment: .leading, spacing: 12) {
+                    if estimatedCostText != nil || durationText != nil || skillText != nil {
+                        VStack(spacing: 10) {
+                            if let cost = estimatedCostText {
+                                infoRow(title: "Estimated Cost", value: cost)
+                            }
+                            if let duration = durationText {
+                                infoRow(title: "Duration", value: duration)
+                            }
+                            if let skill = skillText {
+                                infoRow(title: "Skill Level", value: skill)
+                            }
                         }
+                        .padding(14)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(14)
                     }
-                    .padding(14)
-                    .background(Color.white.opacity(0.06))
-                    .cornerRadius(14)
+
+                    if let summary = plan.summary, !summary.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Summary")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                            Text(summary)
+                                .foregroundColor(.white.opacity(0.85))
+                                .font(.body)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(14)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(14)
+                    }
+
+                    let planMaterialNames: [String]? = {
+                        let mapped = plan.materials.map { $0.name }
+                        return mapped.isEmpty ? nil : mapped
+                    }()
+
+                    if let materials = project.materials ?? planMaterialNames, !materials.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Materials")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                            ForEach(materials, id: \.self) { item in
+                                Text("• \(item)")
+                                    .foregroundColor(.white.opacity(0.8))
+                            }
+                        }
+                        .padding(14)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(14)
+                    }
                 }
             } else {
                 Text("Plan is generating. Check back in a moment.")
@@ -425,6 +467,18 @@ struct ProjectDetailsView: View {
         Text(title)
             .font(.title3.weight(.semibold))
             .foregroundColor(.white)
+    }
+
+    private func infoRow(title: String, value: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.footnote.weight(.semibold))
+                .foregroundColor(.white.opacity(0.75))
+            Spacer()
+            Text(value)
+                .font(.callout.weight(.semibold))
+                .foregroundColor(.white)
+        }
     }
 
     private func imageURL(for kind: ImageKind) -> URL? {
