@@ -227,7 +227,8 @@ struct SupabaseProjectRecord: Decodable {
             previewStatus: mergedStatus,
             previewMeta: previewMeta,
             isDemo: isDemo,
-            photoUrl: photoUrl
+            photoUrl: photoUrl,
+            metadata: nil
         )
     }
 }

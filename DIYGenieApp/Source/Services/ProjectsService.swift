@@ -107,12 +107,16 @@ struct ProjectsService {
         }
 
         let envelope = try decoder.decode(CreateProjectEnvelope.self, from: data)
+        if let project = envelope.project {
+            return project
+        }
+
         guard let id = envelope.projectId else {
             throw ServiceError.missingProject
         }
 
-        // Fetch the full project record from Supabase so the app has a complete model.
-        return try await fetchProject(projectId: id)
+        // Fetch the full project record from the API so the app has a complete model.
+        return try await fetchProjectFromAPI(projectId: id)
     }
 
     // MARK: - Fetch
@@ -191,7 +195,7 @@ struct ProjectsService {
         }
 
         let boundary = "Boundary-\(UUID().uuidString)"
-        var request = URLRequest(url: AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)/image"))
+        var request = URLRequest(url: AppConfig.apiBaseURL.appendingPathComponent("api/projects/\(projectId)/photo"))
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
@@ -211,9 +215,13 @@ struct ProjectsService {
             throw ServiceError.invalidResponse
         }
 
+        if let apiResponse = try? decoder.decode(ProjectAPIResponse.self, from: data) {
+            return apiResponse.project.toProject()
+        }
+
         // Some environments return { ok: true }, others include URLs. Decode loosely.
         _ = try? decoder.decode(UploadPhotoEnvelope.self, from: data)
-        return try await fetchProject(projectId: projectId)
+        return try await fetchProjectFromAPI(projectId: projectId)
     }
 
     func uploadARScan(projectId: String, fileURL: URL) async throws {
@@ -285,33 +293,17 @@ struct ProjectsService {
     // MARK: - Plan
     @discardableResult
     func generatePlanOnly(projectId: String) async throws -> Project {
-        // Always work from the latest project state in Supabase
-        let project = try await fetchProject(projectId: projectId)
+        try await updateProjectWithPlan(projectId: projectId)
+    }
 
-        // The backend now requires both a projectId and a non-empty goal in the payload.
-        let rawGoal = project.goal ?? project.name
-        let trimmedGoal = rawGoal.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedGoal.isEmpty else {
-            print("[ProjectsService] generatePlanOnly aborted: missing goal for project \(projectId)")
-            throw ServiceError.invalidResponse
-        }
-
-        let payload = PlanRequestPayload(projectId: projectId, goal: trimmedGoal)
+    @discardableResult
+    func updateProjectWithPlan(projectId: String) async throws -> Project {
+        let payload = PlanTriggerPayload(projectId: projectId)
 
         var planRequest = URLRequest(url: AppConfig.apiBaseURL.appendingPathComponent("plan"))
         planRequest.httpMethod = "POST"
         planRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        let planEncoder = JSONEncoder()
-        planEncoder.dateEncodingStrategy = .iso8601
-        planEncoder.keyEncodingStrategy = .useDefaultKeys
-        let requestBody = try planEncoder.encode(payload)
-
-        if let json = String(data: requestBody, encoding: .utf8) {
-            print("[ProjectsService] /plan payload:", json)
-        }
-
-        planRequest.httpBody = requestBody
+        planRequest.httpBody = try encoder.encode(payload)
 
         let (data, response) = try await session.data(for: planRequest)
         guard let http = response as? HTTPURLResponse else {
@@ -320,24 +312,34 @@ struct ProjectsService {
 
         guard (200..<300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? "<no body>"
-            print("[ProjectsService] generatePlanOnly failed for project \(projectId) – status: \(http.statusCode), body: \(body)")
+            print("[ProjectsService] updateProjectWithPlan failed for project \(projectId) – status: \(http.statusCode), body: \(body)")
             throw ServiceError.invalidResponse
         }
 
-        // The backend persists the plan into the project's plan_json; fetch the fresh project now via App API.
-        do {
-            let refreshed = try await fetchProjectFromAPI(projectId: projectId)
-            return refreshed
-        } catch {
-            // As a fallback, try a short delay then fetch again in case of eventual consistency.
-            try? await Task.sleep(nanoseconds: 250_000_000) // 250ms
-            do {
-                return try await fetchProjectFromAPI(projectId: projectId)
-            } catch {
-                // Last resort: fall back to Supabase REST.
-                return try await fetchProject(projectId: projectId)
-            }
+        let envelope = try decoder.decode(PlanGenerationEnvelope.self, from: data)
+        if envelope.ok == false {
+            let message = envelope.message ?? envelope.error ?? "Plan generation failed."
+            throw ServiceError.backend(message: message)
         }
+
+        let preview = envelope.previewUrl ?? envelope.previewURL
+        let plan = envelope.plan ?? envelope.planJson
+
+        guard preview != nil, plan != nil else {
+            throw ServiceError.backend(message: "Plan generation returned incomplete data. Please retry.")
+        }
+
+        if let project = envelope.project {
+            return project
+        }
+
+        let existing = try await fetchProjectFromAPI(projectId: projectId)
+        return existing.replacing(
+            updatedAt: nil,
+            previewURL: preview,
+            planJson: plan,
+            metadata: envelope.metadata
+        )
     }
 }
 
@@ -491,6 +493,7 @@ private struct CreateProjectEnvelope: Decodable {
     let ok: Bool?
     let item: CreateProjectItem?
     let id: String?
+    let project: Project?
 
     var projectId: String? {
         if let id { return id }
@@ -573,16 +576,6 @@ private struct PreviewEnvelope: Decodable {
     }
 }
 
-private struct PlanRequestPayload: Encodable {
-    let projectId: String
-    let goal: String
-
-    private enum CodingKeys: String, CodingKey {
-        case projectId
-        case goal
-    }
-}
-
 private struct PlanUpdatePayload: Encodable {
     let planJson: PlanResponse
     let status: String
@@ -591,5 +584,22 @@ private struct PlanUpdatePayload: Encodable {
         case planJson = "plan_json"
         case status
     }
+}
+
+private struct PlanTriggerPayload: Encodable {
+    let projectId: String
+}
+
+private struct PlanGenerationEnvelope: Decodable {
+    let ok: Bool?
+    let error: String?
+    let message: String?
+    let previewUrl: String?
+    let previewURL: String?
+    let plan: PlanResponse?
+    let planJson: PlanResponse?
+    let metadata: ProjectMetadata?
+    let project: Project?
+    let projectId: String?
 }
 
