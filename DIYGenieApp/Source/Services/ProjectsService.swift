@@ -316,9 +316,27 @@ struct ProjectsService {
             throw ServiceError.invalidResponse
         }
 
-        let envelope = try decoder.decode(PlanGenerationEnvelope.self, from: data)
+        let envelope: PlanGenerationEnvelope
+        do {
+            envelope = try decoder.decode(PlanGenerationEnvelope.self, from: data)
+        } catch {
+            print("[ProjectsService] Failed to decode plan envelope: \(error)")
+            throw ServiceError.backend(message: "Plan generation failed. Please try again.")
+        }
+
         if envelope.ok == false {
-            let message = envelope.message ?? envelope.error ?? "Plan generation failed."
+            let missing = envelope.fieldsMissing ?? []
+            var message = envelope.message ?? envelope.error ?? "Plan generation failed."
+            if !missing.isEmpty {
+                let missingList = missing.joined(separator: ", ")
+                message += ": missing \(missingList)"
+            }
+
+            // Optional analytics hook
+            if let errorCode = envelope.error ?? envelope.message {
+                AnalyticsManager.shared?.trackPlanError(code: errorCode, missingFields: missing)
+            }
+
             throw ServiceError.backend(message: message)
         }
 
@@ -601,5 +619,48 @@ private struct PlanGenerationEnvelope: Decodable {
     let metadata: ProjectMetadata?
     let project: Project?
     let projectId: String?
+    let fieldsMissing: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case ok
+        case error
+        case message
+        case previewUrl = "preview_url"
+        case previewURL
+        case previewUrlCamel = "previewUrl"
+        case plan
+        case planJson = "plan_json"
+        case planJsonCamel = "planJson"
+        case metadata
+        case project
+        case projectId = "project_id"
+        case projectIdCamel = "projectId"
+        case fieldsMissing = "fields_missing"
+        case fieldsMissingCamel = "fieldsMissing"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        ok = try container.decodeIfPresent(Bool.self, forKey: .ok)
+        error = try container.decodeIfPresent(String.self, forKey: .error)
+        message = try container.decodeIfPresent(String.self, forKey: .message)
+
+        previewUrl = try container.decodeIfPresent(String.self, forKey: .previewUrl)
+            ?? container.decodeIfPresent(String.self, forKey: .previewUrlCamel)
+        previewURL = try container.decodeIfPresent(String.self, forKey: .previewURL)
+
+        plan = try container.decodeIfPresent(PlanResponse.self, forKey: .plan)
+        planJson = try container.decodeIfPresent(PlanResponse.self, forKey: .planJson)
+            ?? container.decodeIfPresent(PlanResponse.self, forKey: .planJsonCamel)
+
+        metadata = try container.decodeIfPresent(ProjectMetadata.self, forKey: .metadata)
+        project = try container.decodeIfPresent(Project.self, forKey: .project)
+        projectId = try container.decodeIfPresent(String.self, forKey: .projectId)
+            ?? container.decodeIfPresent(String.self, forKey: .projectIdCamel)
+
+        fieldsMissing = try container.decodeIfPresent([String].self, forKey: .fieldsMissing)
+            ?? container.decodeIfPresent([String].self, forKey: .fieldsMissingCamel)
+    }
 }
 

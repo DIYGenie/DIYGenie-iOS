@@ -7,8 +7,12 @@ struct ProjectCard: View {
     // Prefer preview → input image
     private var thumbnailURL: URL? {
         if let url = project.previewURL { return url }
-        if let url = project.inputImageURL { return url }
-        return project.photoUrl.flatMap(URL.init(string:))
+        if let url = project.photoUrl.flatMap(URL.init(string:)) { return url }
+        return project.inputImageURL
+    }
+
+    private var previewAvailable: Bool {
+        project.previewURL != nil
     }
 
     var body: some View {
@@ -53,6 +57,12 @@ struct ProjectCard: View {
                     .font(.system(size: 14))
                     .foregroundColor(.white.opacity(0.7))
                     .lineLimit(2)
+
+                if !previewAvailable {
+                    Text("Preview not available")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.yellow.opacity(0.85))
+                }
             }
             .padding(.horizontal, 4)
             .padding(.bottom, 6)

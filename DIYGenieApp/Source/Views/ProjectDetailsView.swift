@@ -22,8 +22,12 @@ struct ProjectDetailsView: View {
         project.inputImageURL ?? project.photoUrl.flatMap(URL.init(string:))
     }
 
-    private var previewURL: URL? {
-        project.previewURL
+    private var previewOrPhotoURL: URL? {
+        project.previewURL ?? project.photoUrl.flatMap(URL.init(string:))
+    }
+
+    private var isUsingPreviewFallback: Bool {
+        project.previewURL == nil && previewOrPhotoURL != nil
     }
 
     private var estimatedCostText: String? {
@@ -180,8 +184,18 @@ struct ProjectDetailsView: View {
                 mediaCard(title: "Original Photo", url: original)
             }
 
-            if let preview = previewURL {
+            if let preview = previewOrPhotoURL {
                 mediaCard(title: "Preview Image", url: preview)
+
+                if isUsingPreviewFallback {
+                    Text("Preview not available; showing project photo instead.")
+                        .font(.footnote)
+                        .foregroundColor(.yellow.opacity(0.9))
+                }
+            } else {
+                Text("Preview not available")
+                    .font(.footnote)
+                    .foregroundColor(.yellow.opacity(0.9))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
