@@ -63,8 +63,9 @@ struct NewProjectView: View {
     @State private var projectId: String?
     @State private var createdProject: Project?
     @State private var photoUploaded = false
-    @State private var navigateToDetails = false
     @State private var navigationProject: Project?
+    @State private var errorMessage: String?
+    @State private var showErrorAlert = false
 
     // MARK: - Entitlements
     @State private var entitlements: BackendEntitlements = .default
@@ -83,13 +84,9 @@ struct NewProjectView: View {
         ZStack {
             background
             form
-
-            NavigationLink("", isActive: $navigateToDetails) {
-                if let navigationProject {
-                    ProjectDetailsView(project: navigationProject)
-                }
-            }
-            .opacity(0)
+        }
+        .navigationDestination(item: $navigationProject) { project in
+            ProjectDetailsView(project: project)
         }
         // Photo Library
         .sheet(isPresented: $isShowingLibrary) {
@@ -368,8 +365,18 @@ struct NewProjectView: View {
                             await ensureProjectAfterPhoto()
                         }
 
-                        guard projectId != nil else {
+                        guard measurementArea != nil else {
                             alert("Please add a photo and draw the 4-point area to continue.")
+                            return
+                        }
+                        
+                        // Ensure project exists before opening AR
+                        if projectId == nil {
+                            await ensureProjectAfterPhoto()
+                        }
+                        
+                        guard projectId != nil else {
+                            alert("Could not create project. Please try again.")
                             return
                         }
 
@@ -491,27 +498,16 @@ struct NewProjectView: View {
         .disabled(isCreatingProject || isGeneratingPlan)
         .overlay {
             if isCreatingProject || isGeneratingPlan {
-                ZStack {
-                    Color.black.opacity(0.35)
-                        .ignoresSafeArea()
-
-                    VStack(spacing: 10) {
-                        ProgressView()
-                            .scaleEffect(1.2)
-                            .tint(.white)
-
-                        Text(isCreatingProject ? "Creating your project…" : "Genie is building your plan…")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.center)
-
-                        Text(isCreatingProject ? "We’re saving your area selection and project info." : "This might take up to a minute for larger projects.")
-                            .font(.subheadline)
-                            .foregroundColor(.white.opacity(0.8))
-                            .multilineTextAlignment(.center)
-                    }
-                    .padding(24)
-                }
+                ProgressOverlay(message: isCreatingProject ? "Creating your project…" : "Generating your plan…")
+            }
+        }
+        .alert("Couldn't generate plan", isPresented: $showErrorAlert) {
+            Button("OK") {
+                errorMessage = nil
+            }
+        } message: {
+            if let errorMessage {
+                Text(errorMessage)
             }
         }
     }
@@ -523,7 +519,7 @@ struct NewProjectView: View {
     }
 
     private var canGeneratePlan: Bool {
-        isValid && selectedUIImage != nil && projectId != nil && photoUploaded && !isUploadingPhoto
+        isValid && selectedUIImage != nil && measurementArea != nil && !isUploadingPhoto
     }
 
 
@@ -532,36 +528,84 @@ struct NewProjectView: View {
     @MainActor
     private func createAndNavigate() async {
         guard isValid else {
-            alert("Please add a project goal/description.")
-            return
-        }
-
-        guard let pid = projectId else {
-            alert("Create the project by confirming your area selection first.")
+            errorMessage = "Please add a project goal/description."
+            showErrorAlert = true
             return
         }
 
         guard selectedUIImage != nil else {
-            alert("Add a room photo to generate your AI plan and preview.")
+            errorMessage = "Add a room photo to generate your AI plan and preview."
+            showErrorAlert = true
             return
         }
 
-        guard photoUploaded else {
-            alert("Please wait for your photo to finish uploading before generating the plan.")
+        guard measurementArea != nil else {
+            errorMessage = "Please draw the 4-point area to continue."
+            showErrorAlert = true
             return
         }
 
         isGeneratingPlan = true
+        errorMessage = nil
+        showErrorAlert = false
         defer { isGeneratingPlan = false }
 
         do {
-            let updated = try await service.updateProjectWithPlan(projectId: pid)
-            createdProject = updated
-            navigationProject = updated
-            onFinished?(updated)
-            navigateToDetails = true
+            // Step 1: Create the project if it doesn't exist
+            var project: Project
+            if let existingProjectId = projectId {
+                // Project already exists, fetch it
+                project = try await service.fetchProject(projectId: existingProjectId)
+            } else {
+                // Create new project
+                let safeName = name.trimmingCharacters(in: .whitespaces).isEmpty
+                    ? "New Project"
+                    : name
+                
+                let trimmedGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
+                let safeGoal = trimmedGoal.isEmpty
+                    ? "Auto-created from photo"
+                    : trimmedGoal
+                
+                project = try await service.createProject(
+                    name: safeName,
+                    goal: safeGoal,
+                    budget: budget.label,
+                    skillLevel: skill.label
+                )
+                projectId = project.id
+                createdProject = project
+                
+                // Upload photo if not already uploaded
+                if !photoUploaded, let image = selectedUIImage {
+                    try await uploadPhoto(for: project.id, image: image)
+                }
+                
+                // Attach crop rect if available
+                if let points = measurementArea,
+                   let rect = denormalizedRect(from: points, image: selectedUIImage) {
+                    await service.attachCropRectIfAvailable(projectId: project.id, rect: rect)
+                }
+            }
+            
+            // Step 2: Generate the plan
+            guard let projectUUID = UUID(uuidString: project.id) else {
+                errorMessage = "Invalid project ID"
+                showErrorAlert = true
+                return
+            }
+            
+            _ = try await APIClient.shared.generatePlan(projectId: projectUUID)
+            
+            // Step 3: Fetch the updated project with plan
+            let updatedProject = try await service.fetchProject(projectId: project.id)
+            
+            // Step 4: Navigate to project details
+            navigationProject = updatedProject
+            onFinished?(updatedProject)
         } catch {
-            alert("AI plan generation failed: \(error.localizedDescription)")
+            errorMessage = error.localizedDescription
+            showErrorAlert = true
         }
     }
 

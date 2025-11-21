@@ -1,3 +1,4 @@
+// DIYGenieApp/Source/Services/APIClient.swift
 //
 //  APIClient.swift
 //  DIYGenieApp
@@ -8,13 +9,24 @@
 import Foundation
 import OSLog
 
-enum APIClient {
+// MARK: - API Client
+
+final class APIClient {
     static let shared = APIClient()
     
-    private let baseURL = URL(string: "https://api.diygenieapp.com")!
-    private let logger = Logger(subsystem: "com.diygenieapp.ios", category: "api")
+    private let baseURL: URL
+    private let logger: Logger
+    private let urlSession: URLSession
     
-    private init() {}
+    private init() {
+        self.baseURL = URL(string: "https://api.diygenieapp.com")!
+        self.logger = Logger(subsystem: "com.diygenieapp.ios", category: "api")
+        
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 60.0      // per-request timeout
+        config.timeoutIntervalForResource = 90.0     // overall resource timeout
+        self.urlSession = URLSession(configuration: config)
+    }
     
     // MARK: - Generate Plan
     
@@ -30,14 +42,10 @@ enum APIClient {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         
-        // Configure timeouts
-        request.timeoutInterval = 60.0
-        request.resourceTimeoutInterval = 90.0
-        
         logger.info("Generating plan for project \(projectId.uuidString)")
         
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await urlSession.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw APIError.invalidResponse
@@ -99,4 +107,3 @@ enum APIError: LocalizedError {
         }
     }
 }
-

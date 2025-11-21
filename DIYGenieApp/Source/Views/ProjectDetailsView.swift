@@ -14,11 +14,6 @@ struct ProjectDetailsView: View {
     @State private var shareItems: [Any] = []
     @State private var showAllSteps = false
     
-    // Plan generation state
-    @State private var isGenerating = false
-    @State private var generatedPlan: PlanV1?
-    @State private var errorMessage: String?
-    @State private var showErrorAlert = false
 
     private var background: some View {
         DS.Colors.background
@@ -106,37 +101,11 @@ struct ProjectDetailsView: View {
                     planSummarySection
                         .padding(.top, 6)
 
-                    // Generate Plan button
-                    generatePlanButton
-
                     sharePlanButton
 
                     Spacer(minLength: 32)
                 }
                 .padding(18)
-            }
-        }
-        .navigationDestination(item: $generatedPlan) { plan in
-            DetailBuildPlanView(projectId: UUID(uuidString: project.id) ?? UUID(), plan: plan)
-        }
-        .overlay {
-            if isGenerating {
-                ProgressOverlay()
-            }
-        }
-        .alert("Error", isPresented: $showErrorAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(errorMessage ?? "An unknown error occurred")
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Generate Plan") {
-                    Task { @MainActor in
-                        await generatePlan()
-                    }
-                }
-                .disabled(isGenerating)
             }
         }
         .onAppear {
@@ -146,48 +115,6 @@ struct ProjectDetailsView: View {
             if !availableImageKinds.contains(selectedImage), let first = availableImageKinds.first {
                 selectedImage = first
             }
-        }
-    }
-    
-    // MARK: - Generate Plan
-    
-    private var generatePlanButton: some View {
-        Button(action: {
-            Task { @MainActor in
-                await generatePlan()
-            }
-        }) {
-            Text(isGenerating ? "Generating Plan..." : "Generate Plan")
-                .font(.headline.weight(.semibold))
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(DS.Styles.primaryButton())
-                .cornerRadius(14)
-        }
-        .disabled(isGenerating)
-        .accessibilityIdentifier("generate_plan_button")
-    }
-    
-    @MainActor
-    private func generatePlan() async {
-        guard let projectUUID = UUID(uuidString: project.id) else {
-            errorMessage = "Invalid project ID"
-            showErrorAlert = true
-            return
-        }
-        
-        isGenerating = true
-        errorMessage = nil
-        
-        do {
-            let plan = try await APIClient.shared.generatePlan(projectId: projectUUID)
-            generatedPlan = plan
-            isGenerating = false
-        } catch {
-            errorMessage = error.localizedDescription
-            showErrorAlert = true
-            isGenerating = false
         }
     }
 
