@@ -10,6 +10,9 @@ struct DetailedBuildPlanView: View {
     let plan: PlanResponse?
     let completedSteps: [Int]
 
+    @State private var showingShareSheet = false
+    @State private var shareItems: [Any] = []
+
     init(plan: PlanResponse?, completedSteps: [Int] = []) {
         self.plan = plan
         self.completedSteps = completedSteps
@@ -27,17 +30,14 @@ struct DetailedBuildPlanView: View {
             if let plan {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
-                        headerSection
+                        headerSection(for: plan)
                         summarySection(for: plan)
-                        materialsSection(for: plan.materials)
-                        toolsSection(for: plan.tools)
-                        if let breakdown = plan.costBreakdown {
-                            costBreakdownSection(for: breakdown)
-                        }
+                        recommendedToolsSection(for: plan.tools)
+                        shoppingListSection(for: plan.materials)
+                        cutListSection(for: plan.materials)
+                        planNotesSection(notes: plan.notes)
                         stepsSection(for: plan)
-                        if let notes = plan.notes, !notes.isEmpty {
-                            notesSection(notes)
-                        }
+                        savePlanButton
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 20)
@@ -56,15 +56,30 @@ struct DetailedBuildPlanView: View {
         .preferredColorScheme(.dark)
     }
 
-    private var headerSection: some View {
-        HStack {
-            Image(systemName: "wrench.and.screwdriver")
-                .foregroundColor(.white.opacity(0.9))
-                .font(.title2)
-            Text("Detailed Build Plan")
-                .font(.system(size: 30, weight: .bold))
-                .foregroundColor(.white)
-            Spacer()
+    // MARK: - Sections
+
+    private func headerSection(for plan: PlanResponse) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "doc.text")
+                    .foregroundColor(.white)
+                    .font(.title3)
+                    .padding(10)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("DIY Build Plan")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundColor(.white)
+                    if let duration = plan.estimatedDuration, !duration.isEmpty {
+                        Text(duration)
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.8))
+                    }
+                }
+                Spacer()
+            }
         }
     }
 
@@ -74,7 +89,7 @@ struct DetailedBuildPlanView: View {
             if let overview = plan.summary, !overview.isEmpty {
                 Text(overview)
                     .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.75))
+                    .foregroundColor(.white.opacity(0.85))
             }
 
             VStack(alignment: .leading, spacing: 10) {
@@ -107,56 +122,23 @@ struct DetailedBuildPlanView: View {
         }
     }
 
-    @ViewBuilder
-    private func materialsSection(for materials: [PlanMaterial]) -> some View {
-        planListSection(title: "Materials", hasContent: !materials.isEmpty) {
-            ForEach(Array(materials.enumerated()), id: \.offset) { index, material in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(material.name)
-                        .font(.headline)
-                        .foregroundColor(.white)
-                    if let quantity = material.quantity, !quantity.isEmpty {
-                        Text(quantity)
-                            .font(.footnote)
-                            .foregroundColor(.white.opacity(0.75))
+    private func recommendedToolsSection(for tools: [PlanTool]) -> some View {
+        planListSection(title: "Recommended Tools", hasContent: !tools.isEmpty) {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(tools.enumerated()), id: \.offset) { index, tool in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(tool.name)
+                            .font(.headline)
+                            .foregroundColor(.white)
+                        if let notes = tool.notes, !notes.isEmpty {
+                            Text(notes)
+                                .font(.footnote)
+                                .foregroundColor(.white.opacity(0.7))
+                        }
                     }
-                    if let notes = material.notes, !notes.isEmpty {
-                        Text(notes)
-                            .font(.footnote)
-                            .foregroundColor(.white.opacity(0.6))
+                    if index < tools.count - 1 {
+                        Divider().background(Color.white.opacity(0.12))
                     }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 6)
-
-                if index < materials.count - 1 {
-                    Divider().background(Color.white.opacity(0.12))
-                }
-            }
-        } emptyContent: {
-            planEmptyState("No materials listed yet.")
-        }
-    }
-
-    @ViewBuilder
-    private func toolsSection(for tools: [PlanTool]) -> some View {
-        planListSection(title: "Tools", hasContent: !tools.isEmpty) {
-            ForEach(Array(tools.enumerated()), id: \.offset) { index, tool in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(tool.name)
-                        .font(.headline)
-                        .foregroundColor(.white)
-                    if let notes = tool.notes, !notes.isEmpty {
-                        Text(notes)
-                            .font(.footnote)
-                            .foregroundColor(.white.opacity(0.65))
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 6)
-
-                if index < tools.count - 1 {
-                    Divider().background(Color.white.opacity(0.12))
                 }
             }
         } emptyContent: {
@@ -164,67 +146,91 @@ struct DetailedBuildPlanView: View {
         }
     }
 
-    @ViewBuilder
-    private func costBreakdownSection(for items: [PlanCostItem]) -> some View {
-        planListSection(title: "Cost breakdown", hasContent: !items.isEmpty) {
-            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(item.category)
+    private func shoppingListSection(for materials: [PlanMaterial]) -> some View {
+        planListSection(title: "Shopping List", hasContent: !materials.isEmpty) {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(materials.enumerated()), id: \.offset) { index, material in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(material.name)
                             .font(.headline)
                             .foregroundColor(.white)
-                        Spacer()
-                        Text(item.amount)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundColor(.white.opacity(0.9))
+                        if let quantity = material.quantity, !quantity.isEmpty {
+                            Text(quantity)
+                                .font(.footnote)
+                                .foregroundColor(.white.opacity(0.75))
+                        }
+                        if let notes = material.notes, !notes.isEmpty {
+                            Text(notes)
+                                .font(.footnote)
+                                .foregroundColor(.white.opacity(0.65))
+                        }
                     }
-                    if let notes = item.notes, !notes.isEmpty {
-                        Text(notes)
-                            .font(.footnote)
-                            .foregroundColor(.white.opacity(0.65))
+                    if index < materials.count - 1 {
+                        Divider().background(Color.white.opacity(0.12))
                     }
-                }
-                .padding(.vertical, 6)
-
-                if index < items.count - 1 {
-                    Divider().background(Color.white.opacity(0.12))
                 }
             }
         } emptyContent: {
-            planEmptyState("No cost breakdown yet.")
+            planEmptyState("No shopping items listed yet.")
+        }
+    }
+
+    private func cutListSection(for materials: [PlanMaterial]) -> some View {
+        planListSection(title: "Cut List", hasContent: !materials.isEmpty) {
+            LazyVStack(spacing: 12) {
+                HStack {
+                    Text("Board")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.8))
+                    Spacer()
+                    Text("Qty")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.8))
+                        .frame(width: 50, alignment: .trailing)
+                    Text("Length")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.8))
+                        .frame(width: 90, alignment: .trailing)
+                }
+                Divider().background(Color.white.opacity(0.2))
+
+                ForEach(Array(materials.enumerated()), id: \.offset) { index, material in
+                    HStack(alignment: .top) {
+                        Text(material.name)
+                            .foregroundColor(.white)
+                        Spacer()
+                        Text(material.quantity ?? "—")
+                            .foregroundColor(.white.opacity(0.85))
+                            .frame(width: 50, alignment: .trailing)
+                        Text(material.notes ?? "—")
+                            .foregroundColor(.white.opacity(0.85))
+                            .frame(width: 90, alignment: .trailing)
+                    }
+                    if index < materials.count - 1 {
+                        Divider().background(Color.white.opacity(0.1))
+                    }
+                }
+            }
+        } emptyContent: {
+            planEmptyState("Add board dimensions to generate a cut list.")
         }
     }
 
     @ViewBuilder
     private func stepsSection(for plan: PlanResponse) -> some View {
         let orderedPairs = plan.steps.orderedWithOriginalIndices()
-        planListSection(title: "Steps", hasContent: !orderedPairs.isEmpty) {
-            let completed = Set(completedSteps)
-            let progress = Double(completed.count) / Double(max(orderedPairs.count, 1))
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Progress")
-                    .font(.headline.weight(.semibold))
-                    .foregroundColor(.white)
-                ProgressView(value: progress)
-                    .tint(Color.purple)
-                Text("\(completed.count) of \(orderedPairs.count) steps complete")
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.7))
-            }
-            .padding(.bottom, 8)
-
-            ForEach(Array(orderedPairs.enumerated()), id: \.offset) { entry in
-                let displayIndex = entry.offset + 1
-                let pair = entry.element
-                StepCard(
-                    number: displayIndex,
-                    step: pair.step,
-                    isComplete: completed.contains(pair.originalIndex)
-                )
-
-                if entry.offset < orderedPairs.count - 1 {
-                    Divider().background(Color.white.opacity(0.12))
+        planListSection(title: "Step-by-Step Instructions", hasContent: !orderedPairs.isEmpty) {
+            LazyVStack(alignment: .leading, spacing: 16) {
+                ForEach(Array(orderedPairs.enumerated()), id: \.offset) { entry in
+                    let displayIndex = entry.offset + 1
+                    let pair = entry.element
+                    PlanStepView(
+                        number: displayIndex,
+                        title: pair.step.title,
+                        description: pair.step.details,
+                        imageName: nil,
+                        isComplete: Set(completedSteps).contains(pair.originalIndex)
+                    )
                 }
             }
         } emptyContent: {
@@ -232,14 +238,14 @@ struct DetailedBuildPlanView: View {
         }
     }
 
-    private func notesSection(_ notes: String) -> some View {
-        planListSection(title: "Notes", hasContent: true) {
-            Text(notes)
+    private func planNotesSection(notes: String?) -> some View {
+        planListSection(title: "Plan Notes", hasContent: notes?.isEmpty == false) {
+            Text(notes ?? "")
                 .font(.body)
                 .foregroundColor(.white.opacity(0.85))
                 .frame(maxWidth: .infinity, alignment: .leading)
         } emptyContent: {
-            EmptyView()
+            planEmptyState("No notes added yet.")
         }
     }
 
@@ -278,38 +284,72 @@ struct DetailedBuildPlanView: View {
             }
         }
     }
+
+    private var savePlanButton: some View {
+        Button(action: sharePlan) {
+            Text("Save Plan")
+                .font(.headline.weight(.semibold))
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Color.white.opacity(0.14))
+                .cornerRadius(16)
+        }
+        .sheet(isPresented: $showingShareSheet) {
+            ShareSheet(activityItems: shareItems)
+        }
+    }
+
+    private func sharePlan() {
+        if let summary = plan?.summary {
+            shareItems = [summary]
+        } else {
+            shareItems = ["DIY build plan"]
+        }
+        showingShareSheet = true
+    }
 }
 
-private struct StepCard: View {
+private struct PlanStepView: View {
     let number: Int
-    let step: PlanStep
+    let title: String
+    let description: String?
+    let imageName: String?
     let isComplete: Bool
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: isComplete ? "checkmark.circle.fill" : "circle")
-                .foregroundColor(isComplete ? Color.green : Color.white.opacity(0.6))
-                .font(.system(size: 18, weight: .semibold))
-
-            VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
                 Text("Step \(number)")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(.white)
-                Text(step.title)
-                    .font(.headline)
-                    .foregroundColor(.white)
-                if let details = step.details, !details.isEmpty {
-                    Text(details)
-                        .font(.body)
-                        .foregroundColor(.white.opacity(0.9))
-                }
-                if let estimate = step.estimatedTime, !estimate.isEmpty {
-                    Text("Estimated time: \(estimate)")
-                        .font(.footnote)
-                        .foregroundColor(.white.opacity(0.7))
-                }
+                    .font(.subheadline.weight(.bold))
+                    .padding(8)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                Spacer()
+                Image(systemName: isComplete ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(isComplete ? Color.green : Color.white.opacity(0.7))
             }
-            Spacer(minLength: 0)
+
+            Text(title)
+                .font(.headline)
+                .foregroundColor(.white)
+
+            if let description, !description.isEmpty {
+                Text(description)
+                    .font(.body)
+                    .foregroundColor(.white.opacity(0.9))
+            }
+
+            if let imageName {
+                Image(imageName)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity)
+                    .cornerRadius(10)
+            }
         }
+        .padding(14)
+        .background(Color.white.opacity(0.06))
+        .cornerRadius(14)
     }
 }
