@@ -6,9 +6,9 @@ struct ProjectCard: View {
 
     // Prefer preview → input image
     private var thumbnailURL: URL? {
-        if let s = project.previewURL, let u = URL(string: s) { return u }
-        if let s = project.inputImageURL, let u = URL(string: s) { return u }
-        return nil
+        if let url = project.previewURL { return url }
+        if let url = project.inputImageURL { return url }
+        return project.photoUrl.flatMap(URL.init(string:))
     }
 
     var body: some View {

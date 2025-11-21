@@ -46,9 +46,24 @@ struct Project: Codable, Identifiable {
     let isDemo: Bool?
     let photoUrl: String?
 
+    let metadata: ProjectMetadata?
+
     // Convenience accessors used by UI
-    var previewURL: String? { previewUrl }
-    var inputImageURL: String? { inputImageUrl }
+    var previewURL: URL? {
+        if let previewUrl, let url = URL(string: previewUrl) { return url }
+        return nil
+    }
+
+    var inputImageURL: URL? {
+        if let inputImageUrl, let url = URL(string: inputImageUrl) { return url }
+        return nil
+    }
+
+    var planJSON: PlanResponse? { planJson }
+    var estimatedCost: Double? { metadata?.estimatedCost }
+    var estimatedDuration: String? { metadata?.estimatedDuration }
+    var materials: [String]? { metadata?.materials }
+    var skillLevelEstimate: String? { metadata?.skillLevel ?? skillLevel }
 
     init(id: String,
          userId: String,
@@ -82,7 +97,8 @@ struct Project: Codable, Identifiable {
          previewStatus: String?,
          previewMeta: [String: AnyCodable]?,
          isDemo: Bool?,
-         photoUrl: String?) {
+         photoUrl: String?,
+         metadata: ProjectMetadata? = nil) {
         self.id = id
         self.userId = userId
         self.name = name
@@ -116,6 +132,7 @@ struct Project: Codable, Identifiable {
         self.previewMeta = previewMeta
         self.isDemo = isDemo
         self.photoUrl = photoUrl
+        self.metadata = metadata
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -152,6 +169,7 @@ struct Project: Codable, Identifiable {
         case previewMeta
         case isDemo
         case photoUrl
+        case metadata
     }
 
     private enum LegacyCodingKeys: String, CodingKey {
@@ -262,6 +280,8 @@ struct Project: Codable, Identifiable {
             ?? legacy?.decodeIfPresent(Bool.self, forKey: .isDemo)
         photoUrl = try container.decodeIfPresent(String.self, forKey: .photoUrl)
             ?? legacy?.decodeIfPresent(String.self, forKey: .photoUrl)
+
+        metadata = try container.decodeIfPresent(ProjectMetadata.self, forKey: .metadata)
     }
 }
 
@@ -294,7 +314,8 @@ extension Project {
                    completedSteps: [Int]? = nil,
                    currentStepIndex: Int? = nil,
                    previewStatus: String? = nil,
-                   previewMeta: [String: AnyCodable]? = nil) -> Project {
+                   previewMeta: [String: AnyCodable]? = nil,
+                   metadata: ProjectMetadata? = nil) -> Project {
         Project(
             id: id,
             userId: userId,
@@ -328,7 +349,8 @@ extension Project {
             previewStatus: previewStatus ?? self.previewStatus,
             previewMeta: previewMeta ?? self.previewMeta,
             isDemo: isDemo,
-            photoUrl: photoUrl
+            photoUrl: photoUrl,
+            metadata: metadata ?? self.metadata
         )
     }
 }
@@ -343,4 +365,13 @@ extension Project: Hashable {
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
+}
+
+struct ProjectMetadata: Codable, Equatable {
+    let estimatedCost: Double?
+    let materials: [String]?
+    let estimatedDuration: String?
+    let skillLevel: String?
+    let area: Double?
+    let perimeter: Double?
 }

@@ -51,7 +51,9 @@ struct NewProjectView: View {
     @State private var isStartingCamera = false
 
     // MARK: - UX
-    @State private var isLoading = false
+    @State private var isCreatingProject = false
+    @State private var isGeneratingPlan = false
+    @State private var isUploadingPhoto = false
     @State private var alertMessage = ""
     @State private var showAlert = false
     @State private var arAttached = false
@@ -60,6 +62,9 @@ struct NewProjectView: View {
     // MARK: - Created / nav
     @State private var projectId: String?
     @State private var createdProject: Project?
+    @State private var photoUploaded = false
+    @State private var navigateToDetails = false
+    @State private var navigationProject: Project?
 
     // MARK: - Entitlements
     @State private var entitlements: BackendEntitlements = .default
@@ -78,12 +83,20 @@ struct NewProjectView: View {
         ZStack {
             background
             form
+
+            NavigationLink("", isActive: $navigateToDetails) {
+                if let navigationProject {
+                    ProjectDetailsView(project: navigationProject)
+                }
+            }
+            .opacity(0)
         }
         // Photo Library
         .sheet(isPresented: $isShowingLibrary) {
             ImagePicker(sourceType: .photoLibrary) { ui in
                 guard let ui else { return }
                 selectedUIImage = ui
+                photoUploaded = false
                 // Auto-open measurement editor after selecting a photo
                 showOverlay = true
             }
@@ -94,6 +107,7 @@ struct NewProjectView: View {
             ImagePicker(sourceType: .camera) { ui in
                 guard let ui else { return }
                 selectedUIImage = ui
+                photoUploaded = false
                 // Auto-open measurement editor after taking a photo
                 showOverlay = true
             }
@@ -460,10 +474,10 @@ struct NewProjectView: View {
 
                 // CTAs
                 VStack(spacing: 12) {
-                    primaryCTA(title: isLoading ? "Generating Plan…" : "Generate Plan") {
+                    primaryCTA(title: isGeneratingPlan ? "Generating Plan…" : "Generate Plan") {
                         Task { await createAndNavigate() }
                     }
-                    .disabled(!canGeneratePreview || isLoading)
+                    .disabled(!canGeneratePlan || isGeneratingPlan || isCreatingProject)
 
                     helper("Add a room photo so Genie can generate your full AI plan and preview.")
                         .multilineTextAlignment(.center)
@@ -474,9 +488,9 @@ struct NewProjectView: View {
             }
             .padding(18)
         }
-        .disabled(isLoading)
+        .disabled(isCreatingProject || isGeneratingPlan)
         .overlay {
-            if isLoading {
+            if isCreatingProject || isGeneratingPlan {
                 ZStack {
                     Color.black.opacity(0.35)
                         .ignoresSafeArea()
@@ -486,12 +500,12 @@ struct NewProjectView: View {
                             .scaleEffect(1.2)
                             .tint(.white)
 
-                        Text("Genie is building your plan…")
+                        Text(isCreatingProject ? "Creating your project…" : "Genie is building your plan…")
                             .font(.headline)
                             .foregroundColor(.white)
                             .multilineTextAlignment(.center)
 
-                        Text("This might take up to a minute for larger projects.")
+                        Text(isCreatingProject ? "We’re saving your area selection and project info." : "This might take up to a minute for larger projects.")
                             .font(.subheadline)
                             .foregroundColor(.white.opacity(0.8))
                             .multilineTextAlignment(.center)
@@ -508,12 +522,8 @@ struct NewProjectView: View {
         !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var canGeneratePreview: Bool {
-        isValid && selectedUIImage != nil
-    }
-
-    private var shouldRequestPreview: Bool {
-        entitlements.previewAllowed && selectedUIImage != nil
+    private var canGeneratePlan: Bool {
+        isValid && selectedUIImage != nil && projectId != nil && photoUploaded && !isUploadingPhoto
     }
 
 
@@ -526,71 +536,32 @@ struct NewProjectView: View {
             return
         }
 
-        // For this build, this flow always requires a room photo
+        guard let pid = projectId else {
+            alert("Create the project by confirming your area selection first.")
+            return
+        }
+
         guard selectedUIImage != nil else {
             alert("Add a room photo to generate your AI plan and preview.")
             return
         }
 
-        isLoading = true
-        defer { isLoading = false }
+        guard photoUploaded else {
+            alert("Please wait for your photo to finish uploading before generating the plan.")
+            return
+        }
+
+        isGeneratingPlan = true
+        defer { isGeneratingPlan = false }
 
         do {
-            // 1) Create
-            let trimmedName = name.trimmingCharacters(in: .whitespaces)
-            let safeName = trimmedName.isEmpty ? "New Project" : trimmedName
-            let trimmedGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
-
-            let created = try await service.createProject(
-                name: safeName,
-                goal: trimmedGoal,
-                budget: budget.label,
-                skillLevel: skill.label
-            )
-            projectId = created.id
-
-            // 2) Upload photo (optional)
-            if let img = selectedUIImage {
-                _ = try await service.uploadImage(
-                    projectId: created.id,
-                    image: img.dg_resized(maxDimension: 2000)
-                )
-            }
-
-            // 3) Attach measurement area (best effort)
-            if let points = measurementArea,
-               let rect = denormalizedRect(from: points, image: selectedUIImage) {
-                await service.attachCropRectIfAvailable(projectId: created.id, rect: rect)
-            }
-
-            // 4) Generate the plan first and navigate immediately with the updated project
-            let planProject: Project
-            do {
-                planProject = try await service.generatePlanOnly(projectId: created.id)
-            } catch {
-                alert("AI plan generation failed: \(error.localizedDescription)")
-                return
-            }
-
-            // Update local state and notify parent right away so details shows the plan
-            createdProject = planProject
-            onFinished?(planProject)
-
-            // 5) Best-effort preview (may fail for Free tier and that's OK),
-            // but don't block navigation or overwrite the plan-driven details view.
-            if shouldRequestPreview {
-                Task {
-                    do {
-                        _ = try await service.generatePreview(projectId: created.id)
-                    } catch {
-                        print("[DIYGenie] Preview generation failed:", error)
-                        alert("Preview generation failed. You can still use the step-by-step plan.")
-                    }
-                }
-            }
-
+            let updated = try await service.updateProjectWithPlan(projectId: pid)
+            createdProject = updated
+            navigationProject = updated
+            onFinished?(updated)
+            navigateToDetails = true
         } catch {
-            alert("Failed to create project: \(error.localizedDescription)")
+            alert("AI plan generation failed: \(error.localizedDescription)")
         }
     }
 
@@ -598,14 +569,16 @@ struct NewProjectView: View {
     private func uploadCurrentImageIfNeeded(force: Bool = false) async {
         guard let pid = projectId, let img = selectedUIImage else { return }
 
-        isLoading = true
-        defer { isLoading = false }
+        isUploadingPhoto = true
+        defer { isUploadingPhoto = false }
 
         do {
-            _ = try await service.uploadImage(
+            let updated = try await service.uploadImage(
                 projectId: pid,
                 image: img.dg_resized(maxDimension: 2000)
             )
+            createdProject = updated
+            photoUploaded = true
             alert("Photo uploaded.")
         } catch {
             alert("Upload failed: \(error.localizedDescription)")
@@ -617,8 +590,8 @@ struct NewProjectView: View {
         // Close AR sheet first so RealityKit stops rendering (prevents Metal validation crash)
         showARSheet = false
 
-        isLoading = true
-        defer { isLoading = false }
+        isUploadingPhoto = true
+        defer { isUploadingPhoto = false }
 
         do {
             guard let pid = projectId else { return }
@@ -838,13 +811,16 @@ extension NewProjectView {
     /// Ensures there is a project created once a photo + overlay exist.
     @MainActor
     private func ensureProjectAfterPhoto() async {
+        guard let image = selectedUIImage else { return }
+
         // If project already exists, just sync image + crop rect
         if let pid = projectId {
-            if let img = selectedUIImage {
-                _ = try? await service.uploadImage(
-                    projectId: pid,
-                    image: img.dg_resized(maxDimension: 2000)
-                )
+            if !photoUploaded {
+                do {
+                    try await uploadPhoto(for: pid, image: image)
+                } catch {
+                    alert("Upload failed: \(error.localizedDescription)")
+                }
             }
 
             if let points = measurementArea,
@@ -863,14 +839,13 @@ extension NewProjectView {
             ? "New Project"
             : name
 
-        // goal is NOT NULL in DB; provide safe default when empty
         let trimmedGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
         let safeGoal = trimmedGoal.isEmpty
             ? "Auto-created from photo"
             : trimmedGoal
 
-        isLoading = true
-        defer { isLoading = false }
+        isCreatingProject = true
+        defer { isCreatingProject = false }
 
         do {
             let created = try await service.createProject(
@@ -880,25 +855,28 @@ extension NewProjectView {
                 skillLevel: skill.label
             )
             projectId = created.id
-
-            if let img = selectedUIImage {
-                _ = try? await service.uploadImage(
-                    projectId: created.id,
-                    image: img.dg_resized(maxDimension: 2000)
-                )
-            }
+            createdProject = created
 
             if let points = measurementArea,
                let rect = denormalizedRect(from: points, image: selectedUIImage) {
                 await service.attachCropRectIfAvailable(projectId: created.id, rect: rect)
             }
 
-            if let fresh = try? await service.fetchProject(projectId: created.id) {
-                createdProject = fresh
-            }
+            try await uploadPhoto(for: created.id, image: image)
         } catch {
             alert("Couldn’t create project from photo: \(error.localizedDescription)")
         }
+    }
+
+    private func uploadPhoto(for projectId: String, image: UIImage) async throws {
+        isUploadingPhoto = true
+        defer { isUploadingPhoto = false }
+        let updated = try await service.uploadImage(
+            projectId: projectId,
+            image: image.dg_resized(maxDimension: 2000)
+        )
+        createdProject = updated
+        photoUploaded = true
     }
 
     /// Converts 4 normalized points back into a CGRect in image coordinates.
