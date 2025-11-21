@@ -9,6 +9,10 @@ import UIKit
 struct ProjectDetailsView: View {
     let project: Project
 
+    @State private var selectedImage: ImageKind = .preview
+    @State private var isShowingShareSheet = false
+    @State private var shareItems: [Any] = []
+
     private var background: some View {
         LinearGradient(
             gradient: Gradient(colors: [Color("BGStart"), Color("BGEnd")]),
@@ -28,6 +32,25 @@ struct ProjectDetailsView: View {
 
     private var isUsingPreviewFallback: Bool {
         project.previewURL == nil && previewOrPhotoURL != nil
+    }
+
+    private var availableImageKinds: [ImageKind] {
+        var kinds: [ImageKind] = []
+        if previewOrPhotoURL != nil { kinds.append(.preview) }
+        if originalPhotoURL != nil { kinds.append(.original) }
+        return kinds
+    }
+
+    private var toolsList: [PlanTool] {
+        project.planJSON?.tools ?? []
+    }
+
+    private var planSteps: [PlanStep] {
+        project.planJSON?.steps ?? []
+    }
+
+    private var completedSteps: Set<Int> {
+        Set(project.completedSteps ?? [])
     }
 
     private var estimatedCostText: String? {
@@ -71,13 +94,11 @@ struct ProjectDetailsView: View {
             background
 
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 20) {
+                VStack(spacing: 18) {
                     headerSection
-
-                    statsSection
-
+                    toolsSection
+                    progressCard
                     mediaSection
-
                     planSummarySection
 
                     NavigationLink {
@@ -87,7 +108,7 @@ struct ProjectDetailsView: View {
                             .font(.headline.weight(.semibold))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
+                            .padding(.vertical, 16)
                             .background(
                                 RoundedRectangle(cornerRadius: 18)
                                     .fill(Color("Accent"))
@@ -100,6 +121,8 @@ struct ProjectDetailsView: View {
                     .disabled(project.planJSON == nil)
                     .opacity(project.planJSON == nil ? 0.6 : 1)
 
+                    sharePlanButton
+
                     Spacer(minLength: 32)
                 }
                 .padding(18)
@@ -109,18 +132,36 @@ struct ProjectDetailsView: View {
             if let plan = project.planJson {
                 print("[ProjectDetailsView] Plan summary: \(plan.summary ?? "<no summary>")")
             }
+            if !availableImageKinds.contains(selectedImage), let first = availableImageKinds.first {
+                selectedImage = first
+            }
         }
     }
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(project.name)
-                .font(.largeTitle.bold())
-                .foregroundColor(.white)
-                .multilineTextAlignment(.leading)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(project.name)
+                        .font(.largeTitle.bold())
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.leading)
 
-            if let goal = project.goal, !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text(goal)
+                    if let status = project.status, !status.isEmpty {
+                        Text(status.capitalized)
+                            .font(.footnote.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.white.opacity(0.12))
+                            .cornerRadius(10)
+                            .foregroundColor(.white.opacity(0.9))
+                    }
+                }
+                Spacer()
+            }
+
+            if let summary = project.planJSON?.summary ?? project.goal, !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(summary)
                     .foregroundColor(Color.white.opacity(0.85))
                     .font(.body)
                     .fixedSize(horizontal: false, vertical: true)
@@ -129,30 +170,29 @@ struct ProjectDetailsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var statsSection: some View {
+    private var toolsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Project Summary")
-                .font(.title3.weight(.semibold))
-                .foregroundColor(.white)
+            sectionHeader("Required Tools")
 
-            VStack(spacing: 10) {
-                if let budget = project.budget, !budget.isEmpty {
-                    statRow(title: "Budget", value: budget)
-                }
-                if let cost = estimatedCostText {
-                    statRow(title: "Estimated Cost", value: cost)
-                }
-                if let duration = durationText {
-                    statRow(title: "Estimated Duration", value: duration)
-                }
-                if let skill = skillText {
-                    statRow(title: "Skill Level", value: skill.capitalized)
-                }
-                if let area = areaText {
-                    statRow(title: "Area", value: area)
-                }
-                if let perimeter = perimeterText {
-                    statRow(title: "Perimeter", value: perimeter)
+            VStack(alignment: .leading, spacing: 10) {
+                if toolsList.isEmpty {
+                    Text("Tools will appear once the plan is generated.")
+                        .foregroundColor(.white.opacity(0.7))
+                } else {
+                    ForEach(toolsList, id: \.id) { tool in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(tool.name)
+                                .foregroundColor(.white)
+                            if let notes = tool.notes, !notes.isEmpty {
+                                Text(notes)
+                                    .font(.footnote)
+                                    .foregroundColor(.white.opacity(0.7))
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Divider().background(Color.white.opacity(0.12))
+                            .opacity(tool == toolsList.last ? 0 : 1)
+                    }
                 }
             }
             .padding(14)
@@ -162,30 +202,116 @@ struct ProjectDetailsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func statRow(title: String, value: String) -> some View {
-        HStack {
-            Text(title)
-                .font(.subheadline)
-                .foregroundColor(.white.opacity(0.75))
-            Spacer()
-            Text(value)
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(.white)
+    private var progressCard: some View {
+        let totalSteps = planSteps.count
+        let completed = completedSteps
+        let progress = totalSteps == 0 ? 0 : Double(completed.count) / Double(totalSteps)
+        return VStack(alignment: .leading, spacing: 14) {
+            sectionHeader("Build Progress")
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("\(Int(progress * 100))% complete")
+                        .font(.headline.weight(.semibold))
+                        .foregroundColor(.white)
+                    Spacer()
+                    Text("\(completed.count)/\(max(totalSteps, 1)) steps")
+                        .foregroundColor(.white.opacity(0.75))
+                        .font(.subheadline)
+                }
+
+                ProgressView(value: progress)
+                    .tint(Color("Accent"))
+
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(planSteps.enumerated()), id: \.offset) { index, step in
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: completed.contains(step.id) ? "checkmark.circle.fill" : "circle")
+                                .foregroundColor(completed.contains(step.id) ? Color.green : Color.white.opacity(0.7))
+                                .font(.system(size: 18, weight: .semibold))
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Step \(index + 1)")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundColor(.white.opacity(0.8))
+                                Text(step.title)
+                                    .foregroundColor(.white)
+                                    .font(.subheadline)
+                                if let details = step.details, !details.isEmpty {
+                                    Text(details)
+                                        .foregroundColor(.white.opacity(0.75))
+                                        .font(.footnote)
+                                }
+                            }
+                        }
+                        if index < planSteps.count - 1 {
+                            Divider().background(Color.white.opacity(0.15))
+                        }
+                    }
+                    if planSteps.isEmpty {
+                        Text("Steps will appear after your plan is ready.")
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                }
+
+                HStack(spacing: 12) {
+                    Button(action: {}) {
+                        Text("Continue Building")
+                            .font(.headline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color("Accent"))
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                    }
+
+                    Button(action: copySteps) {
+                        Text("Copy Steps")
+                            .font(.headline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.white.opacity(0.1))
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                    }
+                    .disabled(planSteps.isEmpty)
+                    .opacity(planSteps.isEmpty ? 0.6 : 1)
+                }
+            }
+            .padding(16)
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(16)
         }
     }
 
     private var mediaSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Images")
-                .font(.title3.weight(.semibold))
-                .foregroundColor(.white)
+            sectionHeader("Project Images")
 
-            if let original = originalPhotoURL {
-                mediaCard(title: "Original Photo", url: original)
+            if availableImageKinds.count > 1 {
+                Picker("Image", selection: $selectedImage) {
+                    ForEach(availableImageKinds, id: \.self) { kind in
+                        Text(kind.title).tag(kind)
+                    }
+                }
+                .pickerStyle(.segmented)
             }
 
-            if let preview = previewOrPhotoURL {
-                mediaCard(title: "Preview Image", url: preview)
+            if let imageURL = imageURL(for: selectedImage) ?? previewOrPhotoURL ?? originalPhotoURL {
+                ZStack(alignment: .topTrailing) {
+                    mediaCard(title: selectedImage.title, url: imageURL)
+
+                    if selectedImage == .preview, previewOrPhotoURL != nil {
+                        Button(action: { shareImage(url: imageURL) }) {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.title3)
+                                .foregroundColor(.white)
+                                .padding(8)
+                                .background(Color.black.opacity(0.35))
+                                .clipShape(Circle())
+                                .padding(10)
+                        }
+                    }
+                }
 
                 if isUsingPreviewFallback {
                     Text("Preview not available; showing project photo instead.")
@@ -193,7 +319,7 @@ struct ProjectDetailsView: View {
                         .foregroundColor(.yellow.opacity(0.9))
                 }
             } else {
-                Text("Preview not available")
+                Text("No images available")
                     .font(.footnote)
                     .foregroundColor(.yellow.opacity(0.9))
             }
@@ -201,21 +327,9 @@ struct ProjectDetailsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func mediaCard(title: String, url: URL) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.headline)
-                .foregroundColor(.white)
-
-            ProjectMediaView(url: url)
-        }
-    }
-
     private var planSummarySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Plan Overview")
-                .font(.title3.weight(.semibold))
-                .foregroundColor(.white)
+            sectionHeader("Plan Overview")
 
             if let plan = project.planJSON {
                 if let summary = plan.summary, !summary.isEmpty {
@@ -253,6 +367,84 @@ struct ProjectDetailsView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var sharePlanButton: some View {
+        Button(action: sharePlan) {
+            Text("Share Plan")
+                .font(.headline.weight(.semibold))
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(Color.white.opacity(0.12))
+                )
+        }
+        .sheet(isPresented: $isShowingShareSheet) {
+            ShareSheet(activityItems: shareItems)
+        }
+    }
+
+    private func mediaCard(title: String, url: URL) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+                .foregroundColor(.white)
+
+            ProjectMediaView(url: url)
+        }
+    }
+
+    private func copySteps() {
+        guard !planSteps.isEmpty else { return }
+        let stepsText = planSteps.enumerated().map { index, step in
+            "Step \(index + 1): \(step.title)\n\(step.details ?? "")"
+        }.joined(separator: "\n\n")
+        UIPasteboard.general.string = stepsText
+    }
+
+    private func sharePlan() {
+        var items: [Any] = []
+        if let summary = project.planJSON?.summary {
+            items.append(summary)
+        } else {
+            items.append("DIY plan for \(project.name)")
+        }
+        shareItems = items
+        isShowingShareSheet = true
+    }
+
+    private func shareImage(url: URL) {
+        shareItems = [url]
+        isShowingShareSheet = true
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.title3.weight(.semibold))
+            .foregroundColor(.white)
+    }
+
+    private func imageURL(for kind: ImageKind) -> URL? {
+        switch kind {
+        case .preview:
+            return previewOrPhotoURL
+        case .original:
+            return originalPhotoURL
+        }
+    }
+}
+
+private enum ImageKind: Hashable {
+    case preview
+    case original
+
+    var title: String {
+        switch self {
+        case .preview: return "Preview"
+        case .original: return "Original"
+        }
     }
 }
 
