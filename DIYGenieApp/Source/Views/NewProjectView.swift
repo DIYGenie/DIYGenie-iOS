@@ -163,16 +163,18 @@ struct NewProjectView: View {
                 )
             }
         }
-        // AR sheet
+        // AR sheet (after project exists)
         .sheet(isPresented: $showARSheet) {
-            if #available(iOS 17.0, *) {
-                ARRoomPlanSheet { fileURL in
-                    Task { await handleRoomPlanExport(fileURL) }
+            if projectId != nil {
+                if #available(iOS 17.0, *) {
+                    ARRoomPlanSheet { fileURL in
+                        Task { await handleRoomPlanExport(fileURL) }
+                    }
+                    .ignoresSafeArea()
+                } else {
+                    Text("RoomPlan requires iOS 17 or later.")
+                        .padding()
                 }
-                .ignoresSafeArea()
-            } else {
-                Text("RoomPlan requires iOS 17 or later.")
-                    .padding()
             }
         }
         .alert(alertMessage, isPresented: $showAlert) {
@@ -341,8 +343,8 @@ struct NewProjectView: View {
                     if !hasSavedMeasurement {
                         return "Draw the 4-point area to enable"
                     }
-                    if hasSavedMeasurement && projectId == nil && !arAttached {
-                        return "Optional: Add a 3D room scan before generating your plan"
+                    if projectId == nil {
+                        return "Project will auto-create after you continue"
                     }
                     return "Improve measurements with Room Scan"
                 }()
@@ -357,8 +359,22 @@ struct NewProjectView: View {
                         arAttached = false
                         arScanFilename = nil
 
+                        if projectId == nil {
+                            await ensureProjectAfterPhoto()
+                        }
+
                         guard hasSavedMeasurement else {
                             alert("Please add a photo and draw the 4-point area to continue.")
+                            return
+                        }
+                        
+                        // Ensure project exists before opening AR
+                        if projectId == nil {
+                            await ensureProjectAfterPhoto()
+                        }
+                        
+                        guard projectId != nil else {
+                            alert("Could not create project. Please try again.")
                             return
                         }
 
@@ -513,15 +529,18 @@ struct NewProjectView: View {
 
     // MARK: - Actions
 
+       // MARK: - Actions
+
     @MainActor
     private func createAndNavigate() async {
+        // Basic validation
         guard isValid else {
             errorMessage = "Please add a project goal/description."
             showErrorAlert = true
             return
         }
 
-        guard selectedUIImage != nil else {
+        guard let currentImage = selectedUIImage else {
             errorMessage = "Add a room photo to generate your AI plan and preview."
             showErrorAlert = true
             return
@@ -536,73 +555,87 @@ struct NewProjectView: View {
         isGeneratingPlan = true
         errorMessage = nil
         showErrorAlert = false
-        defer { isGeneratingPlan = false }
+
+        defer {
+            isGeneratingPlan = false
+        }
 
         do {
-            // Step 1: Create the project if it doesn't exist
+            // STEP 1: Create or fetch project
             var project: Project
+
             if let existingProjectId = projectId {
-                // Project already exists, fetch it
+                // Project already exists – fetch fresh copy
                 project = try await service.fetchProject(projectId: existingProjectId)
             } else {
                 // Create new project
                 let safeName = name.trimmingCharacters(in: .whitespaces).isEmpty
                     ? "New Project"
                     : name
-                
+
                 let trimmedGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
                 let safeGoal = trimmedGoal.isEmpty
                     ? "Auto-created from photo"
                     : trimmedGoal
-                
+
                 project = try await service.createProject(
                     name: safeName,
                     goal: safeGoal,
                     budget: budget.label,
                     skillLevel: skill.label
                 )
+
                 projectId = project.id
                 createdProject = project
-                
-                // Upload photo if not already uploaded
-                if !photoUploaded, let image = selectedUIImage {
-                    try await uploadPhoto(for: project.id, image: image)
-                }
-                
-                // Attach crop rect if available
-                if let points = measurementArea,
-                   let rect = denormalizedRect(from: points, image: selectedUIImage) {
-                    await service.attachCropRectIfAvailable(projectId: project.id, rect: rect)
-                }
             }
 
-            // Step 1b: Upload any pending AR scan captured before project creation
+            // STEP 2: Ensure photo + ROI are synced to backend
+            if !photoUploaded {
+                try await uploadPhoto(for: project.id, image: currentImage)
+            }
+
+            if let points = measurementArea,
+               let rect = denormalizedRect(from: points, image: currentImage) {
+                await service.attachCropRectIfAvailable(projectId: project.id, rect: rect)
+            }
+
+            // STEP 3: If we have a pending AR scan (from pre-project AR), upload it now
             if let arURL = pendingARScanURL {
                 do {
                     try await service.uploadARScan(projectId: project.id, fileURL: arURL)
                     let refreshed = try await service.fetchProject(projectId: project.id)
                     createdProject = refreshed
+                    project = refreshed
                     arAttached = true
                     arScanFilename = arURL.lastPathComponent
                     pendingARScanURL = nil
                 } catch {
-                    print("Failed to attach pending AR scan:", error)
-                    alert("AR scan couldn't be attached: \(error.localizedDescription)")
+                    print("[NewProjectView] uploadARScan failed:", error)
+                    // Non-fatal: continue without AR-enhanced plan
                 }
             }
 
-            // Step 2: Generate the plan
-            let updatedProject = try await service.updateProjectWithPlan(projectId: project.id)
+            // STEP 4: Trigger plan generation (fire-and-forget)
+            guard let projectUUID = UUID(uuidString: project.id) else {
+                errorMessage = "Invalid project ID."
+                showErrorAlert = true
+                return
+            }
 
-            // Step 3: Navigate to project details
+            print("[NewProjectView] calling generatePlan for \(projectUUID)")
+            try await APIClient.shared.generatePlan(projectId: projectUUID)
+
+            // STEP 5: Fetch updated project WITH plan and navigate
+            let updatedProject = try await service.fetchProject(projectId: project.id)
             navigationProject = updatedProject
             onFinished?(updatedProject)
+
         } catch {
+            print("[NewProjectView] createAndNavigate failed:", error)
             errorMessage = error.localizedDescription
             showErrorAlert = true
         }
     }
-
     @MainActor
     private func uploadCurrentImageIfNeeded(force: Bool = false) async {
         guard let pid = projectId, let img = selectedUIImage else { return }
@@ -632,13 +665,7 @@ struct NewProjectView: View {
         defer { isUploadingPhoto = false }
 
         do {
-            guard let pid = projectId else {
-                pendingARScanURL = fileURL
-                arScanFilename = fileURL.lastPathComponent
-                arAttached = true
-                alert("AR scan saved. It will be attached when you generate your plan.")
-                return
-            }
+            guard let pid = projectId else { return }
 
             try await service.uploadARScan(projectId: pid, fileURL: fileURL)
             let fresh = try await service.fetchProject(projectId: pid)
@@ -876,6 +903,39 @@ extension NewProjectView {
                 createdProject = fresh
             }
             return
+        }
+
+        // Otherwise create new project immediately
+        let safeName = name.trimmingCharacters(in: .whitespaces).isEmpty
+            ? "New Project"
+            : name
+
+        let trimmedGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
+        let safeGoal = trimmedGoal.isEmpty
+            ? "Auto-created from photo"
+            : trimmedGoal
+
+        isCreatingProject = true
+        defer { isCreatingProject = false }
+
+        do {
+            let created = try await service.createProject(
+                name: safeName,
+                goal: safeGoal,
+                budget: budget.label,
+                skillLevel: skill.label
+            )
+            projectId = created.id
+            createdProject = created
+
+            if let points = measurementArea,
+               let rect = denormalizedRect(from: points, image: selectedUIImage) {
+                await service.attachCropRectIfAvailable(projectId: created.id, rect: rect)
+            }
+
+            try await uploadPhoto(for: created.id, image: image)
+        } catch {
+            alert("Couldn’t create project from photo: \(error.localizedDescription)")
         }
     }
 
