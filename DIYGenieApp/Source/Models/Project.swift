@@ -146,7 +146,7 @@ struct Project: Codable, Identifiable {
         case status
         case createdAt
         case updatedAt
-        case previewUrl
+        case previewUrl        = "preview_url"
         case inputImageUrl
         case arProvider
         case arConfidence
@@ -165,7 +165,7 @@ struct Project: Codable, Identifiable {
         case planJson
         case completedSteps
         case currentStepIndex
-        case previewStatus
+        case previewStatus     = "preview_status"
         case previewMeta
         case isDemo
         case photoUrl

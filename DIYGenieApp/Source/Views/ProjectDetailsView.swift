@@ -9,7 +9,8 @@ import UIKit
 struct ProjectDetailsView: View {
     let project: Project
 
-    @State private var selectedImage: ImageKind = .preview
+    @State private var heroKind: HeroImageKind = .preview
+    @State private var showFullPlan = false
     @State private var isShowingShareSheet = false
     @State private var shareItems: [Any] = []
     @State private var showAllSteps = false
@@ -20,23 +21,18 @@ struct ProjectDetailsView: View {
             .ignoresSafeArea()
     }
 
-    private var originalPhotoURL: URL? {
-        project.inputImageURL ?? project.photoUrl.flatMap(URL.init(string:))
+    private var previewImageURL: URL? {
+        if let urlString = project.previewUrl, let url = URL(string: urlString) {
+            return url
+        }
+        return nil
     }
 
-    private var previewOrPhotoURL: URL? {
-        project.previewURL ?? project.photoUrl.flatMap(URL.init(string:))
-    }
-
-    private var isUsingPreviewFallback: Bool {
-        project.previewURL == nil && previewOrPhotoURL != nil
-    }
-
-    private var availableImageKinds: [ImageKind] {
-        var kinds: [ImageKind] = []
-        if previewOrPhotoURL != nil { kinds.append(.preview) }
-        if originalPhotoURL != nil { kinds.append(.original) }
-        return kinds
+    private var originalImageURL: URL? {
+        if let urlString = project.photoUrl, let url = URL(string: urlString) {
+            return url
+        }
+        return project.inputImageURL
     }
 
     private var toolsList: [PlanTool] {
@@ -93,14 +89,26 @@ struct ProjectDetailsView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 22) {
-                    // Decor8 Preview Hero Section
-                    previewHeroSection
-                    
+                    heroSection
+
+                    Button {
+                        showFullPlan = true
+                    } label: {
+                        Text("View Full Build Plan")
+                            .font(.headline.weight(.semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(
+                                RoundedRectangle(cornerRadius: 18)
+                                    .fill(Color("Accent"))
+                            )
+                    }
+                    .padding(.top, 8)
+
                     headerSection
                     toolsSection
                     progressCard
-                    mediaSection
-                        .padding(.top, 6)
                     planSummarySection
                         .padding(.top, 6)
 
@@ -115,90 +123,109 @@ struct ProjectDetailsView: View {
             if let plan = project.planJson {
                 print("[ProjectDetailsView] Plan summary: \(plan.summary ?? "<no summary>")")
             }
-            if !availableImageKinds.contains(selectedImage), let first = availableImageKinds.first {
-                selectedImage = first
+            print("[ProjectDetailsView] project id:", project.id)
+            print("[ProjectDetailsView] previewUrl:", project.previewUrl ?? "nil")
+            print("[ProjectDetailsView] has planJson:", project.planJson != nil)
+
+            if previewImageURL == nil {
+                heroKind = .original
             }
+        }
+        .navigationDestination(isPresented: $showFullPlan) {
+            DetailBuildPlanView(project: project)
         }
     }
 
-    // MARK: - Preview Hero Section
-    
-    private var previewHeroSection: some View {
-        Group {
-            if let previewURL = project.previewURL {
-                ZStack(alignment: .bottomLeading) {
-                    AsyncImage(url: previewURL) { phase in
+    // MARK: - Hero Section
+
+    private var heroSection: some View {
+        VStack(spacing: 12) {
+            ZStack(alignment: .bottomLeading) {
+                if let url = (heroKind == .preview ? previewImageURL : originalImageURL) {
+                    AsyncImage(url: url) { phase in
                         switch phase {
+                        case .empty:
+                            ProgressView()
+                                .frame(maxWidth: .infinity, maxHeight: 240)
                         case .success(let image):
                             image
                                 .resizable()
                                 .scaledToFill()
+                                .frame(maxWidth: .infinity, minHeight: 220, maxHeight: 260)
+                                .clipped()
                         case .failure:
-                            previewPlaceholder
-                        case .empty:
-                            ZStack {
-                                DS.Colors.cardOverlay
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: DS.Colors.textPrimary))
-                            }
+                            Color.black.opacity(0.2)
+                                .overlay(
+                                    Image(systemName: "photo")
+                                        .font(.largeTitle)
+                                        .foregroundColor(.white.opacity(0.6))
+                                )
+                                .frame(maxWidth: .infinity, minHeight: 200, maxHeight: 240)
                         @unknown default:
-                            previewPlaceholder
+                            EmptyView()
                         }
                     }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 240)
-                    .clipped()
-
-                    LinearGradient(
-                        gradient: Gradient(colors: [
-                            Color.black.opacity(0.0),
-                            Color.black.opacity(0.35)
-                        ]),
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 240)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                } else {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(Color.white.opacity(0.06))
+                        .frame(maxWidth: .infinity, minHeight: 200, maxHeight: 240)
+                        .overlay(
+                            VStack(spacing: 8) {
+                                Image(systemName: "photo.on.rectangle")
+                                    .font(.largeTitle)
+                                Text("Preview not available yet")
+                                    .font(.subheadline)
+                            }
+                            .foregroundColor(Color("TextSecondary"))
+                        )
                 }
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(DS.Colors.cardOverlay)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(DS.Colors.cardBorder, lineWidth: 1)
-                )
-                .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
-            } else {
-                // Placeholder when preview is not available yet
-                previewPlaceholder
+
+                HStack(spacing: 8) {
+                    Text(heroKind == .preview ? "Preview" : "Original")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.6))
+                        .clipShape(Capsule())
+                }
+                .padding(12)
+            }
+
+            if previewImageURL != nil, originalImageURL != nil {
+                HStack(spacing: 12) {
+                    Button {
+                        heroKind = .preview
+                    } label: {
+                        Text("Preview")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .fill(heroKind == .preview ? Color("Accent") : Color.white.opacity(0.06))
+                            )
+                            .foregroundColor(heroKind == .preview ? .white : Color("TextPrimary"))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        heroKind = .original
+                    } label: {
+                        Text("Original")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .fill(heroKind == .original ? Color("Accent") : Color.white.opacity(0.06))
+                            )
+                            .foregroundColor(heroKind == .original ? .white : Color("TextPrimary"))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
-    }
-    
-    private var previewPlaceholder: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 16)
-                .fill(DS.Colors.cardOverlay)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(DS.Colors.cardBorder, lineWidth: 1)
-                )
-
-            VStack(spacing: 12) {
-                Image(systemName: "photo.on.rectangle")
-                    .font(.system(size: 40, weight: .semibold))
-                    .foregroundColor(DS.Colors.textSecondary)
-
-                Text(project.previewStatus == "pending" || project.previewStatus == "processing"
-                     ? "Preview generating…"
-                     : "Preview not available yet")
-                    .font(.subheadline)
-                    .foregroundColor(DS.Colors.textSecondary)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 240)
     }
 
     private var headerSection: some View {
@@ -360,50 +387,6 @@ struct ProjectDetailsView: View {
         }
     }
 
-    private var mediaSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            sectionHeader("Project Images")
-
-            if availableImageKinds.count > 1 {
-                Picker("Image", selection: $selectedImage) {
-                    ForEach(availableImageKinds, id: \.self) { kind in
-                        Text(kind.title).tag(kind)
-                    }
-                }
-                .pickerStyle(.segmented)
-            }
-
-            if let imageURL = imageURL(for: selectedImage) ?? previewOrPhotoURL ?? originalPhotoURL {
-                ZStack(alignment: .topTrailing) {
-                    mediaCard(title: selectedImage.title, url: imageURL)
-
-                    if selectedImage == .preview, previewOrPhotoURL != nil {
-                        Button(action: { shareImage(url: imageURL) }) {
-                            Image(systemName: "arrow.down.circle.fill")
-                                .font(.title3)
-                                .foregroundColor(.white)
-                                .padding(8)
-                                .background(Color.black.opacity(0.35))
-                                .clipShape(Circle())
-                                .padding(10)
-                        }
-                    }
-                }
-
-                if isUsingPreviewFallback {
-                    Text("Preview not available; showing project photo instead.")
-                        .font(.footnote)
-                        .foregroundColor(.yellow.opacity(0.9))
-                }
-            } else {
-                Text("No images available")
-                    .font(.footnote)
-                    .foregroundColor(.yellow.opacity(0.9))
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
     private var planSummarySection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader("Plan Overview")
@@ -488,16 +471,6 @@ struct ProjectDetailsView: View {
         }
     }
 
-    private func mediaCard(title: String, url: URL) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.headline)
-                .foregroundColor(.white)
-
-            ProjectMediaView(url: url)
-        }
-    }
-
     private func copySteps() {
         guard !planSteps.isEmpty else { return }
         let stepsText = planSteps.enumerated().map { index, step in
@@ -518,11 +491,6 @@ struct ProjectDetailsView: View {
         isShowingShareSheet = true
     }
 
-    private func shareImage(url: URL) {
-        shareItems = [url]
-        isShowingShareSheet = true
-    }
-
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
             .font(.title3.weight(.semibold))
@@ -540,79 +508,9 @@ struct ProjectDetailsView: View {
                 .foregroundColor(.white)
         }
     }
-
-    private func imageURL(for kind: ImageKind) -> URL? {
-        switch kind {
-        case .preview:
-            return previewOrPhotoURL
-        case .original:
-            return originalPhotoURL
-        }
-    }
 }
 
-private enum ImageKind: Hashable {
+private enum HeroImageKind {
     case preview
     case original
-
-    var title: String {
-        switch self {
-        case .preview: return "Preview"
-        case .original: return "Original"
-        }
-    }
-}
-
-private struct ProjectMediaView: View {
-    let url: URL
-
-    var body: some View {
-        Group {
-            if let image = localImage {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    case .failure:
-                        placeholder
-                    case .empty:
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    @unknown default:
-                        placeholder
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 260)
-        .clipped()
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.35), radius: 8, x: 0, y: 4)
-    }
-
-    private var placeholder: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.white.opacity(0.08))
-            Image(systemName: "photo.on.rectangle")
-                .font(.system(size: 36, weight: .semibold))
-                .foregroundColor(.white.opacity(0.7))
-        }
-    }
-
-    private var localImage: UIImage? {
-        guard url.isFileURL else { return nil }
-        return UIImage(contentsOfFile: url.path)
-    }
 }

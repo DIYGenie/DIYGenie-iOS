@@ -8,9 +8,16 @@
 import SwiftUI
 
 struct DetailBuildPlanView: View {
-    let projectId: UUID
-    let plan: PlanV1
-    
+    let project: Project
+
+    private var plan: PlanResponse? { project.planJson }
+    private var previewURL: URL? {
+        if let urlString = project.previewUrl, let url = URL(string: urlString) {
+            return url
+        }
+        return project.photoUrl.flatMap(URL.init(string:))
+    }
+
     @State private var showingShareSheet = false
     @State private var shareItems: [Any] = []
     
@@ -21,8 +28,7 @@ struct DetailBuildPlanView: View {
             
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    // Preview image header
-                    if let previewUrl = plan.previewUrl {
+                    if let previewUrl = previewURL {
                         AsyncImage(url: previewUrl) { phase in
                             switch phase {
                             case .success(let image):
@@ -46,122 +52,125 @@ struct DetailBuildPlanView: View {
                                 .stroke(DS.Colors.cardBorder, lineWidth: 1)
                         )
                     }
-                    
-                    // Summary section
-                    if let summary = plan.summary, !summary.isEmpty {
+
+                    if let plan {
+                        if let summary = plan.summary, !summary.isEmpty {
+                            sectionCard {
+                                sectionHeader("Summary")
+                                Text(summary)
+                                    .font(.body)
+                                    .foregroundColor(DS.Colors.textPrimary.opacity(0.85))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+
+                        if let notes = plan.notes, !notes.isEmpty {
+                            sectionCard {
+                                sectionHeader("Before You Begin")
+                                Text(notes)
+                                    .font(.body)
+                                    .foregroundColor(DS.Colors.textPrimary.opacity(0.85))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+
+                        if !plan.steps.isEmpty {
+                            sectionCard {
+                                sectionHeader("Step-by-Step Instructions")
+                                VStack(alignment: .leading, spacing: 16) {
+                                    ForEach(Array(plan.steps.enumerated()), id: \.element.id) { index, step in
+                                        stepCard(step: step, number: index + 1)
+                                        if index < plan.steps.count - 1 {
+                                            Divider()
+                                                .background(DS.Colors.cardBorder)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if !plan.tools.isEmpty {
+                            sectionCard {
+                                sectionHeader("Required Tools")
+                                VStack(alignment: .leading, spacing: 12) {
+                                    ForEach(plan.tools) { tool in
+                                        Text(tool.name)
+                                            .font(.body)
+                                            .foregroundColor(DS.Colors.textPrimary)
+                                        if tool.id != plan.tools.last?.id {
+                                            Divider()
+                                                .background(DS.Colors.cardBorder)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if !plan.materials.isEmpty {
+                            sectionCard {
+                                sectionHeader("Materials")
+                                VStack(alignment: .leading, spacing: 12) {
+                                    ForEach(plan.materials) { material in
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(material.name)
+                                                .font(.body)
+                                                .foregroundColor(DS.Colors.textPrimary)
+                                            if let quantity = material.quantity, !quantity.isEmpty {
+                                                Text(quantity)
+                                                    .font(.footnote)
+                                                    .foregroundColor(DS.Colors.textSecondary)
+                                            }
+                                            if let notes = material.notes, !notes.isEmpty {
+                                                Text(notes)
+                                                    .font(.footnote)
+                                                    .foregroundColor(DS.Colors.textSecondary)
+                                            }
+                                        }
+                                        if material.id != plan.materials.last?.id {
+                                            Divider()
+                                                .background(DS.Colors.cardBorder)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if let costBreakdown = plan.costBreakdown, !costBreakdown.isEmpty {
+                            sectionCard {
+                                sectionHeader("Cost Estimate")
+                                VStack(alignment: .leading, spacing: 10) {
+                                    ForEach(costBreakdown) { item in
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(item.category)
+                                                .font(.callout.weight(.semibold))
+                                                .foregroundColor(DS.Colors.textPrimary)
+                                            Text(item.amount)
+                                                .font(.body)
+                                                .foregroundColor(DS.Colors.textPrimary)
+                                            if let notes = item.notes, !notes.isEmpty {
+                                                Text(notes)
+                                                    .font(.footnote)
+                                                    .foregroundColor(DS.Colors.textSecondary)
+                                            }
+                                        }
+                                        if item.id != costBreakdown.last?.id {
+                                            Divider()
+                                                .background(DS.Colors.cardBorder)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
                         sectionCard {
-                            sectionHeader("Summary")
-                            Text(summary)
+                            sectionHeader("Plan")
+                            Text("Your plan is still loading. Try refreshing this project in a moment.")
                                 .font(.body)
-                                .foregroundColor(DS.Colors.textPrimary.opacity(0.85))
+                                .foregroundColor(DS.Colors.textPrimary.opacity(0.75))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
-                    
-                    // Before You Begin
-                    if let overview = plan.overview, !overview.isEmpty {
-                        sectionCard {
-                            sectionHeader("Before You Begin")
-                            Text(overview)
-                                .font(.body)
-                                .foregroundColor(DS.Colors.textPrimary.opacity(0.85))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    
-                    // Steps section
-                    if !plan.steps.isEmpty {
-                        sectionCard {
-                            sectionHeader("Step-by-Step Instructions")
-                            VStack(alignment: .leading, spacing: 16) {
-                                ForEach(Array(plan.steps.enumerated()), id: \.element.id) { index, step in
-                                    stepCard(step: step, number: index + 1)
-                                    if index < plan.steps.count - 1 {
-                                        Divider()
-                                            .background(DS.Colors.cardBorder)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Tools section
-                    if !plan.tools.isEmpty {
-                        sectionCard {
-                            sectionHeader("Required Tools")
-                            VStack(alignment: .leading, spacing: 12) {
-                                ForEach(plan.tools) { tool in
-                                    planItemRow(name: tool.name, quantity: tool.quantity, unit: tool.unit)
-                                    if tool.id != plan.tools.last?.id {
-                                        Divider()
-                                            .background(DS.Colors.cardBorder)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Materials section
-                    if !plan.materials.isEmpty {
-                        sectionCard {
-                            sectionHeader("Materials")
-                            VStack(alignment: .leading, spacing: 12) {
-                                ForEach(plan.materials) { material in
-                                    planItemRow(name: material.name, quantity: material.quantity, unit: material.unit)
-                                    if material.id != plan.materials.last?.id {
-                                        Divider()
-                                            .background(DS.Colors.cardBorder)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Cut List section
-                    if !plan.cuts.isEmpty {
-                        sectionCard {
-                            sectionHeader("Cut List")
-                            VStack(alignment: .leading, spacing: 12) {
-                                ForEach(plan.cuts) { cut in
-                                    Text(cut.description)
-                                        .font(.body)
-                                        .foregroundColor(DS.Colors.textPrimary)
-                                    if cut.id != plan.cuts.last?.id {
-                                        Divider()
-                                            .background(DS.Colors.cardBorder)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Cost Estimate section
-                    if let cost = plan.cost {
-                        sectionCard {
-                            sectionHeader("Cost Estimate")
-                            VStack(alignment: .leading, spacing: 10) {
-                                if let materialsSubtotal = cost.materialsSubtotal {
-                                    costRow(title: "Materials", amount: materialsSubtotal)
-                                }
-                                if let toolsSubtotal = cost.toolsSubtotal {
-                                    costRow(title: "Tools", amount: toolsSubtotal)
-                                }
-                                if let contingencyPercent = cost.contingencyPercent {
-                                    if let materialsSubtotal = cost.materialsSubtotal {
-                                        let contingency = materialsSubtotal * (contingencyPercent / 100.0)
-                                        costRow(title: "Contingency (\(Int(contingencyPercent))%)", amount: contingency)
-                                    }
-                                }
-                                if let total = cost.total {
-                                    Divider()
-                                        .background(DS.Colors.cardBorder)
-                                    costRow(title: "Total", amount: total, isTotal: true)
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Share button
+
                     shareButton
                 }
                 .padding(.horizontal, 20)
@@ -200,7 +209,7 @@ struct DetailBuildPlanView: View {
             .foregroundColor(DS.Colors.textPrimary)
     }
     
-    private func stepCard(step: Step, number: Int) -> some View {
+    private func stepCard(step: PlanStep, number: Int) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Step \(number)")
@@ -210,11 +219,11 @@ struct DetailBuildPlanView: View {
                     .padding(.vertical, 6)
                     .background(DS.Colors.lavenderAccent.opacity(0.2))
                     .cornerRadius(8)
-                
+
                 Spacer()
-                
-                if let duration = step.durationMinutes {
-                    Text("\(duration) min")
+
+                if let duration = step.estimatedTime, !duration.isEmpty {
+                    Text(duration)
                         .font(.footnote.weight(.semibold))
                         .foregroundColor(DS.Colors.textSecondary)
                 }
@@ -231,41 +240,7 @@ struct DetailBuildPlanView: View {
             }
         }
     }
-    
-    private func planItemRow(name: String, quantity: Double?, unit: String?) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(name)
-                .font(.headline)
-                .foregroundColor(DS.Colors.textPrimary)
-            
-            if let quantity = quantity, let unit = unit {
-                Text("\(formatQuantity(quantity)) \(unit)")
-                    .font(.footnote)
-                    .foregroundColor(DS.Colors.textSecondary)
-            } else if let quantity = quantity {
-                Text(formatQuantity(quantity))
-                    .font(.footnote)
-                    .foregroundColor(DS.Colors.textSecondary)
-            } else if let unit = unit {
-                Text(unit)
-                    .font(.footnote)
-                    .foregroundColor(DS.Colors.textSecondary)
-            }
-        }
-    }
-    
-    private func costRow(title: String, amount: Double, isTotal: Bool = false) -> some View {
-        HStack {
-            Text(title)
-                .font(isTotal ? .headline : .body)
-                .foregroundColor(DS.Colors.textPrimary)
-            Spacer()
-            Text(formatCurrency(amount))
-                .font(isTotal ? .headline.weight(.bold) : .body.weight(.semibold))
-                .foregroundColor(DS.Colors.textPrimary)
-        }
-    }
-    
+
     private var shareButton: some View {
         Button(action: sharePlan) {
             Text("Share Plan")
@@ -278,26 +253,9 @@ struct DetailBuildPlanView: View {
         }
     }
     
-    // MARK: - Helpers
-    
-    private func formatQuantity(_ quantity: Double) -> String {
-        if quantity.truncatingRemainder(dividingBy: 1) == 0 {
-            return String(Int(quantity))
-        } else {
-            return String(format: "%.2f", quantity)
-        }
-    }
-    
-    private func formatCurrency(_ amount: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.maximumFractionDigits = 2
-        return formatter.string(from: NSNumber(value: amount)) ?? "$\(String(format: "%.2f", amount))"
-    }
-    
     private func sharePlan() {
         var items: [Any] = []
-        if let summary = plan.summary {
+        if let summary = plan?.summary {
             items.append(summary)
         } else {
             items.append("DIY build plan")
