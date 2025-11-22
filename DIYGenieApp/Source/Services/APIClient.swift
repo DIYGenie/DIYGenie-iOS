@@ -30,12 +30,18 @@ final class APIClient {
     
     // MARK: - Generate Plan
     
-    func generatePlan(projectId: UUID) async throws -> PlanV1 {
-        let url = baseURL.appendingPathComponent("api/projects/\(projectId.uuidString)/generate-plan")
+    func generatePlan(projectId: UUID) async throws {
+        let url = baseURL.appendingPathComponent("plan")
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        struct Payload: Encodable { let projectId: UUID }
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        request.httpBody = try encoder.encode(Payload(projectId: projectId))
         
         // Optional: Add Authorization header if token is available
         if let token = getAuthToken() {
@@ -56,19 +62,9 @@ final class APIClient {
                 logger.error("Plan generation failed: status \(httpResponse.statusCode), body: \(bodyString)")
                 throw APIError.serverError(statusCode: httpResponse.statusCode, body: bodyString)
             }
-            
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            
-            do {
-                let plan = try decoder.decode(PlanV1.self, from: data)
-                logger.info("Plan generated successfully: \(plan.id.uuidString)")
-                return plan
-            } catch {
-                let bodyString = String(data: data, encoding: .utf8) ?? "<no body>"
-                logger.error("Failed to decode plan response: \(error.localizedDescription), body: \(bodyString)")
-                throw APIError.decodeError(error)
-            }
+
+            let bodyString = String(data: data, encoding: .utf8) ?? "<no body>"
+            logger.info("Plan trigger succeeded for project \(projectId.uuidString). Body: \(bodyString)")
         } catch let error as APIError {
             throw error
         } catch {

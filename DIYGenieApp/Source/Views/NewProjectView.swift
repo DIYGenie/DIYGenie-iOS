@@ -592,18 +592,9 @@ struct NewProjectView: View {
             }
 
             // Step 2: Generate the plan
-            guard let projectUUID = UUID(uuidString: project.id) else {
-                errorMessage = "Invalid project ID"
-                showErrorAlert = true
-                return
-            }
-            
-            _ = try await APIClient.shared.generatePlan(projectId: projectUUID)
-            
-            // Step 3: Fetch the updated project with plan
-            let updatedProject = try await service.fetchProject(projectId: project.id)
-            
-            // Step 4: Navigate to project details
+            let updatedProject = try await service.updateProjectWithPlan(projectId: project.id)
+
+            // Step 3: Navigate to project details
             navigationProject = updatedProject
             onFinished?(updatedProject)
         } catch {
