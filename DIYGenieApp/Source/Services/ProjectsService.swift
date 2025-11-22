@@ -21,7 +21,7 @@ struct ProjectsService {
     private let encoder: JSONEncoder
 
     init(userId: String, session: URLSession = .shared) {
-        self.userId = userId
+        self.userId = ProjectsService.resolveUserId(userId)
         self.session = session
 
         let decoder = JSONDecoder()
@@ -409,6 +409,23 @@ private extension DecodingError.Context {
 
 // MARK: - Private helpers
 private extension ProjectsService {
+    static func resolveUserId(_ provided: String) -> String {
+        let trimmed = provided.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = "user_id"
+
+        if !trimmed.isEmpty {
+            return trimmed
+        }
+
+        if let stored = UserDefaults.standard.string(forKey: key), !stored.isEmpty {
+            return stored
+        }
+
+        let generated = UUID().uuidString
+        UserDefaults.standard.set(generated, forKey: key)
+        return generated
+    }
+
     func supabaseRESTPath(_ path: String) -> URL {
         AppConfig.supabaseURL.appendingPathComponent("rest/v1/").appendingPathComponent(path)
     }
@@ -676,4 +693,3 @@ private struct PlanGenerationEnvelope: Decodable {
             ?? container.decodeIfPresent([String].self, forKey: .fieldsMissingCamel)
     }
 }
-
