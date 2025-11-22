@@ -94,6 +94,11 @@ struct ProjectsService {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try encoder.encode(payload)
+        
+        // Debug: Log the request payload to verify user_id is included
+        if let bodyData = request.httpBody, let bodyString = String(data: bodyData, encoding: .utf8) {
+            print("[ProjectsService] createProject request payload: \(bodyString)")
+        }
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
@@ -505,6 +510,14 @@ private struct CreateProjectPayload: Encodable {
     let goal: String
     let budget: String
     let skillLevel: String
+    
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+        case name
+        case goal
+        case budget
+        case skillLevel = "skill_level"
+    }
 }
 
 private struct CreateProjectEnvelope: Decodable {
