@@ -349,7 +349,7 @@ struct ProjectsService {
         let plan = envelope.plan ?? envelope.planJson
 
         guard preview != nil, plan != nil else {
-            throw ServiceError.backend(message: "Plan generation returned incomplete data. Please retry.")
+            throw ServiceError.backend(message: "Plan generation failed. Please retry.")
         }
 
         if let project = envelope.project {

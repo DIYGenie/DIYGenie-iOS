@@ -1,10 +1,5 @@
-// DIYGenieApp/Source/Services/APIClient.swift
-//
 //  APIClient.swift
 //  DIYGenieApp
-//
-//  API client for backend communication.
-//
 
 import Foundation
 import OSLog
@@ -13,71 +8,66 @@ import OSLog
 
 final class APIClient {
     static let shared = APIClient()
-    
+
     private let baseURL: URL
     private let logger: Logger
     private let urlSession: URLSession
-    
+
     private init() {
         self.baseURL = URL(string: "https://api.diygenieapp.com")!
         self.logger = Logger(subsystem: "com.diygenieapp.ios", category: "api")
-        
+
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 60.0      // per-request timeout
-        config.timeoutIntervalForResource = 90.0     // overall resource timeout
+        config.timeoutIntervalForRequest = 60
+        config.timeoutIntervalForResource = 90
         self.urlSession = URLSession(configuration: config)
     }
-    
-    // MARK: - Generate Plan
-    
+
+    // MARK: - Generate Plan (fire-and-forget)
+
+    private struct GeneratePlanRequest: Encodable {
+        let projectId: UUID
+    }
+
+    @MainActor
     func generatePlan(projectId: UUID) async throws {
         let url = baseURL.appendingPathComponent("plan")
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        struct Payload: Encodable { let projectId: UUID }
-        let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
-        request.httpBody = try encoder.encode(Payload(projectId: projectId))
-        
-        // Optional: Add Authorization header if token is available
+
         if let token = getAuthToken() {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        
-        logger.info("Generating plan for project \(projectId.uuidString)")
-        
-        do {
-            let (data, response) = try await urlSession.data(for: request)
-            
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw APIError.invalidResponse
-            }
-            
-            guard (200..<300).contains(httpResponse.statusCode) else {
-                let bodyString = String(data: data, encoding: .utf8) ?? "<no body>"
-                logger.error("Plan generation failed: status \(httpResponse.statusCode), body: \(bodyString)")
-                throw APIError.serverError(statusCode: httpResponse.statusCode, body: bodyString)
-            }
 
-            let bodyString = String(data: data, encoding: .utf8) ?? "<no body>"
-            logger.info("Plan trigger succeeded for project \(projectId.uuidString). Body: \(bodyString)")
-        } catch let error as APIError {
-            throw error
-        } catch {
-            logger.error("Network error during plan generation: \(error.localizedDescription)")
-            throw APIError.networkError(error)
+        let encoder = JSONEncoder()
+        // We want `projectId` as-is, NOT snake_case.
+        request.httpBody = try encoder.encode(GeneratePlanRequest(projectId: projectId))
+
+        logger.info("generatePlan: POST /plan for project \(projectId.uuidString, privacy: .public)")
+
+        let (data, response) = try await urlSession.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
         }
+
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            let bodyString = String(data: data, encoding: .utf8) ?? "<no body>"
+            logger.error("generatePlan: server error \(httpResponse.statusCode): \(bodyString, privacy: .public)")
+            throw APIError.serverError(statusCode: httpResponse.statusCode, body: bodyString)
+        }
+
+        logger.info("generatePlan: success for project \(projectId.uuidString, privacy: .public)")
+        // No decoding here – backend already saved the plan.
     }
-    
+
     // MARK: - Helpers
-    
+
     private func getAuthToken() -> String? {
-        // Check UserDefaults or keychain for auth token
-        // For now, return nil - can be extended later
+        // Extend later if you add auth; for now, no token.
         return nil
     }
 }
@@ -89,11 +79,11 @@ enum APIError: LocalizedError {
     case serverError(statusCode: Int, body: String)
     case decodeError(Error)
     case networkError(Error)
-    
+
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
-            return "Invalid server response"
+            return "Invalid server response."
         case .serverError(let statusCode, let body):
             return "Server error (\(statusCode)): \(body)"
         case .decodeError(let error):
