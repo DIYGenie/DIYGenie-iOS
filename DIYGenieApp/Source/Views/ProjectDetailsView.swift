@@ -126,7 +126,6 @@ struct ProjectDetailsView: View {
     private var previewHeroSection: some View {
         Group {
             if let previewURL = project.previewURL {
-                // Decor8 preview image
                 ZStack(alignment: .bottomLeading) {
                     AsyncImage(url: previewURL) { phase in
                         switch phase {
@@ -138,32 +137,36 @@ struct ProjectDetailsView: View {
                             previewPlaceholder
                         case .empty:
                             ZStack {
-                                Color.white.opacity(0.06)
+                                DS.Colors.cardOverlay
                                 ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .progressViewStyle(CircularProgressViewStyle(tint: DS.Colors.textPrimary))
                             }
                         @unknown default:
                             previewPlaceholder
                         }
                     }
+                    .frame(maxWidth: .infinity)
                     .frame(height: 240)
                     .clipped()
-                    
-                    // Subtle gradient overlay for better text readability if needed
+
                     LinearGradient(
                         gradient: Gradient(colors: [
-                            Color.clear,
-                            Color.black.opacity(0.3)
+                            Color.black.opacity(0.0),
+                            Color.black.opacity(0.35)
                         ]),
                         startPoint: .top,
                         endPoint: .bottom
                     )
                     .frame(height: 240)
                 }
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(DS.Colors.cardOverlay)
+                )
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color("SurfaceStroke").opacity(0.5), lineWidth: 1)
+                        .stroke(DS.Colors.cardBorder, lineWidth: 1)
                 )
                 .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
             } else {
@@ -176,25 +179,26 @@ struct ProjectDetailsView: View {
     private var previewPlaceholder: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color.white.opacity(0.06))
+                .fill(DS.Colors.cardOverlay)
                 .overlay(
                     RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color("SurfaceStroke").opacity(0.5), lineWidth: 1)
+                        .stroke(DS.Colors.cardBorder, lineWidth: 1)
                 )
-            
+
             VStack(spacing: 12) {
                 Image(systemName: "photo.on.rectangle")
                     .font(.system(size: 40, weight: .semibold))
-                    .foregroundColor(Color("TextSecondary"))
-                
-                Text(project.previewStatus == "pending" || project.previewStatus == "processing" 
-                     ? "Preview generating…" 
+                    .foregroundColor(DS.Colors.textSecondary)
+
+                Text(project.previewStatus == "pending" || project.previewStatus == "processing"
+                     ? "Preview generating…"
                      : "Preview not available yet")
                     .font(.subheadline)
-                    .foregroundColor(Color("TextSecondary"))
+                    .foregroundColor(DS.Colors.textSecondary)
             }
-            .frame(height: 240)
         }
+        .frame(maxWidth: .infinity)
+        .frame(height: 240)
     }
 
     private var headerSection: some View {

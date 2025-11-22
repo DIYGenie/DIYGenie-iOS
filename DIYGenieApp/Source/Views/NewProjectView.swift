@@ -271,7 +271,7 @@ struct NewProjectView: View {
                                     .foregroundColor(Color("TextPrimary"))
                                     .font(.headline)
 
-                                if measurementArea != nil {
+                                if hasSavedMeasurement {
                                     Text("Measurement area saved ✓")
                                         .font(.subheadline)
                                         .foregroundColor(Color("TextSecondary"))
@@ -342,7 +342,7 @@ struct NewProjectView: View {
                     if selectedUIImage == nil {
                         return "Add a photo first"
                     }
-                    if measurementArea == nil {
+                    if !hasSavedMeasurement {
                         return "Draw the 4-point area to enable"
                     }
                     if projectId == nil {
@@ -355,7 +355,7 @@ struct NewProjectView: View {
                     icon: "viewfinder.rectangular",
                     title: "AR Room Scan (3D)",
                     subtitle: arSubtitle,
-                    enabled: (selectedUIImage != nil) && (measurementArea != nil)
+                    enabled: (selectedUIImage != nil) && hasSavedMeasurement
                 ) {
                     Task { @MainActor in
                         arAttached = false
@@ -365,7 +365,7 @@ struct NewProjectView: View {
                             await ensureProjectAfterPhoto()
                         }
 
-                        guard measurementArea != nil else {
+                        guard hasSavedMeasurement else {
                             alert("Please add a photo and draw the 4-point area to continue.")
                             return
                         }
@@ -518,8 +518,14 @@ struct NewProjectView: View {
         !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var hasSavedMeasurement: Bool {
+        if measurementArea != nil { return true }
+        if let meta = createdProject?.previewMeta, meta["roi"] != nil { return true }
+        return false
+    }
+
     private var canGeneratePlan: Bool {
-        isValid && selectedUIImage != nil && measurementArea != nil && !isUploadingPhoto
+        isValid && selectedUIImage != nil && hasSavedMeasurement && !isUploadingPhoto
     }
 
 
@@ -539,7 +545,7 @@ struct NewProjectView: View {
             return
         }
 
-        guard measurementArea != nil else {
+        guard hasSavedMeasurement else {
             errorMessage = "Please draw the 4-point area to continue."
             showErrorAlert = true
             return
@@ -950,4 +956,3 @@ extension NewProjectView {
         )
     }
 }
-
