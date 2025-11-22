@@ -154,9 +154,6 @@ struct NewProjectView: View {
 
                         measurementArea = [tl, tr, br, bl]
                         showOverlay = false
-
-                        // Auto-create/attach immediately after confirming the area
-                        Task { await ensureProjectAfterPhoto() }
                     },
                     onError: { err in
                         alert("Measurement editor error: \(err.localizedDescription)")
@@ -346,7 +343,7 @@ struct NewProjectView: View {
                         return "Draw the 4-point area to enable"
                     }
                     if projectId == nil {
-                        return "Project will auto-create after you continue"
+                        return "Available after you generate your first plan"
                     }
                     return "Improve measurements with Room Scan"
                 }()
@@ -361,22 +358,13 @@ struct NewProjectView: View {
                         arAttached = false
                         arScanFilename = nil
 
-                        if projectId == nil {
-                            await ensureProjectAfterPhoto()
-                        }
-
                         guard hasSavedMeasurement else {
                             alert("Please add a photo and draw the 4-point area to continue.")
                             return
                         }
-                        
-                        // Ensure project exists before opening AR
-                        if projectId == nil {
-                            await ensureProjectAfterPhoto()
-                        }
-                        
+
                         guard projectId != nil else {
-                            alert("Could not create project. Please try again.")
+                            alert("You can use AR after your first plan is created. Tap “Generate Plan” first.")
                             return
                         }
 
@@ -882,39 +870,6 @@ extension NewProjectView {
                 createdProject = fresh
             }
             return
-        }
-
-        // Otherwise create new project immediately
-        let safeName = name.trimmingCharacters(in: .whitespaces).isEmpty
-            ? "New Project"
-            : name
-
-        let trimmedGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
-        let safeGoal = trimmedGoal.isEmpty
-            ? "Auto-created from photo"
-            : trimmedGoal
-
-        isCreatingProject = true
-        defer { isCreatingProject = false }
-
-        do {
-            let created = try await service.createProject(
-                name: safeName,
-                goal: safeGoal,
-                budget: budget.label,
-                skillLevel: skill.label
-            )
-            projectId = created.id
-            createdProject = created
-
-            if let points = measurementArea,
-               let rect = denormalizedRect(from: points, image: selectedUIImage) {
-                await service.attachCropRectIfAvailable(projectId: created.id, rect: rect)
-            }
-
-            try await uploadPhoto(for: created.id, image: image)
-        } catch {
-            alert("Couldn’t create project from photo: \(error.localizedDescription)")
         }
     }
 

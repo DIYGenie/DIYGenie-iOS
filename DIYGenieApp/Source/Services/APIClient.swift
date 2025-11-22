@@ -31,7 +31,7 @@ final class APIClient {
     // MARK: - Generate Plan
     
     func generatePlan(projectId: UUID) async throws -> PlanV1 {
-        let url = baseURL.appendingPathComponent("projects/\(projectId.uuidString)/generate-plan")
+        let url = baseURL.appendingPathComponent("api/projects/\(projectId.uuidString)/generate-plan")
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
