@@ -58,6 +58,7 @@ struct NewProjectView: View {
     @State private var showAlert = false
     @State private var arAttached = false
     @State private var arScanFilename: String?
+    @State private var pendingARScanURL: URL?
 
     // MARK: - Created / nav
     @State private var projectId: String?
@@ -162,18 +163,16 @@ struct NewProjectView: View {
                 )
             }
         }
-        // AR sheet (after project exists)
+        // AR sheet
         .sheet(isPresented: $showARSheet) {
-            if projectId != nil {
-                if #available(iOS 17.0, *) {
-                    ARRoomPlanSheet { fileURL in
-                        Task { await handleRoomPlanExport(fileURL) }
-                    }
-                    .ignoresSafeArea()
-                } else {
-                    Text("RoomPlan requires iOS 17 or later.")
-                        .padding()
+            if #available(iOS 17.0, *) {
+                ARRoomPlanSheet { fileURL in
+                    Task { await handleRoomPlanExport(fileURL) }
                 }
+                .ignoresSafeArea()
+            } else {
+                Text("RoomPlan requires iOS 17 or later.")
+                    .padding()
             }
         }
         .alert(alertMessage, isPresented: $showAlert) {
@@ -342,8 +341,8 @@ struct NewProjectView: View {
                     if !hasSavedMeasurement {
                         return "Draw the 4-point area to enable"
                     }
-                    if projectId == nil {
-                        return "Available after you generate your first plan"
+                    if hasSavedMeasurement && projectId == nil && !arAttached {
+                        return "Optional: Add a 3D room scan before generating your plan"
                     }
                     return "Improve measurements with Room Scan"
                 }()
@@ -360,11 +359,6 @@ struct NewProjectView: View {
 
                         guard hasSavedMeasurement else {
                             alert("Please add a photo and draw the 4-point area to continue.")
-                            return
-                        }
-
-                        guard projectId != nil else {
-                            alert("You can use AR after your first plan is created. Tap “Generate Plan” first.")
                             return
                         }
 
@@ -581,7 +575,22 @@ struct NewProjectView: View {
                     await service.attachCropRectIfAvailable(projectId: project.id, rect: rect)
                 }
             }
-            
+
+            // Step 1b: Upload any pending AR scan captured before project creation
+            if let arURL = pendingARScanURL {
+                do {
+                    try await service.uploadARScan(projectId: project.id, fileURL: arURL)
+                    let refreshed = try await service.fetchProject(projectId: project.id)
+                    createdProject = refreshed
+                    arAttached = true
+                    arScanFilename = arURL.lastPathComponent
+                    pendingARScanURL = nil
+                } catch {
+                    print("Failed to attach pending AR scan:", error)
+                    alert("AR scan couldn't be attached: \(error.localizedDescription)")
+                }
+            }
+
             // Step 2: Generate the plan
             guard let projectUUID = UUID(uuidString: project.id) else {
                 errorMessage = "Invalid project ID"
@@ -632,7 +641,13 @@ struct NewProjectView: View {
         defer { isUploadingPhoto = false }
 
         do {
-            guard let pid = projectId else { return }
+            guard let pid = projectId else {
+                pendingARScanURL = fileURL
+                arScanFilename = fileURL.lastPathComponent
+                arAttached = true
+                alert("AR scan saved. It will be attached when you generate your plan.")
+                return
+            }
 
             try await service.uploadARScan(projectId: pid, fileURL: fileURL)
             let fresh = try await service.fetchProject(projectId: pid)
